@@ -141,9 +141,16 @@ export default async function handler(
   if (model === 'gpt-image-2') {
     if (isEdit) {
       upstreamUrl = UPSTREAM_URLS['gpt-image-2'].edit;
+      // GPT Image 2 编辑接口 image 字段接受 URL 或 base64。
+      // 前端 compressImage 输出的是裸 base64（无前缀），需要加上 data URI 前缀以确保 API 识别。
+      const formattedImages = images!.map((img) => {
+        if (img.startsWith('http://') || img.startsWith('https://')) return img;
+        if (img.startsWith('data:')) return img;
+        // 裸 base64 → 补齐 data URI 前缀
+        return `data:image/jpeg;base64,${img}`;
+      });
       upstreamBody = {
-        // 文档说明 image 支持单张 URL/base64 或图片数组，这里直接透传数组以兼容多图
-        image: images!.length === 1 ? images![0] : images,
+        image: formattedImages.length === 1 ? formattedImages[0] : formattedImages,
         prompt,
         n: n || 1,
         size: size || '1024x1024',
@@ -164,21 +171,24 @@ export default async function handler(
     const urls = UPSTREAM_URLS[model];
     if (isEdit) {
       upstreamUrl = urls.edit;
-      // Gemini 编辑接口区分 image_urls / image_base64s。前端传入的 images 已统一为 base64 data URL
-      // 或外链 URL，这里按是否以 data: 开头分流。
+      // Gemini 编辑接口区分 image_urls / image_base64s。
+      // 分流逻辑：以 http(s):// 开头 → URL；其余（裸 base64 或 data URI）→ base64。
+      // image_base64s 字段需要裸 base64（无 data URI 前缀）。
       const base64s: string[] = [];
       const urlList: string[] = [];
       for (const img of images!) {
-        if (typeof img === 'string' && img.startsWith('data:')) {
-          base64s.push(img);
-        } else if (typeof img === 'string') {
+        if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
           urlList.push(img);
+        } else if (typeof img === 'string') {
+          // 裸 base64 或 data URI → 统一提取裸 base64
+          const raw = img.startsWith('data:') ? (img.split(',')[1] || img) : img;
+          base64s.push(raw);
         }
       }
       upstreamBody = {
         prompt,
         size: size || '1K',
-        ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+        ...(aspectRatio && aspectRatio !== 'auto' ? { aspect_ratio: aspectRatio } : {}),
         ...(base64s.length > 0 ? { image_base64s: base64s } : {}),
         ...(urlList.length > 0 ? { image_urls: urlList } : {}),
         output_format: outputFormat || 'image/png',

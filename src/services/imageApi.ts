@@ -19,13 +19,15 @@ export async function generateImage(
     const errBody = await response
       .json()
       .catch(() => ({ error: '图片生成失败' as const }));
+    // 优先展示上游真实错误原因（detail），拼接 error 字段提供上下文
     const detail =
       typeof errBody.detail === 'string'
         ? errBody.detail
         : errBody.detail
         ? JSON.stringify(errBody.detail)
         : '';
-    const msg = errBody.error || detail || `请求失败: ${response.status}`;
+    const errorLabel = errBody.error || `请求失败: ${response.status}`;
+    const msg = detail ? `${errorLabel}: ${detail}` : errorLabel;
     throw new Error(msg);
   }
 
