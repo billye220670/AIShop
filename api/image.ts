@@ -1,7 +1,10 @@
 // Vercel Serverless Function：代理 highwayapi 的图片生成接口
 // 同时支持 GPT Image 2（OpenAI 兼容）和 Gemini 系列（jiekou 自定义协议），
 // 密钥放在服务端环境变量 HIGHWAY_API_KEY，前端只调用本路由。
-// 使用 Node.js Serverless Runtime，超时 60s（Edge Runtime 仅 25s，图片生成不够用）
+// 使用 Vercel 标准 Node.js Serverless 格式（VercelRequest/VercelResponse），
+// 超时 60s（Edge Runtime 仅 25s，图片生成不够用）。
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
 export const maxDuration = 60;
 
 // 上游 base URL，与 api/chat.ts 保持一致来源（highwayapi/jiekou）
@@ -36,19 +39,15 @@ interface ImageRequestBody {
   n?: number;
 }
 
-function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
 // 兼容多种上游响应结构，统一抽取出图片 URL 数组
+// 支持：
+//  - Gemini/jiekou 自定义协议：{ base_resp: {...}, image_urls: ["..."] }
+//  - GPT Image 2 / OpenAI 兼容：{ data: [{ url | b64_json }] } 或 { images: [{ url }] }
 function extractUrls(payload: unknown): string[] {
   if (!payload || typeof payload !== 'object') return [];
   const obj = payload as Record<string, unknown>;
 
-  // Gemini: { image_urls: ["..."] }
+  // Gemini: { image_urls: ["..."] }（可能与 base_resp 同级）
   if (Array.isArray(obj.image_urls)) {
     return (obj.image_urls as unknown[]).filter(
       (u): u is string => typeof u === 'string'
@@ -84,24 +83,34 @@ function extractUrls(payload: unknown): string[] {
   return [];
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: VercelRequest,
+  res: VercelResponse
+) {
   // 1. 验证请求方法
   if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   // 2. 校验密钥
   const apiKey = process.env.HIGHWAY_API_KEY;
   if (!apiKey) {
-    return jsonResponse({ error: 'HIGHWAY_API_KEY not configured' }, 500);
+    return res.status(500).json({ error: 'HIGHWAY_API_KEY not configured' });
   }
 
-  // 3. 解析请求体
+  // 3. 解析请求体（Vercel Serverless 已自动解析 JSON body；
+  //    但仍要兼容字符串体的兜底情况）
   let payload: ImageRequestBody;
   try {
-    payload = (await req.json()) as ImageRequestBody;
+    if (typeof req.body === 'string') {
+      payload = JSON.parse(req.body) as ImageRequestBody;
+    } else if (req.body && typeof req.body === 'object') {
+      payload = req.body as ImageRequestBody;
+    } else {
+      payload = {};
+    }
   } catch {
-    return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    return res.status(400).json({ error: 'Invalid JSON body' });
   }
 
   const {
@@ -116,10 +125,10 @@ export default async function handler(req: Request): Promise<Response> {
   } = payload;
 
   if (!model) {
-    return jsonResponse({ error: 'Missing required field: model' }, 400);
+    return res.status(400).json({ error: 'Missing required field: model' });
   }
   if (!prompt || !prompt.trim()) {
-    return jsonResponse({ error: 'Missing required field: prompt' }, 400);
+    return res.status(400).json({ error: 'Missing required field: prompt' });
   }
 
   const isEdit = Array.isArray(images) && images.length > 0;
@@ -184,7 +193,7 @@ export default async function handler(req: Request): Promise<Response> {
       };
     }
   } else {
-    return jsonResponse({ error: `Unsupported model: ${model}` }, 400);
+    return res.status(400).json({ error: `Unsupported model: ${model}` });
   }
 
   // 5. 发起上游请求
@@ -199,10 +208,10 @@ export default async function handler(req: Request): Promise<Response> {
       body: JSON.stringify(upstreamBody),
     });
   } catch (err) {
-    return jsonResponse(
-      { error: 'Upstream request failed', detail: (err as Error).message },
-      502
-    );
+    return res.status(502).json({
+      error: 'Upstream request failed',
+      detail: (err as Error).message,
+    });
   }
 
   // 6. 处理上游响应
@@ -216,33 +225,28 @@ export default async function handler(req: Request): Promise<Response> {
     } catch {
       // keep rawText
     }
-    return new Response(
-      JSON.stringify({ error: 'Upstream API error', detail: errorPayload }),
-      {
-        status: upstream.status,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+    return res
+      .status(upstream.status)
+      .json({ error: 'Upstream API error', detail: errorPayload });
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    return jsonResponse(
-      { error: 'Upstream returned non-JSON response', detail: rawText },
-      502
-    );
+    return res.status(502).json({
+      error: 'Upstream returned non-JSON response',
+      detail: rawText,
+    });
   }
 
   const urls = extractUrls(parsed);
   if (urls.length === 0) {
-    return jsonResponse(
-      { error: 'No image returned from upstream', detail: parsed },
-      502
-    );
+    return res
+      .status(502)
+      .json({ error: 'No image returned from upstream', detail: parsed });
   }
 
   // 7. 统一返回 { urls: string[] }
-  return jsonResponse({ urls });
+  return res.status(200).json({ urls });
 }
