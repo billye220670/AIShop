@@ -1,0 +1,18 @@
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="<Your API Key>",
+    base_url="https://api.highwayapi.ai/openai"
+)
+
+response = client.chat.completions.create(
+    model="doubao-1-5-pro-32k-250115",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello, how are you?"}
+    ],
+    max_tokens=12000,
+    temperature=0.7
+)
+
+print(response.choices[0].message.content)
