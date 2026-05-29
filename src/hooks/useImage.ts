@@ -260,7 +260,8 @@ export function useImage() {
         quality: isGptModel(params.model) ? params.quality : undefined,
         sourceImages: params.images ? params.images.length : undefined,
       };
-      setHistory(prev => [historyItem, ...prev]);
+      // 追加到末尾：保持与 loading 卡片在原位置一致，避免完成后图片跳到最前
+      setHistory(prev => [...prev, historyItem]);
     } catch (err) {
       clearTimeout(timeoutId);
       if (err instanceof Error && err.name === 'AbortError') {
