@@ -150,16 +150,22 @@ export default async function handler(
   if (model === 'gpt-image-2') {
     if (isEdit) {
       upstreamUrl = UPSTREAM_URLS['gpt-image-2'].edit;
-      // GPT Image 2 编辑接口 image 字段接受 URL 或 base64。
-      // 前端 compressImage 输出的是裸 base64（无前缀），需要加上 data URI 前缀以确保 API 识别。
-      const formattedImages = images!.map((img) => {
-        if (img.startsWith('http://') || img.startsWith('https://')) return img;
-        if (img.startsWith('data:')) return img;
-        // 裸 base64 → 补齐 data URI 前缀
-        return `data:image/jpeg;base64,${img}`;
-      });
+      // GPT Image 2 编辑接口 image 字段类型为 string（标量），仅支持单张参考图。
+      // 文档示例显示 base64 应传裸字符串（与 Gemini 系列一致），data URI 前缀会导致请求挂起。
+      const rawImage = images![0];
+      let formattedImage: string;
+      if (rawImage.startsWith('http://') || rawImage.startsWith('https://')) {
+        // URL 直接传
+        formattedImage = rawImage;
+      } else if (rawImage.startsWith('data:')) {
+        // 去掉 data URI 前缀，只传裸 base64
+        formattedImage = rawImage.split(',')[1] || rawImage;
+      } else {
+        // 已经是裸 base64
+        formattedImage = rawImage;
+      }
       upstreamBody = {
-        image: formattedImages.length === 1 ? formattedImages[0] : formattedImages,
+        image: formattedImage,
         prompt,
         n: n || 1,
         size: size || '1024x1024',
