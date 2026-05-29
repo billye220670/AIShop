@@ -7,6 +7,15 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export const maxDuration = 60;
 
+// 提高 body parser 大小限制，避免上传 base64 参考图时被默认 1MB 限制拒绝（ERR_CONNECTION_RESET）。
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
+
 // 上游 base URL，与 api/chat.ts 保持一致来源（highwayapi/jiekou）
 // 注意：图片接口走 jiekou 自定义协议，每个模型独立路径（/v3/{model-slug}-{text-to-image|edit}），
 // 与 chat.ts 的 OpenAI 兼容路径（/openai/v1）不同。
