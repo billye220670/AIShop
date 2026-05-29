@@ -64,3 +64,28 @@ export interface Conversation {
   updatedAt: number;
   isRenamed: boolean;
 }
+
+// 图片生成请求参数
+export interface ImageGenerationParams {
+  prompt: string;
+  model: string;
+  images?: string[];        // base64 编码的图片（编辑模式）
+  aspectRatio?: string;     // 宽高比
+  size?: string;            // 尺寸 (1K/2K/4K 或具体像素尺寸)
+  quality?: string;         // 质量等级 (low/medium/high)
+  outputFormat?: string;    // 输出格式
+  n?: number;               // 生成数量
+}
+
+// 图片生成历史项（扩展现有 MediaItem）
+export interface ImageHistoryItem {
+  id: string;
+  urls: string[];           // 生成的图片URL列表
+  prompt: string;
+  model: string;
+  timestamp: number;
+  aspectRatio?: string;
+  size?: string;
+  quality?: string;
+  sourceImages?: number;    // 编辑模式下上传的图片数量
+}

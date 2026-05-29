@@ -80,7 +80,41 @@ export const CHAT_MODELS: Model[] = [
   },
 ];
 
-export const IMAGE_MODELS: Model[] = [];
+export const IMAGE_MODELS: Model[] = [
+  {
+    id: 'gpt-image-2',
+    name: 'GPT Image 2',
+    provider: 'OpenAI',
+    type: 'image',
+    maxTokens: 0,
+    contextLength: 0,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['image'],
+    price: { input: '按张计费', output: '按张计费' },
+  },
+  {
+    id: 'gemini-3.1-flash',
+    name: 'Nanobanana 2',
+    provider: 'Google',
+    type: 'image',
+    maxTokens: 0,
+    contextLength: 0,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['image'],
+    price: { input: '按张计费', output: '按张计费' },
+  },
+  {
+    id: 'gemini-3-pro',
+    name: 'Nanobanana Pro',
+    provider: 'Google',
+    type: 'image',
+    maxTokens: 0,
+    contextLength: 0,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['image'],
+    price: { input: '按张计费', output: '按张计费' },
+  },
+];
 export const VIDEO_MODELS: Model[] = [];
 export const MUSIC_MODELS: Model[] = [];
 
