@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Message } from '../../types';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
@@ -32,9 +32,32 @@ export default function ChatPanel({
   setWebSearchEnabled,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const lastUserMsgIdRef = useRef<string | null>(null);
+
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    // 距离底部小于 100px 认为在底部附近
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    shouldAutoScrollRef.current = isNearBottom;
+  }, []);
+
+  // 当用户发送新消息时，强制恢复自动滚动
+  useEffect(() => {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    if (lastUserMsg && lastUserMsg.id !== lastUserMsgIdRef.current) {
+      lastUserMsgIdRef.current = lastUserMsg.id;
+      shouldAutoScrollRef.current = true;
+    }
+  }, [messages]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (shouldAutoScrollRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   const handleExportMd = () => {
@@ -103,7 +126,11 @@ export default function ChatPanel({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-6 py-4"
+      >
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center h-full text-gray-500">
             <div className="text-5xl mb-4">💬</div>
