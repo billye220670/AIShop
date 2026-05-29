@@ -6,17 +6,25 @@ export const config = {
 };
 
 // 上游 base URL，与 api/chat.ts 保持一致来源（highwayapi/jiekou）
+// 注意：图片接口走 jiekou 自定义协议，每个模型独立路径（/v3/{model-slug}-{text-to-image|edit}），
+// 与 chat.ts 的 OpenAI 兼容路径（/openai/v1）不同。
 const API_BASE = 'https://api.highwayapi.ai';
 
-// GPT Image 2 走 OpenAI 兼容路径（参考 chat.ts 的 /openai/v1 前缀）
-const GPT_IMAGE_GEN_URL = `${API_BASE}/openai/v1/images/generations`;
-const GPT_IMAGE_EDIT_URL = `${API_BASE}/openai/v1/images/edits`;
-
-// Gemini 系列（Nano Banana / Nano Banana Pro）走 jiekou 自定义协议路径，
-// 文档未显式给出完整 URL，按官方平台习惯使用 /v1/images/* 前缀；
-// 若上游路径调整，仅需在此处统一修改。
-const GEMINI_IMAGE_GEN_URL = `${API_BASE}/v1/images/generations`;
-const GEMINI_IMAGE_EDIT_URL = `${API_BASE}/v1/images/edits`;
+// 模型 → 上游 endpoint 映射（依据 ImageGenAPI/ 下官方文档的 curl 示例）
+const UPSTREAM_URLS = {
+  'gpt-image-2': {
+    textToImage: `${API_BASE}/v3/gpt-image-2-text-to-image`,
+    edit: `${API_BASE}/v3/gpt-image-2-edit`,
+  },
+  'gemini-3.1-flash': {
+    textToImage: `${API_BASE}/v3/gemini-3.1-flash-image-text-to-image`,
+    edit: `${API_BASE}/v3/gemini-3.1-flash-image-edit`,
+  },
+  'gemini-3-pro': {
+    textToImage: `${API_BASE}/v3/gemini-3-pro-image-text-to-image`,
+    edit: `${API_BASE}/v3/gemini-3-pro-image-edit`,
+  },
+} as const;
 
 interface ImageRequestBody {
   model?: string;
@@ -121,21 +129,22 @@ export default async function handler(req: Request): Promise<Response> {
   let upstreamUrl: string;
   let upstreamBody: Record<string, unknown>;
 
+  // 上游路径已隐含模型信息，请求体不需要再带 model 字段
   if (model === 'gpt-image-2') {
     if (isEdit) {
-      upstreamUrl = GPT_IMAGE_EDIT_URL;
+      upstreamUrl = UPSTREAM_URLS['gpt-image-2'].edit;
       upstreamBody = {
-        model: 'gpt-image-2',
-        image: images![0], // 文档说明支持单张 URL/base64
+        // 文档说明 image 支持单张 URL/base64 或图片数组，这里直接透传数组以兼容多图
+        image: images!.length === 1 ? images![0] : images,
         prompt,
         n: n || 1,
         size: size || '1024x1024',
         quality: quality || 'low',
+        output_format: outputFormat || 'png',
       };
     } else {
-      upstreamUrl = GPT_IMAGE_GEN_URL;
+      upstreamUrl = UPSTREAM_URLS['gpt-image-2'].textToImage;
       upstreamBody = {
-        model: 'gpt-image-2',
         prompt,
         n: n || 1,
         size: size || '1024x1024',
@@ -144,19 +153,31 @@ export default async function handler(req: Request): Promise<Response> {
       };
     }
   } else if (model === 'gemini-3.1-flash' || model === 'gemini-3-pro') {
+    const urls = UPSTREAM_URLS[model];
     if (isEdit) {
-      upstreamUrl = GEMINI_IMAGE_EDIT_URL;
+      upstreamUrl = urls.edit;
+      // Gemini 编辑接口区分 image_urls / image_base64s。前端传入的 images 已统一为 base64 data URL
+      // 或外链 URL，这里按是否以 data: 开头分流。
+      const base64s: string[] = [];
+      const urlList: string[] = [];
+      for (const img of images!) {
+        if (typeof img === 'string' && img.startsWith('data:')) {
+          base64s.push(img);
+        } else if (typeof img === 'string') {
+          urlList.push(img);
+        }
+      }
       upstreamBody = {
-        model,
         prompt,
-        image_base64s: images,
         size: size || '1K',
-        aspect_ratio: aspectRatio || 'auto',
+        ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+        ...(base64s.length > 0 ? { image_base64s: base64s } : {}),
+        ...(urlList.length > 0 ? { image_urls: urlList } : {}),
+        output_format: outputFormat || 'image/png',
       };
     } else {
-      upstreamUrl = GEMINI_IMAGE_GEN_URL;
+      upstreamUrl = urls.textToImage;
       upstreamBody = {
-        model,
         prompt,
         size: size || '1K',
         aspect_ratio: aspectRatio || '1:1',
