@@ -234,6 +234,14 @@ export function useImage() {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      // 客户端超时保护：55s 后主动中断，避免服务端被 Vercel 60s 杀掉后
+      // 连接被静默丢弃导致 fetch 远不返回、前端 spinner 永不停止。
+      let timedOut = false;
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 55000);
+
       const isEdit = uploadedImages.length > 0;
       const params: ImageGenerationParams = {
         prompt: trimmed,
@@ -269,12 +277,16 @@ export function useImage() {
         setHistory(prev => [item, ...prev]);
       } catch (err) {
         const e = err as Error;
-        if (e.name === 'AbortError') {
-          // 主动取消，不显示错误
+        if (timedOut) {
+          // 客户端超时：明确提示用户
+          setError('请求超时，请稍后重试');
+        } else if (e.name === 'AbortError') {
+          // 用户主动取消，不显示错误
         } else {
           setError(e.message || '图片生成失败');
         }
       } finally {
+        clearTimeout(timeoutId);
         setIsGenerating(false);
         abortControllerRef.current = null;
       }

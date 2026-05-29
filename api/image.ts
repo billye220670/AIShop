@@ -150,19 +150,20 @@ export default async function handler(
   if (model === 'gpt-image-2') {
     if (isEdit) {
       upstreamUrl = UPSTREAM_URLS['gpt-image-2'].edit;
-      // GPT Image 2 编辑接口 image 字段类型为 string（标量），仅支持单张参考图。
-      // 文档示例显示 base64 应传裸字符串（与 Gemini 系列一致），data URI 前缀会导致请求挂起。
+      // GPT Image 2 编辑接口 image 字段为 string（标量），仅支持单张参考图。
+      // OpenAI 兼容协议要求 base64 必须带完整 data URI 前缀（data:image/jpeg;base64,...），
+      // 否则上游无法识别图片 MIME 类型，请求会一直挂起直到 Vercel 60s 超时。
       const rawImage = images![0];
       let formattedImage: string;
       if (rawImage.startsWith('http://') || rawImage.startsWith('https://')) {
         // URL 直接传
         formattedImage = rawImage;
       } else if (rawImage.startsWith('data:')) {
-        // 去掉 data URI 前缀，只传裸 base64
-        formattedImage = rawImage.split(',')[1] || rawImage;
-      } else {
-        // 已经是裸 base64
+        // 已是 data URI，直接透传
         formattedImage = rawImage;
+      } else {
+        // 裸 base64 → 补上 data URI 前缀（前端 compressImage 输出 JPEG）
+        formattedImage = `data:image/jpeg;base64,${rawImage}`;
       }
       upstreamBody = {
         image: formattedImage,
