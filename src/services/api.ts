@@ -1,8 +1,8 @@
 import type { Message, MessageContent } from '../types';
 import { getSystemPrompt } from '../config/prompts';
 
-const API_BASE_URL = 'https://api.highwayapi.ai/openai/v1';
-const API_KEY = 'sk_2vI8czIlEG3ByvsRQsuy5K0jNxpspATqPy9JcaVmRaI';
+// 通过 Vercel Edge Function 代理调用，密钥保存在服务端环境变量
+const CHAT_API_URL = '/api/chat';
 
 interface ChatCompletionMessage {
   role: 'system' | 'user' | 'assistant';
@@ -30,11 +30,10 @@ export async function* streamChat(
     }))
   );
 
-  const response = await fetch(`${API_BASE_URL}/chat/completions`, {
+  const response = await fetch(CHAT_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({
       model,

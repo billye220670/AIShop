@@ -1,5 +1,5 @@
-const BOCHA_API_URL = 'https://api.bochaai.com/v1/web-search';
-const BOCHA_API_KEY = 'sk-054dffdcd2f04a2cb7974ac0a71b41a1';
+// 通过 Vercel Edge Function 代理调用，密钥保存在服务端环境变量
+const SEARCH_API_URL = '/api/search';
 
 export interface SearchResult {
   name: string;
@@ -17,18 +17,12 @@ interface BochaWebPage {
 
 export async function searchWeb(query: string): Promise<SearchResult[]> {
   try {
-    const response = await fetch(BOCHA_API_URL, {
+    const response = await fetch(SEARCH_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${BOCHA_API_KEY}`,
       },
-      body: JSON.stringify({
-        query,
-        freshness: 'noLimit',
-        summary: true,
-        count: 8,
-      }),
+      body: JSON.stringify({ query }),
     });
 
     if (!response.ok) {

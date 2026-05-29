@@ -1,5 +1,5 @@
-const API_BASE_URL = 'https://api.highwayapi.ai/openai/v1';
-const API_KEY = 'sk_2vI8czIlEG3ByvsRQsuy5K0jNxpspATqPy9JcaVmRaI';
+// 通过 Vercel Edge Function 代理调用，密钥保存在服务端环境变量
+const CHAT_API_URL = '/api/chat';
 const TITLE_MODEL = 'doubao-1-5-pro-32k-250115';
 
 function fallback(messages: Array<{role: string; content: string | unknown}>): string {
@@ -30,11 +30,10 @@ export async function generateTitle(
       if (summary.length > 500) break;
     }
 
-    const response = await fetch(`${API_BASE_URL}/chat/completions`, {
+    const response = await fetch(CHAT_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${API_KEY}`,
       },
       body: JSON.stringify({
         model: TITLE_MODEL,
