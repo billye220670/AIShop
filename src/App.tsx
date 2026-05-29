@@ -31,6 +31,8 @@ function App() {
             conversationTitle={conversationTitle}
             webSearchEnabled={chat.webSearchEnabled}
             setWebSearchEnabled={chat.setWebSearchEnabled}
+            conversation={activeConversation}
+            onImportConversation={chat.importConversation}
           />
         );
       case 'image':

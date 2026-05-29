@@ -322,6 +322,30 @@ export function useChat() {
     [activeId]
   );
 
+  // 导入会话（来自 .aishop.json 文件）
+  const importConversation = useCallback((convData: Partial<Conversation>) => {
+    const rawMessages = Array.isArray(convData.messages) ? convData.messages : [];
+    // 清理流式状态，避免导入后显示异常
+    const sanitizedMessages: Message[] = rawMessages.map(m => ({
+      ...m,
+      isStreaming: false,
+    }));
+
+    const imported: Conversation = {
+      id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8),
+      title: convData.title || '导入的对话',
+      messages: sanitizedMessages,
+      selectedModel: convData.selectedModel || CHAT_MODELS[0].id,
+      createdAt: convData.createdAt || Date.now(),
+      updatedAt: Date.now(),
+      isRenamed: convData.isRenamed ?? true,
+    };
+
+    setConversations(prev => [imported, ...prev]);
+    setActiveId(imported.id);
+    setError(null);
+  }, []);
+
   return {
     messages,
     isLoading,
@@ -340,5 +364,6 @@ export function useChat() {
     switchConversation,
     deleteConversation,
     renameConversation,
+    importConversation,
   };
 }
