@@ -236,8 +236,8 @@ export function useImage() {
       createdAt: Date.now(),
     };
 
-    // 添加到队列
-    setPendingTasks(prev => [task, ...prev]);
+    // 添加到队列（追加到末尾，避免把已有内容挤开）
+    setPendingTasks(prev => [...prev, task]);
 
     // 独立的 AbortController + 55s 超时
     const controller = new AbortController();
