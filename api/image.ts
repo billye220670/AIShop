@@ -1,9 +1,8 @@
-// Vercel Edge Function：代理 highwayapi 的图片生成接口
+// Vercel Serverless Function：代理 highwayapi 的图片生成接口
 // 同时支持 GPT Image 2（OpenAI 兼容）和 Gemini 系列（jiekou 自定义协议），
 // 密钥放在服务端环境变量 HIGHWAY_API_KEY，前端只调用本路由。
-export const config = {
-  runtime: 'edge',
-};
+// 使用 Node.js Serverless Runtime，超时 60s（Edge Runtime 仅 25s，图片生成不够用）
+export const maxDuration = 60;
 
 // 上游 base URL，与 api/chat.ts 保持一致来源（highwayapi/jiekou）
 // 注意：图片接口走 jiekou 自定义协议，每个模型独立路径（/v3/{model-slug}-{text-to-image|edit}），
