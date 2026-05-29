@@ -89,3 +89,14 @@ export interface ImageHistoryItem {
   quality?: string;
   sourceImages?: number;    // 编辑模式下上传的图片数量
 }
+
+// 并发队列中的待处理/错误任务
+export interface PendingImageTask {
+  id: string;
+  prompt: string;
+  model: string;
+  params: ImageGenerationParams;    // 完整请求参数，用于重试
+  status: 'loading' | 'error';
+  error?: string;                   // 错误信息
+  createdAt: number;
+}

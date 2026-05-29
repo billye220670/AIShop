@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { ImageGenerationParams, ImageHistoryItem } from '../types';
+import type { ImageGenerationParams, ImageHistoryItem, PendingImageTask } from '../types';
 import { IMAGE_MODELS } from '../config/models';
 import { generateImage as apiGenerateImage } from '../services/imageApi';
 
@@ -137,15 +137,22 @@ export function useImage() {
   const [size, setSize] = useState<string>(() => getDefaultSize(loadModel()));
   const [quality, setQuality] = useState<string>('medium');
 
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const abortControllerRef = useRef<AbortController | null>(null);
+  // 并发队列状态
+  const [pendingTasks, setPendingTasks] = useState<PendingImageTask[]>([]);
+  const controllersRef = useRef<Map<string, AbortController>>(new Map());
 
   // 持久化
   useEffect(() => {
     saveHistory(history);
   }, [history]);
+
+  // 组件卸载时清理所有 controllers
+  useEffect(() => {
+    return () => {
+      controllersRef.current.forEach(c => c.abort());
+      controllersRef.current.clear();
+    };
+  }, []);
 
   // 切换模型时：重置参数 + 裁剪超量上传 + 持久化
   const setSelectedModel = useCallback((id: string) => {
@@ -191,7 +198,7 @@ export function useImage() {
     setUploadedImages([]);
   }, []);
 
-  // ---------- 计算属性（需在 generate 之前计算，供 generate 引用）----------
+  // ---------- 计算属性 ----------
   const isEditMode = uploadedImages.length > 0;
   const maxUploadCount = useMemo(() => getMaxUploadCount(selectedModel), [selectedModel]);
 
@@ -211,36 +218,77 @@ export function useImage() {
   const qualityOptions = GPT_QUALITIES;
   const showQuality = isGptModel(selectedModel);
 
-  // 派生的“有效值”：若当前选择不在选项内，回落到第一个选项。
-  // 避免在 useEffect 中调用 setState 造成级联渲染。
+  // 派生的"有效值"：若当前选择不在选项内，回落到第一个选项。
   const effectiveAspectRatio = aspectRatioOptions.includes(aspectRatio)
     ? aspectRatio
     : aspectRatioOptions[0];
   const effectiveSize = sizeOptions.includes(size) ? size : sizeOptions[0];
 
-  // ---------- 生成 ----------
+  // ---------- 内部：用给定参数发起请求 ----------
+  const executeTask = useCallback(async (params: ImageGenerationParams) => {
+    const taskId = crypto.randomUUID();
+    const task: PendingImageTask = {
+      id: taskId,
+      prompt: params.prompt,
+      model: params.model,
+      params,
+      status: 'loading',
+      createdAt: Date.now(),
+    };
+
+    // 添加到队列
+    setPendingTasks(prev => [task, ...prev]);
+
+    // 独立的 AbortController + 55s 超时
+    const controller = new AbortController();
+    controllersRef.current.set(taskId, controller);
+    const timeoutId = setTimeout(() => controller.abort(), 55000);
+
+    try {
+      const urls = await apiGenerateImage(params, controller.signal);
+      clearTimeout(timeoutId);
+      // 成功：从队列移除，加入历史
+      setPendingTasks(prev => prev.filter(t => t.id !== taskId));
+      const historyItem: ImageHistoryItem = {
+        id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8),
+        urls,
+        prompt: params.prompt,
+        model: params.model,
+        timestamp: Date.now(),
+        aspectRatio: isGoogleModel(params.model) ? params.aspectRatio : undefined,
+        size: params.size,
+        quality: isGptModel(params.model) ? params.quality : undefined,
+        sourceImages: params.images ? params.images.length : undefined,
+      };
+      setHistory(prev => [historyItem, ...prev]);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.name === 'AbortError') {
+        // 检查是用户手动取消还是超时
+        if (!controllersRef.current.has(taskId)) {
+          // 手动取消：直接移除
+          setPendingTasks(prev => prev.filter(t => t.id !== taskId));
+          return;
+        }
+        // 超时
+        setPendingTasks(prev => prev.map(t =>
+          t.id === taskId ? { ...t, status: 'error' as const, error: '请求超时，请稍后重试' } : t
+        ));
+      } else {
+        setPendingTasks(prev => prev.map(t =>
+          t.id === taskId ? { ...t, status: 'error' as const, error: err instanceof Error ? err.message : '生成失败' } : t
+        ));
+      }
+    } finally {
+      controllersRef.current.delete(taskId);
+    }
+  }, []);
+
+  // ---------- 生成（对外接口）----------
   const generate = useCallback(
     async (prompt: string) => {
       const trimmed = prompt.trim();
-      if (!trimmed) {
-        setError('请输入提示词');
-        return;
-      }
-      if (isGenerating) return;
-
-      setError(null);
-      setIsGenerating(true);
-
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-
-      // 客户端超时保护：55s 后主动中断，避免服务端被 Vercel 60s 杀掉后
-      // 连接被静默丢弃导致 fetch 远不返回、前端 spinner 永不停止。
-      let timedOut = false;
-      const timeoutId = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, 55000);
+      if (!trimmed) return;
 
       const isEdit = uploadedImages.length > 0;
       const params: ImageGenerationParams = {
@@ -250,7 +298,7 @@ export function useImage() {
       };
 
       if (isEdit) {
-        params.images = uploadedImages;
+        params.images = [...uploadedImages];
       }
 
       if (isGptModel(selectedModel)) {
@@ -261,51 +309,35 @@ export function useImage() {
         params.aspectRatio = isEdit ? 'auto' : effectiveAspectRatio;
       }
 
-      try {
-        const urls = await apiGenerateImage(params, controller.signal);
-        const item: ImageHistoryItem = {
-          id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8),
-          urls,
-          prompt: trimmed,
-          model: selectedModel,
-          timestamp: Date.now(),
-          aspectRatio: isGoogleModel(selectedModel) ? params.aspectRatio : undefined,
-          size: params.size,
-          quality: isGptModel(selectedModel) ? params.quality : undefined,
-          sourceImages: isEdit ? uploadedImages.length : undefined,
-        };
-        setHistory(prev => [item, ...prev]);
-      } catch (err) {
-        const e = err as Error;
-        if (timedOut) {
-          // 客户端超时：明确提示用户
-          setError('请求超时，请稍后重试');
-        } else if (e.name === 'AbortError') {
-          // 用户主动取消，不显示错误
-        } else {
-          setError(e.message || '图片生成失败');
-        }
-      } finally {
-        clearTimeout(timeoutId);
-        setIsGenerating(false);
-        abortControllerRef.current = null;
-      }
+      // 非阻塞：不 await，让任务独立运行
+      executeTask(params);
     },
-    [effectiveAspectRatio, effectiveSize, isGenerating, quality, selectedModel, uploadedImages]
+    [effectiveAspectRatio, effectiveSize, quality, selectedModel, uploadedImages, executeTask]
   );
 
-  const cancelGeneration = useCallback(() => {
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    setIsGenerating(false);
+  // ---------- 重试：用原参数重新发起 ----------
+  const retryTask = useCallback((taskId: string) => {
+    const task = pendingTasks.find(t => t.id === taskId);
+    if (!task) return;
+    // 移除旧的错误任务
+    setPendingTasks(prev => prev.filter(t => t.id !== taskId));
+    // 用原参数重新生成
+    executeTask(task.params);
+  }, [pendingTasks, executeTask]);
+
+  // ---------- 取消指定任务 ----------
+  const cancelTask = useCallback((taskId: string) => {
+    const controller = controllersRef.current.get(taskId);
+    if (controller) {
+      controllersRef.current.delete(taskId); // 先删除，让 abort 处理知道是手动取消
+      controller.abort();
+    }
+    setPendingTasks(prev => prev.filter(t => t.id !== taskId));
   }, []);
 
-  // 组件卸载时清理 AbortController
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-    };
+  // ---------- 关闭错误卡片 ----------
+  const dismissTask = useCallback((taskId: string) => {
+    setPendingTasks(prev => prev.filter(t => t.id !== taskId));
   }, []);
 
   // ---------- 历史 ----------
@@ -336,11 +368,12 @@ export function useImage() {
     quality,
     setQuality,
 
-    // 生成
-    isGenerating,
-    error,
+    // 生成（并发队列）
+    pendingTasks,
     generate,
-    cancelGeneration,
+    retryTask,
+    cancelTask,
+    dismissTask,
 
     // 历史
     history,

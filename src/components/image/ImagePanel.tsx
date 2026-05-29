@@ -63,10 +63,11 @@ export default function ImagePanel() {
     setSize,
     quality,
     setQuality,
-    isGenerating,
-    error,
+    pendingTasks,
     generate,
-    cancelGeneration,
+    retryTask,
+    cancelTask,
+    dismissTask,
     history,
     deleteHistoryItem,
     clearHistory,
@@ -120,14 +121,10 @@ export default function ImagePanel() {
     e.target.value = '';
   };
 
-  const handleSubmit = async () => {
-    if (isGenerating) {
-      cancelGeneration();
-      return;
-    }
+  const handleSubmit = () => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
-    await generate(trimmed);
+    generate(trimmed);
     setPrompt('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -152,7 +149,7 @@ export default function ImagePanel() {
     triggerDownload(url, p, ts);
   };
 
-  const canGenerate = prompt.trim().length > 0 && !isGenerating;
+  const canGenerate = prompt.trim().length > 0;
   const canAddMore = uploadedImages.length < maxUploadCount;
 
   return (
@@ -180,8 +177,8 @@ export default function ImagePanel() {
         )}
       </div>
 
-      {/* Error banner */}
-      {(error || uploadError) && (
+      {/* Upload error banner */}
+      {uploadError && (
         <div className="px-6 py-2 bg-red-500/10 border-b border-red-500/30 text-red-400 text-sm flex items-start gap-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -197,7 +194,7 @@ export default function ImagePanel() {
               d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
             />
           </svg>
-          <span className="flex-1">{error || uploadError}</span>
+          <span className="flex-1">{uploadError}</span>
           <button
             onClick={() => {
               setUploadError(null);
@@ -211,7 +208,7 @@ export default function ImagePanel() {
 
       {/* Photo wall */}
       <div className="flex-1 overflow-y-auto p-6">
-        {flatCards.length === 0 && !isGenerating ? (
+        {flatCards.length === 0 && pendingTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -233,36 +230,87 @@ export default function ImagePanel() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {/* Loading 占位 */}
-            {isGenerating && (
-              <div className="relative rounded-xl overflow-hidden bg-gray-800 border border-gray-700 aspect-square animate-pulse flex items-center justify-center">
-                <div className="flex flex-col items-center gap-2 text-gray-400">
-                  <svg
-                    className="animate-spin w-8 h-8"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  <span className="text-xs">生成中…</span>
-                </div>
+          <>
+            {/* 进行中和错误的任务卡片 */}
+            {pendingTasks.length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
+                {pendingTasks.map(task => (
+                  <div key={task.id} className={`relative rounded-xl overflow-hidden aspect-square ${
+                    task.status === 'loading'
+                      ? 'bg-gray-800 border border-gray-700 animate-pulse'
+                      : 'bg-red-950/40 border border-red-800'
+                  }`}>
+                    {task.status === 'loading' ? (
+                      <div className="flex flex-col items-center justify-center h-full p-3 text-center">
+                        <svg
+                          className="animate-spin h-8 w-8 text-blue-500 mb-2"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        <p className="text-xs text-gray-400 line-clamp-2">{task.prompt}</p>
+                        <button
+                          onClick={() => cancelTask(task.id)}
+                          className="mt-2 text-xs text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full p-3 text-center">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-8 w-8 text-red-400 mb-2"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
+                          />
+                        </svg>
+                        <p className="text-xs text-red-400 line-clamp-2 mb-2">
+                          {task.error}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => retryTask(task.id)}
+                            className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                          >
+                            重试
+                          </button>
+                          <button
+                            onClick={() => dismissTask(task.id)}
+                            className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+                          >
+                            关闭
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
 
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {flatCards.map(card => (
               <div
                 key={`${card.id}-${card.index}`}
@@ -327,7 +375,8 @@ export default function ImagePanel() {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -433,7 +482,7 @@ export default function ImagePanel() {
         <div className="flex items-end gap-3">
           <button
             onClick={handlePickFiles}
-            disabled={!canAddMore || isGenerating}
+            disabled={!canAddMore}
             className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
             title={canAddMore ? '上传参考图' : `已达到最大数量 ${maxUploadCount}`}
           >
@@ -471,28 +520,11 @@ export default function ImagePanel() {
                 ? '描述如何编辑参考图... (Enter 发送, Shift+Enter 换行)'
                 : '描述你想生成的图片... (Enter 发送, Shift+Enter 换行)'
             }
-            disabled={isGenerating}
-            className="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 resize-none border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500 max-h-[160px] disabled:opacity-60"
+            className="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 resize-none border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500 max-h-[160px]"
             rows={1}
           />
 
-          {isGenerating ? (
-            <button
-              onClick={handleSubmit}
-              className="p-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors flex items-center gap-1"
-              title="取消生成"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-5 h-5"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <rect x="6" y="6" width="12" height="12" rx="2" />
-              </svg>
-            </button>
-          ) : (
-            <button
+          <button
               onClick={handleSubmit}
               disabled={!canGenerate}
               className="p-2.5 bg-gradient-to-br from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl transition-colors flex items-center gap-1"
@@ -513,7 +545,6 @@ export default function ImagePanel() {
                 />
               </svg>
             </button>
-          )}
         </div>
       </div>
     </div>
