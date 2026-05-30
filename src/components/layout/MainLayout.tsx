@@ -102,8 +102,8 @@ export default function MainLayout({
   // 移动端布局：主内容上方 + 底部 Tab + 左侧抽屉 (仅聊天)
   return (
     <div className="h-[100dvh] flex flex-col bg-black text-white overflow-hidden">
-      {/* 顶部导航栏 - 居中模型选择器胶囊 */}
-      <header className="flex items-center justify-between gap-2 px-4 py-3 shrink-0 bg-transparent">
+      {/* 顶部导航栏 - 靠左排列 */}
+      <header className="flex items-center justify-start py-3 px-4 shrink-0 bg-transparent">
         {/* 左侧汉堡菜单 */}
         {showConversations && (
           <button
@@ -113,18 +113,16 @@ export default function MainLayout({
           >
             <Menu className="w-5 h-5" />
           </button>
-        )}
-          
-        {/* 居中模型选择器（胶囊形状） - 靠左对齐 */}
-        <div className="flex justify-start">
-          <ModelSelector
-            models={CHAT_MODELS}
-            selectedModel={conversations?.find(c => c.id === activeConversationId)?.selectedModel || CHAT_MODELS[0].id}
-            onModelChange={() => {}}
-            compact={true}
-          />
-        </div>
-          
+        )}  
+      
+        {/* 模型选择器（胶囊形状） - 紧挨着汉堡菜单 */}
+        <ModelSelector
+          models={CHAT_MODELS}
+          selectedModel={conversations?.find(c => c.id === activeConversationId)?.selectedModel || CHAT_MODELS[0].id}
+          onModelChange={() => {}}
+          compact={true}
+        />
+      
         {/* 右侧新建会话按钮 */}
         {onNewConversation && (
           <button
