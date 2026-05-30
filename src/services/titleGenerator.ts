@@ -1,4 +1,6 @@
 // 通过 Vercel Edge Function 代理调用，密钥保存在服务端环境变量
+import { authedFetch } from './accessCode';
+
 const CHAT_API_URL = '/api/chat';
 const TITLE_MODEL = 'doubao-1-5-pro-32k-250115';
 
@@ -30,7 +32,7 @@ export async function generateTitle(
       if (summary.length > 500) break;
     }
 
-    const response = await fetch(CHAT_API_URL, {
+    const response = await authedFetch(CHAT_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

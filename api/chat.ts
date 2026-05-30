@@ -11,6 +11,18 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
+  // 访问码校验（防滥用）：仅在服务端配置 ACCESS_CODE 时启用
+  const expectedCode = process.env.ACCESS_CODE;
+  if (expectedCode) {
+    const provided = req.headers.get('x-access-code') || '';
+    if (provided !== expectedCode) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid access code' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+  }
+
   const apiKey = process.env.HIGHWAY_API_KEY;
   if (!apiKey) {
     return new Response(

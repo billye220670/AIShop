@@ -1,5 +1,6 @@
 import type { Message, MessageContent } from '../types';
 import { getSystemPrompt } from '../config/prompts';
+import { authedFetch } from './accessCode';
 
 // 通过 Vercel Edge Function 代理调用，密钥保存在服务端环境变量
 const CHAT_API_URL = '/api/chat';
@@ -30,7 +31,7 @@ export async function* streamChat(
     }))
   );
 
-  const response = await fetch(CHAT_API_URL, {
+  const response = await authedFetch(CHAT_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

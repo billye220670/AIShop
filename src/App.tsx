@@ -4,6 +4,7 @@ import ChatPanel from './components/chat/ChatPanel';
 import ImagePanel from './components/image/ImagePanel';
 import VideoPanel from './components/video/VideoPanel';
 import MusicPanel from './components/music/MusicPanel';
+import AccessGate from './components/auth/AccessGate';
 import { useChat } from './hooks/useChat';
 import type { TabMode } from './types';
 
@@ -47,18 +48,20 @@ function App() {
   };
 
   return (
-    <MainLayout
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-      conversations={chat.conversations}
-      activeConversationId={chat.activeConversationId}
-      onSwitchConversation={chat.switchConversation}
-      onNewConversation={chat.newConversation}
-      onDeleteConversation={chat.deleteConversation}
-      onRenameConversation={chat.renameConversation}
-    >
-      {renderContent()}
-    </MainLayout>
+    <AccessGate>
+      <MainLayout
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        conversations={chat.conversations}
+        activeConversationId={chat.activeConversationId}
+        onSwitchConversation={chat.switchConversation}
+        onNewConversation={chat.newConversation}
+        onDeleteConversation={chat.deleteConversation}
+        onRenameConversation={chat.renameConversation}
+      >
+        {renderContent()}
+      </MainLayout>
+    </AccessGate>
   );
 }
 

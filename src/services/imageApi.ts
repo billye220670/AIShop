@@ -1,4 +1,5 @@
 import type { ImageGenerationParams } from '../types';
+import { authedFetch } from './accessCode';
 
 /**
  * 调用后端 Edge Function 生成图片。
@@ -8,7 +9,7 @@ export async function generateImage(
   params: ImageGenerationParams,
   signal?: AbortSignal
 ): Promise<string[]> {
-  const response = await fetch('/api/image', {
+  const response = await authedFetch('/api/image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),

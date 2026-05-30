@@ -1,4 +1,6 @@
 // 通过 Vercel Edge Function 代理调用，密钥保存在服务端环境变量
+import { authedFetch } from './accessCode';
+
 const SEARCH_API_URL = '/api/search';
 
 export interface SearchResult {
@@ -17,7 +19,7 @@ interface BochaWebPage {
 
 export async function searchWeb(query: string): Promise<SearchResult[]> {
   try {
-    const response = await fetch(SEARCH_API_URL, {
+    const response = await authedFetch(SEARCH_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

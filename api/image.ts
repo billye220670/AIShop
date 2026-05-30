@@ -101,7 +101,17 @@ export default async function handler(
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // 2. 校验密钥
+  // 2. 访问码校验（防滥用）：仅在服务端配置 ACCESS_CODE 时启用
+  const expectedCode = process.env.ACCESS_CODE;
+  if (expectedCode) {
+    const headerVal = req.headers['x-access-code'];
+    const provided = Array.isArray(headerVal) ? headerVal[0] || '' : headerVal || '';
+    if (provided !== expectedCode) {
+      return res.status(401).json({ error: 'Invalid access code' });
+    }
+  }
+
+  // 3. 校验密钥
   const apiKey = process.env.HIGHWAY_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: 'HIGHWAY_API_KEY not configured' });
