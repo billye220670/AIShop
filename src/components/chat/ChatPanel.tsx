@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Menu, MessageSquarePlus, Download } from 'lucide-react';
+import {
+  Menu,
+  MessageSquarePlus,
+  Download,
+  Palette,
+  Languages,
+  FileText,
+  LayoutGrid,
+  ArrowRight,
+} from 'lucide-react';
 import type { Conversation, Message } from '../../types';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
@@ -300,15 +309,57 @@ export default function ChatPanel({
         className="flex-1 overflow-y-auto px-6 py-4"
       >
         {messages.length === 0 && (
-          <div className="pt-4 md:pt-10">
+          <div className="pt-2 md:pt-8 pl-1 md:pl-2">
             <h1 className="leading-tight">
               <span className="text-4xl md:text-6xl font-extrabold tracking-tight text-white">
-                你好，
+                你好
               </span>
-              <span className="text-base md:text-xl text-gray-400 font-normal ml-1">
-                今天我能帮你什么？
+              <span className="text-base md:text-xl text-white/90 font-normal ml-1">
+                ，今天我能帮你什么？
               </span>
             </h1>
+            <ul className="mt-6 md:mt-10 space-y-3.5 md:space-y-4">
+              <li>
+                <button
+                  type="button"
+                  onClick={() => sendMessage('帮我画一张图：')}
+                  className="flex items-center gap-2.5 text-[15px] md:text-base text-gray-100 hover:text-white"
+                >
+                  <Palette className="w-4 h-4 text-orange-400" />
+                  <span>画图</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => sendMessage('帮我翻译：')}
+                  className="flex items-center gap-2.5 text-[15px] md:text-base text-gray-100 hover:text-white"
+                >
+                  <Languages className="w-4 h-4 text-purple-400" />
+                  <span>翻译</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => sendMessage('我想就一份 PDF 向你提问：')}
+                  className="flex items-center gap-2.5 text-[15px] md:text-base text-gray-100 hover:text-white"
+                >
+                  <FileText className="w-4 h-4 text-blue-400" />
+                  <span>PDF 聊天</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  className="flex items-center gap-2.5 text-[15px] md:text-base text-gray-300 hover:text-white"
+                >
+                  <LayoutGrid className="w-4 h-4 text-gray-400" />
+                  <span>新功能许愿</span>
+                  <ArrowRight className="w-4 h-4 text-gray-500 ml-1" />
+                </button>
+              </li>
+            </ul>
           </div>
         )}
         {messages.map((msg, index) => {
