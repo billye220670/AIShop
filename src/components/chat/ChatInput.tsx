@@ -6,12 +6,14 @@ interface ChatInputProps {
   onSend: (content: string | MessageContent[]) => void;
   isLoading: boolean;
   onStop: () => void;
+  onFocusChange?: (focused: boolean) => void;
 }
 
 export default function ChatInput({
   onSend,
   isLoading,
   onStop,
+  onFocusChange,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -145,8 +147,8 @@ export default function ChatInput({
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onFocus={() => { setIsFocused(true); onFocusChange?.(true); }}
+          onBlur={() => { setIsFocused(false); onFocusChange?.(false); }}
           placeholder="询问任何问题..."
           className="w-full bg-gray-800 text-white rounded-full pl-12 pr-12 py-3 resize-none placeholder-gray-500 border border-transparent focus:border-[rgb(127,96,255)] focus:outline-none max-h-[200px] min-h-[48px]"
           rows={1}

@@ -23,6 +23,7 @@ interface ChatPanelProps {
   conversationTitle?: string;
   conversation?: Conversation;
   onImportConversation?: (data: Partial<Conversation>) => void;
+  onInputFocusChange?: (focused: boolean) => void;
 }
 
 export default function ChatPanel({
@@ -33,6 +34,7 @@ export default function ChatPanel({
   conversationTitle,
   conversation,
   onImportConversation,
+  onInputFocusChange,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -342,6 +344,7 @@ export default function ChatPanel({
         onSend={sendMessage}
         isLoading={isLoading}
         onStop={stopGeneration}
+        onFocusChange={onInputFocusChange}
       />
 
       {/* 拖拽遮罩 */}
