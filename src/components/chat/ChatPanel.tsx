@@ -21,6 +21,7 @@ interface ChatPanelProps {
   conversation?: Conversation;
   onImportConversation?: (data: Partial<Conversation>) => void;
   onMobileMenuClick?: () => void;
+  onNewConversation?: () => void;
 }
 
 export default function ChatPanel({
@@ -36,6 +37,7 @@ export default function ChatPanel({
   conversation,
   onImportConversation,
   onMobileMenuClick,
+  onNewConversation,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -246,7 +248,31 @@ export default function ChatPanel({
           )}
           <h2 className="text-lg font-semibold truncate">AI 聊天</h2>
         </div>
-        <div className="relative" ref={exportMenuRef}>
+        {/* 移动端：右上角显示“新建会话”按钮；桌面端：保留导出菜单 */}
+        {onNewConversation && (
+          <button
+            onClick={onNewConversation}
+            className="md:hidden p-1.5 -mr-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg shrink-0"
+            aria-label="新建会话"
+            title="新建会话"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </button>
+        )}
+        <div className="relative hidden md:block" ref={exportMenuRef}>
           <button
             onClick={() => canExport && setShowExportMenu(v => !v)}
             disabled={!canExport}

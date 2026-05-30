@@ -36,6 +36,7 @@ function App() {
             conversation={activeConversation}
             onImportConversation={chat.importConversation}
             onMobileMenuClick={() => setMobileDrawerOpen(true)}
+            onNewConversation={chat.newConversation}
           />
         );
       case 'image':
