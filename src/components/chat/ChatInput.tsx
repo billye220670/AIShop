@@ -1,27 +1,17 @@
 import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent } from 'react';
 import { Paperclip, Square, Send, Mic, Plus } from 'lucide-react';
-import ModelSelector from '../common/ModelSelector';
-import { CHAT_MODELS } from '../../config/models';
 import type { MessageContent } from '../../types';
 
 interface ChatInputProps {
   onSend: (content: string | MessageContent[]) => void;
   isLoading: boolean;
   onStop: () => void;
-  selectedModel: string;
-  onModelChange: (modelId: string) => void;
-  webSearchEnabled: boolean;
-  onWebSearchToggle: (enabled: boolean) => void;
 }
 
 export default function ChatInput({
   onSend,
   isLoading,
   onStop,
-  selectedModel,
-  onModelChange,
-  webSearchEnabled,
-  onWebSearchToggle,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);

@@ -349,10 +349,6 @@ export default function ChatPanel({
         onSend={sendMessage}
         isLoading={isLoading}
         onStop={stopGeneration}
-        selectedModel={selectedModel}
-        onModelChange={setSelectedModel}
-        webSearchEnabled={webSearchEnabled}
-        onWebSearchToggle={setWebSearchEnabled}
       />
 
       {/* 拖拽遮罩 */}
