@@ -118,12 +118,12 @@ export default function ChatInput({
         </div>
       )}
     
-      {/* Mobile input bar (rounded capsule) */}
-      <div className="md:hidden flex items-center gap-2">
-        {/* 加号按钮 */}
+      {/* Mobile input bar - add button overlay on textarea */}
+      <div className="md:hidden relative">
+        {/* 加号按钮 - overlay 在输入框左侧 */}
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="p-2 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800"
+          className="absolute left-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800 z-10"
           title="添加媒体"
         >
           <Plus className="w-5 h-5" />
@@ -136,7 +136,7 @@ export default function ChatInput({
           className="hidden"
           onChange={handleFileUpload}
         />
-        
+    
         {/* 输入框 */}
         <textarea
           ref={textareaRef}
@@ -145,7 +145,7 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder="询问任何问题..."
-          className="flex-1 bg-gray-800 text-white rounded-full px-4 py-2.5 resize-none placeholder-gray-500 max-h-[200px] min-h-[40px]"
+          className="w-full bg-gray-800 text-white rounded-full pl-10 pr-4 py-2.5 resize-none placeholder-gray-500 max-h-[200px] min-h-[40px]"
           rows={1}
         />
       </div>

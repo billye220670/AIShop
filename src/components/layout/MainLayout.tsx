@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
-import { X, Menu, MessageSquare, Image as ImageIcon, Film, Plus } from 'lucide-react';
+import { X, Menu, MessageSquare, Image as ImageIcon, Film, MessageSquarePlus } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ConversationList from '../chat/ConversationList';
 import ModelSelector from '../common/ModelSelector';
@@ -103,7 +103,7 @@ export default function MainLayout({
   return (
     <div className="h-[100dvh] flex flex-col bg-gray-950 text-white overflow-hidden">
       {/* 顶部导航栏 - 居中模型选择器胶囊 */}
-      <header className="flex items-center justify-between gap-2 px-4 py-3 bg-gray-900/50 shrink-0">
+      <header className="flex items-center justify-between gap-2 px-4 py-3 shrink-0 bg-transparent">
         {/* 左侧汉堡菜单 */}
         {showConversations && (
           <button
@@ -121,6 +121,7 @@ export default function MainLayout({
             models={CHAT_MODELS}
             selectedModel={conversations?.find(c => c.id === activeConversationId)?.selectedModel || CHAT_MODELS[0].id}
             onModelChange={() => {}}
+            compact={true}
           />
         </div>
           
@@ -132,7 +133,7 @@ export default function MainLayout({
             aria-label="新建会话"
             title="新建会话"
           >
-            <Plus className="w-5 h-5" />
+            <MessageSquarePlus className="w-5 h-5" />
           </button>
         )}
       </header>
@@ -141,7 +142,7 @@ export default function MainLayout({
 
       {/* 底部 Tab 栏 */}
       <nav
-        className="flex bg-gray-900 shrink-0"
+        className="flex bg-transparent shrink-0"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {MOBILE_TABS.map(tab => {
@@ -157,7 +158,6 @@ export default function MainLayout({
               }`}
             >
               <Icon className="w-5 h-5" />
-              <span className="text-[10px]">{tab.label}</span>
             </button>
           );
         })}

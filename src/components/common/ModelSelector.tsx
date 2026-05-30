@@ -7,6 +7,7 @@ interface ModelSelectorProps {
   models: Model[];
   selectedModel: string;
   onModelChange: (modelId: string) => void;
+  compact?: boolean; // 是否使用紧凑模式（全圆角、无边框）
 }
 
 // provider 名称 → /public/providers/ 下的图标文件名
@@ -39,7 +40,7 @@ interface MenuPosition {
   placement: 'top' | 'bottom';
 }
 
-export default function ModelSelector({ models, selectedModel, onModelChange }: ModelSelectorProps) {
+export default function ModelSelector({ models, selectedModel, onModelChange, compact = false }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<MenuPosition | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -107,7 +108,11 @@ export default function ModelSelector({ models, selectedModel, onModelChange }: 
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 bg-gray-700 text-white text-sm rounded-lg px-3 py-1.5 border border-gray-600 hover:border-gray-500 focus:outline-none focus:border-blue-500 cursor-pointer"
+        className={`flex items-center gap-2 text-sm cursor-pointer ${
+          compact
+            ? 'rounded-full bg-transparent text-white border border-gray-600 px-4 py-2 hover:border-gray-500'
+            : 'bg-gray-700 text-white rounded-lg px-3 py-1.5 border border-gray-600 hover:border-gray-500 focus:outline-none focus:border-blue-500'
+        }`}
       >
         {currentIcon ? (
           <img src={currentIcon} alt={current.provider} className="w-4 h-4 shrink-0" />
