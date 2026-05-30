@@ -148,12 +148,12 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
               message.suggestions &&
               message.suggestions.length > 0 &&
               !message.isStreaming && (
-                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-700">
+                <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-gray-700">
                   {message.suggestions.map((suggestion, idx) => (
                     <button
                       key={idx}
                       onClick={() => onSuggestionClick?.(suggestion)}
-                      className="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-full transition-colors border border-gray-600 hover:border-gray-500"
+                      className="text-sm px-4 py-2 bg-[rgba(127,96,255,0.15)] hover:bg-[rgba(127,96,255,0.25)] text-gray-200 rounded-full transition-colors border border-[rgba(127,96,255,0.3)] hover:border-[rgba(127,96,255,0.5)]"
                     >
                       {suggestion}
                     </button>
