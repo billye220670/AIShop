@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ChevronDown } from 'lucide-react';
 import type { Model } from '../../types';
 
 interface ModelSelectorProps {
@@ -114,15 +115,9 @@ export default function ModelSelector({ models, selectedModel, onModelChange }: 
           <span className="w-4 h-4 shrink-0" />
         )}
         <span className="whitespace-nowrap">{current.name}</span>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
+        <ChevronDown
           className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        />
       </button>
 
       {open && pos &&

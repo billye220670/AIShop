@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Globe, TriangleAlert } from 'lucide-react';
 import type { Message, MessageContent } from '../../types';
 
 interface MessageBubbleProps {
@@ -66,28 +67,13 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
         )}
         {!isUser && message.webSearched && (
           <div className="flex items-center gap-1.5 text-xs text-green-400 mb-2">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-3.5 h-3.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-              />
-            </svg>
+            <Globe className="w-3.5 h-3.5" />
             <span>已联网搜索</span>
           </div>
         )}
         {!isUser && message.webSearchFailed && (
           <div className="flex items-center gap-1.5 text-xs text-yellow-400 mb-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
+            <TriangleAlert className="w-3.5 h-3.5" />
             <span>联网搜索失败，以下回答未参考网络信息</span>
           </div>
         )}

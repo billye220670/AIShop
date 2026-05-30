@@ -1,4 +1,5 @@
 import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent } from 'react';
+import { Paperclip, Square, Send, Globe } from 'lucide-react';
 import ModelSelector from '../common/ModelSelector';
 import { CHAT_MODELS } from '../../config/models';
 import type { MessageContent } from '../../types';
@@ -134,9 +135,7 @@ export default function ChatInput({
           className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
           title="上传图片"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-          </svg>
+          <Paperclip className="w-5 h-5" />
         </button>
         <input
           ref={fileInputRef}
@@ -168,9 +167,7 @@ export default function ChatInput({
             className="p-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors"
             title="停止生成"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
+            <Square className="w-5 h-5" fill="currentColor" strokeWidth={0} />
           </button>
         ) : (
           <button
@@ -179,9 +176,7 @@ export default function ChatInput({
             className="p-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl transition-colors"
             title="发送"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19V5m0 0l-7 7m7-7l7 7" />
-            </svg>
+            <Send className="w-5 h-5" />
           </button>
         )}
       </div>
@@ -205,20 +200,7 @@ export default function ChatInput({
           }`}
           title="联网搜索"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="w-3.5 h-3.5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
-            />
-          </svg>
+          <Globe className="w-3.5 h-3.5" />
           <span>联网</span>
         </button>
       </div>

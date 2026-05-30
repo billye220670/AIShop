@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Paperclip, Send } from 'lucide-react';
 
 interface VideoItem {
   id: string;
@@ -47,9 +48,7 @@ export default function VideoPanel() {
       <div className="border-t border-gray-700 bg-gray-900 p-4">
         <div className="flex items-end gap-3">
           <button className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700" title="上传参考素材">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-            </svg>
+            <Paperclip className="w-5 h-5" />
           </button>
           <textarea
             placeholder="描述你想生成的视频... (功能即将上线)"
@@ -62,9 +61,7 @@ export default function VideoPanel() {
             className="p-2.5 bg-gray-700 text-gray-500 rounded-xl cursor-not-allowed"
             title="发送"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19V5m0 0l-7 7m7-7l7 7" />
-            </svg>
+            <Send className="w-5 h-5" />
           </button>
         </div>
         <div className="mt-3 flex items-center gap-2">

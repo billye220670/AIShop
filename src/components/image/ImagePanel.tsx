@@ -1,4 +1,14 @@
 import { useRef, useState, useMemo, type KeyboardEvent, type ChangeEvent } from 'react';
+import {
+  TriangleAlert,
+  Images,
+  Download,
+  Trash2,
+  Loader2,
+  Plus,
+  Paperclip,
+  Sparkles,
+} from 'lucide-react';
 import ModelSelector from '../common/ModelSelector';
 import { IMAGE_MODELS } from '../../config/models';
 import { useImage } from '../../hooks/useImage';
@@ -180,20 +190,7 @@ export default function ImagePanel() {
       {/* Upload error banner */}
       {uploadError && (
         <div className="px-6 py-2 bg-red-500/10 border-b border-red-500/30 text-red-400 text-sm flex items-start gap-2">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="w-4 h-4 mt-0.5 flex-shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
-            />
-          </svg>
+          <TriangleAlert className="w-4 h-4 mt-0.5 flex-shrink-0" />
           <span className="flex-1">{uploadError}</span>
           <button
             onClick={() => {
@@ -210,20 +207,7 @@ export default function ImagePanel() {
       <div className="flex-1 overflow-y-auto p-6">
         {flatCards.length === 0 && pendingTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-16 h-16 mb-4 text-gray-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
+            <Images className="w-16 h-16 mb-4 text-gray-600" strokeWidth={1.5} />
             <p className="text-lg">输入提示词开始创作</p>
             <p className="text-sm mt-2">
               支持 GPT Image 2 / Nanobanana 2 / Nanobanana Pro，可上传参考图进行编辑
@@ -250,40 +234,14 @@ export default function ImagePanel() {
                       className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg transition-colors"
                       title="下载"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                        />
-                      </svg>
+                      <Download className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => deleteHistoryItem(card.id)}
                       className="w-8 h-8 flex items-center justify-center bg-red-500/80 hover:bg-red-600 text-white rounded-lg transition-colors"
                       title="删除"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
-                        />
-                      </svg>
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div>
@@ -305,26 +263,7 @@ export default function ImagePanel() {
               }`}>
                 {task.status === 'loading' ? (
                   <div className="flex flex-col items-center justify-center h-full p-3 text-center">
-                    <svg
-                      className="animate-spin h-8 w-8 text-blue-500 mb-2"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
+                    <Loader2 className="animate-spin h-8 w-8 text-blue-500 mb-2" />
                     <p className="text-xs text-gray-400 line-clamp-2">{task.prompt}</p>
                     <button
                       onClick={() => cancelTask(task.id)}
@@ -335,20 +274,7 @@ export default function ImagePanel() {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full p-3 text-center">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-8 w-8 text-red-400 mb-2"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
-                      />
-                    </svg>
+                    <TriangleAlert className="h-8 w-8 text-red-400 mb-2" />
                     <p className="text-xs text-red-400 line-clamp-2 mb-2">
                       {task.error}
                     </p>
@@ -401,20 +327,7 @@ export default function ImagePanel() {
                 className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 border border-dashed border-gray-600 hover:border-blue-500 rounded-lg text-gray-400 hover:text-blue-400 transition-colors"
                 title="添加更多"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
+                <Plus className="w-5 h-5" />
                 <span className="text-[10px]">添加</span>
               </button>
             )}
@@ -480,20 +393,7 @@ export default function ImagePanel() {
             className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
             title={canAddMore ? '上传参考图' : `已达到最大数量 ${maxUploadCount}`}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-              />
-            </svg>
+            <Paperclip className="w-5 h-5" />
           </button>
           <input
             ref={fileInputRef}
@@ -524,20 +424,7 @@ export default function ImagePanel() {
               className="p-2.5 bg-gradient-to-br from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl transition-colors flex items-center gap-1"
               title="生成"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-                />
-              </svg>
+              <Sparkles className="w-5 h-5" />
             </button>
         </div>
       </div>

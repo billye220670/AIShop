@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Menu, MessageSquarePlus, Download } from 'lucide-react';
 import type { Conversation, Message } from '../../types';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
@@ -232,20 +233,7 @@ export default function ChatPanel({
               className="md:hidden p-1.5 -ml-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg shrink-0"
               aria-label="打开会话历史"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
+              <Menu className="w-5 h-5" />
             </button>
           )}
           <h2 className="hidden md:block text-lg font-semibold truncate">AI 聊天</h2>
@@ -266,20 +254,7 @@ export default function ChatPanel({
             aria-label="新建会话"
             title="新建会话"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
+            <MessageSquarePlus className="w-5 h-5" />
           </button>
         )}
         <div className="relative hidden md:block" ref={exportMenuRef}>
@@ -292,20 +267,7 @@ export default function ChatPanel({
             aria-haspopup="menu"
             aria-expanded={showExportMenu}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-              />
-            </svg>
+            <Download className="w-5 h-5" />
           </button>
           {showExportMenu && (
             <div

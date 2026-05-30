@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { MessageSquarePlus, Trash2 } from 'lucide-react';
 import PinyinMatch from 'pinyin-match';
 import type { Conversation } from '../../types';
 import ConfirmModal from '../common/ConfirmModal';
@@ -69,15 +70,7 @@ export default function ConversationList({
         onClick={onNew}
         className="mx-3 mb-3 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="w-4 h-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
+        <MessageSquarePlus className="w-4 h-4" />
         <span>新对话</span>
       </button>
 
@@ -151,20 +144,7 @@ export default function ConversationList({
                   className="md:opacity-0 md:group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity p-0.5 inline-flex"
                   title="删除会话"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
