@@ -10,6 +10,7 @@ import type { TabMode } from './types';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const chat = useChat();
 
   const activeConversation = chat.conversations.find(
@@ -34,6 +35,7 @@ function App() {
             setWebSearchEnabled={chat.setWebSearchEnabled}
             conversation={activeConversation}
             onImportConversation={chat.importConversation}
+            onMobileMenuClick={() => setMobileDrawerOpen(true)}
           />
         );
       case 'image':
@@ -58,6 +60,8 @@ function App() {
         onNewConversation={chat.newConversation}
         onDeleteConversation={chat.deleteConversation}
         onRenameConversation={chat.renameConversation}
+        mobileDrawerOpen={mobileDrawerOpen}
+        setMobileDrawerOpen={setMobileDrawerOpen}
       >
         {renderContent()}
       </MainLayout>

@@ -20,6 +20,7 @@ interface ChatPanelProps {
   setWebSearchEnabled: (enabled: boolean) => void;
   conversation?: Conversation;
   onImportConversation?: (data: Partial<Conversation>) => void;
+  onMobileMenuClick?: () => void;
 }
 
 export default function ChatPanel({
@@ -34,6 +35,7 @@ export default function ChatPanel({
   setWebSearchEnabled,
   conversation,
   onImportConversation,
+  onMobileMenuClick,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -218,8 +220,32 @@ export default function ChatPanel({
       onDrop={handleDrop}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-gray-900/50">
-        <h2 className="text-lg font-semibold">AI 聊天</h2>
+      <div className="flex items-center justify-between gap-2 px-4 md:px-6 py-3 border-b border-gray-700 bg-gray-900/50">
+        <div className="flex items-center gap-2 min-w-0">
+          {onMobileMenuClick && (
+            <button
+              onClick={onMobileMenuClick}
+              className="md:hidden p-1.5 -ml-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg shrink-0"
+              aria-label="打开会话历史"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
+            </button>
+          )}
+          <h2 className="text-lg font-semibold truncate">AI 聊天</h2>
+        </div>
         <div className="relative" ref={exportMenuRef}>
           <button
             onClick={() => canExport && setShowExportMenu(v => !v)}

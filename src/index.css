@@ -1,6 +1,20 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* 全局：禁止页面级滚动与下拉刷新/橡皮筋效果 */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* 自定义滚动条 */
 ::-webkit-scrollbar {
   width: 6px;

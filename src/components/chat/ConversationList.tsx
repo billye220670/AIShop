@@ -78,7 +78,7 @@ export default function ConversationList({
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
-        <span className="hidden md:inline">新对话</span>
+        <span>新对话</span>
       </button>
 
       {/* 搜索框 */}
@@ -128,11 +128,11 @@ export default function ConversationList({
                     }
                   }}
                   maxLength={50}
-                  className="flex-1 min-w-0 bg-gray-800 text-white text-sm px-2 py-0.5 rounded border border-blue-500 outline-none hidden md:inline-block"
+                  className="flex-1 min-w-0 bg-gray-800 text-white text-sm px-2 py-0.5 rounded border border-blue-500 outline-none"
                 />
               ) : (
                 <span
-                  className="flex-1 text-sm truncate hidden md:inline"
+                  className="flex-1 text-sm truncate"
                   onDoubleClick={e => {
                     e.stopPropagation();
                     enterEdit(conv);
@@ -142,14 +142,13 @@ export default function ConversationList({
                   {conv.title}
                 </span>
               )}
-              <span className="md:hidden text-base">💬</span>
               {!isEditing && (
                 <button
                   onClick={e => {
                     e.stopPropagation();
                     setDeleteTarget(conv.id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity p-0.5 hidden md:inline-flex"
+                  className="md:opacity-0 md:group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity p-0.5 inline-flex"
                   title="删除会话"
                 >
                   <svg
