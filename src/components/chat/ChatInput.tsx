@@ -126,7 +126,7 @@ export default function ChatInput({
         {/* 加号按钮 - overlay 在输入框左侧 */}
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800 z-10"
+          className="absolute left-3.5 bottom-[10px] p-1 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800 z-10"
           title="添加媒体"
         >
           <Plus className="w-5 h-5" />
@@ -160,7 +160,7 @@ export default function ChatInput({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleSubmit}
             disabled={!text.trim() && images.length === 0}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 bg-[rgb(127,96,255)] disabled:bg-gray-700 disabled:text-gray-500 hover:bg-[rgb(107,76,235)] text-white transition-colors rounded-full z-10"
+            className="absolute right-3.5 bottom-[10px] p-1.5 bg-[rgb(127,96,255)] disabled:bg-gray-700 disabled:text-gray-500 hover:bg-[rgb(107,76,235)] text-white transition-colors rounded-full z-10"
             title="发送"
           >
             <ArrowUp className="w-5 h-5" />
