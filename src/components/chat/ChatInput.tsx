@@ -14,6 +14,7 @@ export default function ChatInput({
   onStop,
 }: ChatInputProps) {
   const [text, setText] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -123,7 +124,7 @@ export default function ChatInput({
         {/* 加号按钮 - overlay 在输入框左侧 */}
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="absolute left-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800 z-10"
+          className="absolute left-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800 z-10"
           title="添加媒体"
         >
           <Plus className="w-5 h-5" />
@@ -144,10 +145,25 @@ export default function ChatInput({
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           placeholder="询问任何问题..."
-          className="w-full bg-transparent text-white rounded-full pl-10 pr-4 py-3 resize-none placeholder-gray-500 border border-gray-700 focus:border-blue-500 focus:outline-none max-h-[200px] min-h-[48px]"
+          className="w-full bg-transparent text-white rounded-full pl-12 pr-12 py-3 resize-none placeholder-gray-500 border border-gray-700 focus:border-blue-500 focus:outline-none max-h-[200px] min-h-[48px]"
           rows={1}
         />
+
+        {/* 发送按钮 - overlay 在输入框右侧 */}
+        {(isFocused || text.trim()) && (
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleSubmit}
+            disabled={!text.trim() && images.length === 0}
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-blue-500 disabled:text-gray-600 hover:text-blue-400 transition-colors rounded-full z-10"
+            title="发送"
+          >
+            <Send className="w-5 h-5" />
+          </button>
+        )}
       </div>
   
       {/* Desktop input area (traditional layout) */}
