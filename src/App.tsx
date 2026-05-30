@@ -27,7 +27,6 @@ function App() {
             isLoading={chat.isLoading}
             sendMessage={chat.sendMessage}
             stopGeneration={chat.stopGeneration}
-            error={chat.error}
             conversationTitle={conversationTitle}
             conversation={activeConversation}
             onImportConversation={chat.importConversation}

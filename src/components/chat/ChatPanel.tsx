@@ -19,7 +19,6 @@ interface ChatPanelProps {
       | Array<{ type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }>
   ) => void;
   stopGeneration: () => void;
-  error: string | null;
   conversationTitle?: string;
   conversation?: Conversation;
   onImportConversation?: (data: Partial<Conversation>) => void;
@@ -30,7 +29,6 @@ export default function ChatPanel({
   isLoading,
   sendMessage,
   stopGeneration,
-  error,
   conversationTitle,
   conversation,
   onImportConversation,
