@@ -262,7 +262,7 @@ export default function ChatPanel({
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-6 py-4"
+        className="flex-1 overflow-y-auto px-4 py-4"
       >
         {messages.length === 0 && (
           <div className="pt-2 md:pt-8 pl-4 md:pl-12">
