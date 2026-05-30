@@ -188,12 +188,14 @@ export default function ChatInput({
 
       {/* Model selector */}
       <div className="mt-3 flex items-center gap-2">
-        <span className="text-xs text-gray-400">模型:</span>
-        <ModelSelector
-          models={CHAT_MODELS}
-          selectedModel={selectedModel}
-          onModelChange={onModelChange}
-        />
+        <span className="text-xs text-gray-400 hidden md:inline">模型:</span>
+        <div className="hidden md:inline-flex">
+          <ModelSelector
+            models={CHAT_MODELS}
+            selectedModel={selectedModel}
+            onModelChange={onModelChange}
+          />
+        </div>
         <button
           onClick={() => onWebSearchToggle(!webSearchEnabled)}
           className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors ${

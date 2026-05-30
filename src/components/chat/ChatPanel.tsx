@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Conversation, Message } from '../../types';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
+import ModelSelector from '../common/ModelSelector';
+import { CHAT_MODELS } from '../../config/models';
 
 interface ChatPanelProps {
   messages: Message[];
@@ -246,7 +248,15 @@ export default function ChatPanel({
               </svg>
             </button>
           )}
-          <h2 className="text-lg font-semibold truncate">AI 聊天</h2>
+          <h2 className="hidden md:block text-lg font-semibold truncate">AI 聊天</h2>
+          {/* 移动端：以模型选择器替换标题 */}
+          <div className="md:hidden min-w-0">
+            <ModelSelector
+              models={CHAT_MODELS}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+            />
+          </div>
         </div>
         {/* 移动端：右上角显示“新建会话”按钮；桌面端：保留导出菜单 */}
         {onNewConversation && (
