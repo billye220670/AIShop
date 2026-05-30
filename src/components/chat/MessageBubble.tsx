@@ -95,7 +95,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     <div className="flex justify-start mb-4">
       <div className="w-full px-4 py-3 text-gray-100">
         {/* 模型图标 + 名称 */}
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-4">
           <img
             src={modelProvider ? getProviderIcon(modelProvider) : '/providers/openai.svg'}
             alt={modelProvider || 'AI'}

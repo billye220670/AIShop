@@ -11,6 +11,7 @@ import type { TabMode } from './types';
 function App() {
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
   const chat = useChat();
 
   const activeConversation = chat.conversations.find(
@@ -30,6 +31,7 @@ function App() {
             conversationTitle={conversationTitle}
             conversation={activeConversation}
             onImportConversation={chat.importConversation}
+            onInputFocusChange={setInputFocused}
           />
         );
       case 'image':
@@ -57,6 +59,7 @@ function App() {
         onModelChange={chat.setSelectedModel}
         mobileDrawerOpen={mobileDrawerOpen}
         setMobileDrawerOpen={setMobileDrawerOpen}
+        inputFocused={inputFocused}
       >
         {renderContent()}
       </MainLayout>

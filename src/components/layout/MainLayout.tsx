@@ -21,6 +21,7 @@ interface MainLayoutProps {
   onModelChange?: (modelId: string) => void;
   mobileDrawerOpen: boolean;
   setMobileDrawerOpen: (open: boolean) => void;
+  inputFocused?: boolean;
 }
 
 const MOBILE_TABS: { id: TabMode; label: string; Icon: TabIcon }[] = [
@@ -56,6 +57,7 @@ export default function MainLayout({
   onModelChange,
   mobileDrawerOpen,
   setMobileDrawerOpen,
+  inputFocused,
 }: MainLayoutProps) {
   const isDesktop = useIsDesktop();
 
@@ -145,8 +147,10 @@ export default function MainLayout({
 
       {/* 底部 Tab 栏 */}
       <nav
-        className="flex bg-transparent shrink-0"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        className={`flex bg-transparent shrink-0 transition-all duration-300 ease-in-out ${
+          inputFocused ? 'max-h-0 overflow-hidden opacity-0' : 'max-h-20 opacity-100'
+        }`}
+        style={{ paddingBottom: inputFocused ? '0' : 'env(safe-area-inset-bottom)' }}
       >
         {MOBILE_TABS.map(tab => {
           const Icon = tab.Icon;
