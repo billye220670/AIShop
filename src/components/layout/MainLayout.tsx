@@ -1,7 +1,8 @@
-import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
-import { X, Menu, MessageSquare, Image as ImageIcon, Film, MessageSquarePlus } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { Menu, MessageSquare, Image as ImageIcon, Film, MessageSquarePlus, Search, Trash2 } from 'lucide-react';
+import PinyinMatch from 'pinyin-match';
 import Sidebar from './Sidebar';
-import ConversationList from '../chat/ConversationList';
+import ConfirmModal from '../common/ConfirmModal';
 import ModelSelector from '../common/ModelSelector';
 import { CHAT_MODELS } from '../../config/models';
 import type { TabMode, Conversation } from '../../types';
@@ -42,6 +43,146 @@ function useIsDesktop(): boolean {
     return () => mql.removeEventListener('change', handler);
   }, []);
   return isDesktop;
+}
+
+/* ========== 移动端抽屉组件 ========== */
+interface MobileDrawerProps {
+  open: boolean;
+  onClose: () => void;
+  conversations: Conversation[];
+  activeConversationId: string;
+  onSwitchConversation: (id: string) => void;
+  onDeleteConversation: (id: string) => void;
+}
+
+function MobileDrawer({
+  open,
+  onClose,
+  conversations,
+  activeConversationId,
+  onSwitchConversation,
+  onDeleteConversation,
+}: MobileDrawerProps) {
+  const [searchText, setSearchText] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredConversations = useMemo(() => {
+    const keyword = searchText.trim();
+    if (!keyword) return conversations;
+    return conversations.filter(conv => {
+      if (conv.title.toLowerCase().includes(keyword.toLowerCase())) return true;
+      const match = PinyinMatch.match(conv.title, keyword);
+      return match !== false;
+    });
+  }, [conversations, searchText]);
+
+  // 获取会话最后一条消息预览
+  const getLastMessagePreview = (conv: Conversation): string => {
+    const msgs = conv.messages;
+    if (!msgs || msgs.length === 0) return '暂无消息';
+    const lastMsg = msgs[msgs.length - 1];
+    if (typeof lastMsg.content === 'string') {
+      return lastMsg.content.slice(0, 60);
+    }
+    // MessageContent[] 类型
+    const textPart = lastMsg.content.find(c => c.type === 'text');
+    if (textPart && 'text' in textPart) return (textPart.text as string).slice(0, 60);
+    return '[图片]';
+  };
+
+  return (
+    <>
+      {/* 遮罩 */}
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 bg-black/60 z-40 transition-opacity duration-300 ${
+          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        aria-hidden="true"
+      />
+      {/* 抽屉本体 */}
+      <aside
+        className={`fixed top-0 bottom-0 left-0 w-[85%] max-w-[360px] bg-[#0a0a0a] z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* 搜索框 */}
+        <div className="px-4 pt-4 pb-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              placeholder="搜索会话..."
+              className="w-full bg-gray-900 text-white text-sm rounded-xl pl-9 pr-3 py-2.5 border border-transparent focus:border-[rgb(127,96,255)] focus:outline-none placeholder-gray-500"
+            />
+          </div>
+        </div>
+
+        {/* 会话列表 */}
+        <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4">
+          {filteredConversations.length === 0 && searchText && (
+            <div className="text-center text-gray-500 text-sm py-8">无匹配结果</div>
+          )}
+          {filteredConversations.map(conv => {
+            const isActive = conv.id === activeConversationId;
+            return (
+              <div
+                key={conv.id}
+                onClick={() => onSwitchConversation(conv.id)}
+                className={`group relative rounded-xl px-3.5 py-3 mb-1.5 cursor-pointer transition-colors ${
+                  isActive
+                    ? 'bg-[rgb(127,96,255)] text-white'
+                    : 'text-gray-300 active:bg-gray-800'
+                }`}
+              >
+                <div className={`text-sm font-medium truncate ${
+                  isActive ? 'text-white' : 'text-gray-200'
+                }`}>
+                  {conv.title}
+                </div>
+                <div className={`text-xs truncate mt-0.5 ${
+                  isActive ? 'text-white/70' : 'text-gray-500'
+                }`}>
+                  {getLastMessagePreview(conv)}
+                </div>
+                {/* 删除按钮 */}
+                {!isActive && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      setDeleteTarget(conv.id);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="删除"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </aside>
+
+      <ConfirmModal
+        open={deleteTarget !== null}
+        title="删除会话"
+        message="确定要删除这个会话吗？删除后无法恢复。"
+        confirmText="删除"
+        cancelText="取消"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget) onDeleteConversation(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </>
+  );
 }
 
 export default function MainLayout({
@@ -172,61 +313,17 @@ export default function MainLayout({
 
       {/* 会话历史抽屉：仅聊天模式可用 */}
       {showConversations && (
-        <>
-          {/* 遮罩 */}
-          <div
-            onClick={() => setMobileDrawerOpen(false)}
-            className={`fixed inset-0 bg-black/60 z-40 transition-opacity duration-200 ${
-              mobileDrawerOpen
-                ? 'opacity-100'
-                : 'opacity-0 pointer-events-none'
-            }`}
-            aria-hidden="true"
-          />
-          {/* 抽屉本体 */}
-          <aside
-            className={`fixed top-0 bottom-0 left-0 w-72 max-w-[85%] bg-black z-50 flex flex-col border-r border-gray-700 shadow-2xl transition-transform duration-200 ease-out ${
-              mobileDrawerOpen ? 'translate-x-0' : '-translate-x-full'
-            }`}
-          >
-            <div className="flex items-center justify-between px-4 pt-4 pb-3">
-              <div className="min-w-0">
-                <h1 className="text-xl font-bold text-white truncate">
-                  AIShop
-                </h1>
-                <p className="text-xs text-gray-400 mt-0.5 truncate">
-                  AI 综合创作平台
-                </p>
-              </div>
-              <button
-                onClick={() => setMobileDrawerOpen(false)}
-                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg shrink-0"
-                aria-label="关闭"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="px-4 mb-2 text-[11px] uppercase tracking-wider text-gray-500">
-              历史会话
-            </div>
-            <div className="flex-1 min-h-0 flex flex-col">
-              <ConversationList
-                conversations={conversations}
-                activeId={activeConversationId}
-                onSwitch={(id) => {
-                  onSwitchConversation(id);
-                  setMobileDrawerOpen(false);
-                }}
-                onNew={() => {
-                  onNewConversation();
-                  setMobileDrawerOpen(false);
-                }}
-                onDelete={onDeleteConversation}
-                onRename={onRenameConversation}
-              />
-            </div>
-          </aside>
-        </>
+        <MobileDrawer
+          open={mobileDrawerOpen}
+          onClose={() => setMobileDrawerOpen(false)}
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onSwitchConversation={(id) => {
+            onSwitchConversation(id);
+            setMobileDrawerOpen(false);
+          }}
+          onDeleteConversation={onDeleteConversation}
+        />
       )}
     </div>
   );
