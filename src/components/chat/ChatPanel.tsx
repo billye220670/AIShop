@@ -291,7 +291,7 @@ export default function ChatPanel({
                   onClick={() => sendMessage('帮我翻译：')}
                   className="flex items-center gap-3 w-full text-[15px] md:text-base text-gray-100 hover:text-white py-1 px-2 rounded-lg hover:bg-gray-800 transition-colors"
                 >
-                  <Languages className="w-5 h-5 text-purple-400 shrink-0" />
+                  <Languages className="w-5 h-5 text-[rgb(127,96,255)] shrink-0" />
                   <span>翻译</span>
                 </button>
               </li>

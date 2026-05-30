@@ -156,7 +156,7 @@ export default function MainLayout({
               onClick={() => onTabChange(tab.id)}
               className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 transition-colors ${
                 activeTab === tab.id
-                  ? 'text-purple-400'
+                  ? 'text-[rgb(127,96,255)]'
                   : 'text-gray-400 hover:text-gray-200'
               }`}
             >
