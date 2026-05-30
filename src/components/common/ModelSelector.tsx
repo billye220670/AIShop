@@ -113,7 +113,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange }: 
         ) : (
           <span className="w-4 h-4 shrink-0" />
         )}
-        <span className="whitespace-nowrap">{current.provider} - {current.name}</span>
+        <span className="whitespace-nowrap">{current.name}</span>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
@@ -159,7 +159,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange }: 
                     ) : (
                       <span className="w-4 h-4 shrink-0" />
                     )}
-                    <span className="whitespace-nowrap">{model.provider} - {model.name}</span>
+                    <span className="whitespace-nowrap">{model.name}</span>
                   </button>
                 </li>
               );
