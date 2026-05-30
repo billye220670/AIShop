@@ -163,6 +163,13 @@ export function useChat() {
 
       setIsLoading(true);
 
+      // 移动端的触觉反馈 - AI 开始回答时触发两次清脆有力的振动
+      if ('vibrate' in navigator) {
+        setTimeout(() => {
+          navigator.vibrate([50, 30, 50]); // 双重短振：50ms 振动 + 30ms 暂停 + 50ms 振动
+        }, 100);
+      }
+
       try {
         abortControllerRef.current = new AbortController();
         const allMessages = [...messages, userMessage];
@@ -211,6 +218,13 @@ export function useChat() {
             updated[lastIdx] = { ...updated[lastIdx], content: displayContent };
             return { ...conv, messages: updated };
           });
+        }
+
+        // 移动端的触觉反馈 - AI 回答结束时再触发两次清脆有力的振动
+        if ('vibrate' in navigator) {
+          setTimeout(() => {
+            navigator.vibrate([50, 30, 50]); // 双重短振：50ms 振动 + 30ms 暂停 + 50ms 振动
+          }, 100);
         }
 
         updateActiveConversation(conv => {
