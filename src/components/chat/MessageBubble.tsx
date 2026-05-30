@@ -83,7 +83,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
   if (isUser) {
     return (
       <div className="flex justify-end mb-4">
-        <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-[rgb(127,96,255)] text-white">
+        <div className="max-w-[80%] rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br px-4 py-3 bg-[rgb(127,96,255)] text-white">
           {renderContent()}
         </div>
       </div>
