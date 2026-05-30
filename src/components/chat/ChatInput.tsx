@@ -148,7 +148,7 @@ export default function ChatInput({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder="询问任何问题..."
-          className="w-full bg-transparent text-white rounded-full pl-12 pr-12 py-3 resize-none placeholder-gray-500 border border-gray-700 focus:border-[rgb(127,96,255)] focus:outline-none max-h-[200px] min-h-[48px]"
+          className="w-full bg-gray-800 text-white rounded-full pl-12 pr-12 py-3 resize-none placeholder-gray-500 border border-transparent focus:border-[rgb(127,96,255)] focus:outline-none max-h-[200px] min-h-[48px]"
           rows={1}
         />
 
@@ -194,7 +194,7 @@ export default function ChatInput({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
-            className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 pr-12 resize-none placeholder-gray-500 max-h-[200px] focus:bg-gray-800 focus:outline-none focus:border-[rgb(127,96,255)] border border-gray-700"
+            className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 pr-12 resize-none placeholder-gray-500 max-h-[200px] focus:bg-gray-800 focus:outline-none focus:border-[rgb(127,96,255)] border border-transparent"
             rows={1}
           />
         </div>
