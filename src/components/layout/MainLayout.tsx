@@ -1,8 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { X, MessageSquare, Image as ImageIcon, Film, Music } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ConversationList from '../chat/ConversationList';
 import type { TabMode, Conversation } from '../../types';
+
+type TabIcon = ComponentType<{ className?: string }>;
 
 interface MainLayoutProps {
   activeTab: TabMode;
@@ -18,11 +20,11 @@ interface MainLayoutProps {
   setMobileDrawerOpen: (open: boolean) => void;
 }
 
-const MOBILE_TABS: { id: TabMode; label: string; icon: string }[] = [
-  { id: 'chat', label: '聊天', icon: '💬' },
-  { id: 'image', label: '图片', icon: '🖼️' },
-  { id: 'video', label: '视频', icon: '🎬' },
-  { id: 'music', label: '音乐', icon: '🎵' },
+const MOBILE_TABS: { id: TabMode; label: string; Icon: TabIcon }[] = [
+  { id: 'chat', label: '聊天', Icon: MessageSquare },
+  { id: 'image', label: '图片', Icon: ImageIcon },
+  { id: 'video', label: '视频', Icon: Film },
+  { id: 'music', label: '音乐', Icon: Music },
 ];
 
 function useIsDesktop(): boolean {
@@ -106,20 +108,23 @@ export default function MainLayout({
         className="flex border-t border-gray-700 bg-gray-900 shrink-0"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        {MOBILE_TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors ${
-              activeTab === tab.id
-                ? 'text-blue-400'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            <span className="text-xl leading-none">{tab.icon}</span>
-            <span className="text-[10px]">{tab.label}</span>
-          </button>
-        ))}
+        {MOBILE_TABS.map(tab => {
+          const Icon = tab.Icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'text-blue-400'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="text-[10px]">{tab.label}</span>
+            </button>
+          );
+        })}
       </nav>
 
       {/* 会话历史抽屉：仅聊天模式可用 */}

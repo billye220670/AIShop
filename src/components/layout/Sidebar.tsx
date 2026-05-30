@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
+import { MessageSquare, Image as ImageIcon, Film, Music } from 'lucide-react';
 import type { TabMode, Conversation } from '../../types';
 import ConversationList from '../chat/ConversationList';
+
+type TabIcon = ComponentType<{ className?: string }>;
 
 interface SidebarProps {
   activeTab: TabMode;
@@ -14,11 +17,11 @@ interface SidebarProps {
   onRenameConversation?: (id: string, title: string) => void;
 }
 
-const tabs: { id: TabMode; label: string; icon: string }[] = [
-  { id: 'chat', label: '聊天', icon: '💬' },
-  { id: 'image', label: '图片', icon: '🖼️' },
-  { id: 'video', label: '视频', icon: '🎬' },
-  { id: 'music', label: '音乐', icon: '🎵' },
+const tabs: { id: TabMode; label: string; Icon: TabIcon }[] = [
+  { id: 'chat', label: '聊天', Icon: MessageSquare },
+  { id: 'image', label: '图片', Icon: ImageIcon },
+  { id: 'video', label: '视频', Icon: Film },
+  { id: 'music', label: '音乐', Icon: Music },
 ];
 
 const MIN_WIDTH = 200;
@@ -125,23 +128,26 @@ export default function Sidebar({
         <p className="text-xs text-gray-400 mt-1 truncate">AI 综合创作平台</p>
       </div>
       <nav className="space-y-1 px-2 shrink-0">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            title={tab.label}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-              activeTab === tab.id
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-            }`}
-          >
-            <span className="text-lg">{tab.icon}</span>
-            {!compact && (
-              <span className="text-sm font-medium truncate">{tab.label}</span>
-            )}
-          </button>
-        ))}
+        {tabs.map(tab => {
+          const Icon = tab.Icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              title={tab.label}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              }`}
+            >
+              <Icon className="w-5 h-5 shrink-0" />
+              {!compact && (
+                <span className="text-sm font-medium truncate">{tab.label}</span>
+              )}
+            </button>
+          );
+        })}
       </nav>
 
       {showConversations && (
