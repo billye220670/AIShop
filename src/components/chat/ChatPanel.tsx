@@ -264,7 +264,7 @@ export default function ChatPanel({
         className="flex-1 overflow-y-auto px-6 py-4"
       >
         {messages.length === 0 && (
-          <div className="pt-2 md:pt-8 pl-6 md:pl-12">
+          <div className="pt-2 md:pt-8 pl-4 md:pl-12">
             <h1 className="leading-tight">
               <span className="text-3xl md:text-5xl font-extrabold tracking-tight text-white sm:text-4xl md:text-6xl">
                 你好
@@ -273,7 +273,7 @@ export default function ChatPanel({
                 ，今天我能帮你什么？
               </span>
             </h1>
-            <ul className="mt-5 md:mt-8 space-y-3.5 md:space-y-4">
+            <ul className="mt-5 md:mt-8 space-y-3.5 md:space-y-4 ml-2">
               <li>
                 <button
                   type="button"

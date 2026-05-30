@@ -83,7 +83,7 @@ export default function MainLayout({
 
   if (isDesktop) {
     return (
-      <div className="h-[100dvh] flex bg-gray-950 text-white overflow-hidden">
+      <div className="h-[100dvh] flex bg-black text-white overflow-hidden">
         <Sidebar
           activeTab={activeTab}
           onTabChange={onTabChange}
@@ -101,7 +101,7 @@ export default function MainLayout({
 
   // 移动端布局：主内容上方 + 底部 Tab + 左侧抽屉 (仅聊天)
   return (
-    <div className="h-[100dvh] flex flex-col bg-gray-950 text-white overflow-hidden">
+    <div className="h-[100dvh] flex flex-col bg-black text-white overflow-hidden">
       {/* 顶部导航栏 - 居中模型选择器胶囊 */}
       <header className="flex items-center justify-between gap-2 px-4 py-3 shrink-0 bg-transparent">
         {/* 左侧汉堡菜单 */}
@@ -115,8 +115,8 @@ export default function MainLayout({
           </button>
         )}
           
-        {/* 居中模型选择器（胶囊形状） */}
-        <div className="flex-1 flex justify-center">
+        {/* 居中模型选择器（胶囊形状） - 靠左对齐 */}
+        <div className="flex justify-start">
           <ModelSelector
             models={CHAT_MODELS}
             selectedModel={conversations?.find(c => c.id === activeConversationId)?.selectedModel || CHAT_MODELS[0].id}
@@ -178,7 +178,7 @@ export default function MainLayout({
           />
           {/* 抽屉本体 */}
           <aside
-            className={`fixed top-0 bottom-0 left-0 w-72 max-w-[85%] bg-gray-900 z-50 flex flex-col border-r border-gray-700 shadow-2xl transition-transform duration-200 ease-out ${
+            className={`fixed top-0 bottom-0 left-0 w-72 max-w-[85%] bg-black z-50 flex flex-col border-r border-gray-700 shadow-2xl transition-transform duration-200 ease-out ${
               mobileDrawerOpen ? 'translate-x-0' : '-translate-x-full'
             }`}
           >

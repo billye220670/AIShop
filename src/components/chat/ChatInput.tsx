@@ -100,7 +100,7 @@ export default function ChatInput({
   };
 
   return (
-    <div className="bg-gray-900 p-3 md:p-4">
+    <div className="bg-transparent p-3 md:p-4">
       {/* Image preview */}
       {images.length > 0 && (
         <div className="flex gap-2 mb-3 flex-wrap">
@@ -145,7 +145,7 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder="询问任何问题..."
-          className="w-full bg-gray-800 text-white rounded-full pl-10 pr-4 py-2.5 resize-none placeholder-gray-500 max-h-[200px] min-h-[40px]"
+          className="w-full bg-transparent text-white rounded-full pl-10 pr-4 py-3 resize-none placeholder-gray-500 max-h-[200px] min-h-[48px]"
           rows={1}
         />
       </div>

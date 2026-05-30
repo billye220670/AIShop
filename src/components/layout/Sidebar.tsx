@@ -120,7 +120,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className="relative bg-gray-900 border-r border-gray-700 flex flex-col py-4 shrink-0"
+      className="relative bg-black border-r border-gray-700 flex flex-col py-4 shrink-0"
       style={{ width: `${width}px` }}
     >
       <div className={`px-3 mb-6 ${compact ? 'hidden' : 'block'}`}>

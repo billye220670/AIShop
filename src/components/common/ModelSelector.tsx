@@ -103,14 +103,14 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
   const currentIcon = getProviderIcon(current.provider);
 
   return (
-    <div ref={containerRef} className="relative inline-block">
+    <div ref={containerRef} className="relative inline-block text-left">
       <button
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={`flex items-center gap-2 text-sm cursor-pointer ${
           compact
-            ? 'rounded-full bg-transparent text-white border border-gray-600 px-4 py-2 hover:border-gray-500'
+            ? 'rounded-full bg-transparent text-white border border-gray-600 px-4 py-2 hover:border-gray-500 ml-0'
             : 'bg-gray-700 text-white rounded-lg px-3 py-1.5 border border-gray-600 hover:border-gray-500 focus:outline-none focus:border-blue-500'
         }`}
       >
