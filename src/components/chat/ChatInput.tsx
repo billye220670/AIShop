@@ -124,7 +124,7 @@ export default function ChatInput({
         {/* 加号按钮 - overlay 在输入框左侧 */}
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800 z-10"
+          className="absolute left-3.5 bottom-[10px] p-1 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800 z-10"
           title="添加媒体"
         >
           <Plus className="w-5 h-5" />
@@ -148,7 +148,7 @@ export default function ChatInput({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder="询问任何问题..."
-          className="w-full bg-transparent text-white rounded-full pl-12 pr-12 py-3 resize-none placeholder-gray-500 border border-gray-700 focus:border-blue-500 focus:outline-none max-h-[200px] min-h-[48px]"
+          className="w-full bg-transparent text-white rounded-full pl-12 pr-12 py-3 resize-none placeholder-gray-500 border border-gray-700 focus:border-purple-500 focus:outline-none max-h-[200px] min-h-[48px]"
           rows={1}
         />
 
@@ -158,7 +158,7 @@ export default function ChatInput({
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleSubmit}
             disabled={!text.trim() && images.length === 0}
-            className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-blue-500 disabled:text-gray-600 hover:text-blue-400 transition-colors rounded-full z-10"
+            className="absolute right-3.5 bottom-[10px] p-1.5 bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 hover:bg-purple-600 text-white transition-colors rounded-full z-10"
             title="发送"
           >
             <Send className="w-5 h-5" />
@@ -194,7 +194,7 @@ export default function ChatInput({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
-            className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 pr-12 resize-none placeholder-gray-500 max-h-[200px] focus:bg-gray-800 focus:outline-none focus:border-blue-500 border border-transparent"
+            className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 pr-12 resize-none placeholder-gray-500 max-h-[200px] focus:bg-gray-800 focus:outline-none focus:border-purple-500 border border-transparent"
             rows={1}
           />
         </div>
@@ -212,7 +212,7 @@ export default function ChatInput({
           <button
             onClick={handleSubmit}
             disabled={!text.trim() && images.length === 0}
-            className="p-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl transition-colors"
+            className="p-2.5 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-full transition-colors"
             title="发送"
           >
             <Send className="w-5 h-5" />
