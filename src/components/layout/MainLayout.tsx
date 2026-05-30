@@ -18,6 +18,7 @@ interface MainLayoutProps {
   onNewConversation?: () => void;
   onDeleteConversation?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
+  onModelChange?: (modelId: string) => void;
   mobileDrawerOpen: boolean;
   setMobileDrawerOpen: (open: boolean) => void;
 }
@@ -52,6 +53,7 @@ export default function MainLayout({
   onNewConversation,
   onDeleteConversation,
   onRenameConversation,
+  onModelChange,
   mobileDrawerOpen,
   setMobileDrawerOpen,
 }: MainLayoutProps) {
@@ -102,26 +104,29 @@ export default function MainLayout({
   // 移动端布局：主内容上方 + 底部 Tab + 左侧抽屉 (仅聊天)
   return (
     <div className="h-[100dvh] flex flex-col bg-black text-white overflow-hidden">
-      {/* 顶部导航栏 - 靠左排列 */}
-      <header className="flex items-center justify-start py-3 px-4 shrink-0 bg-transparent">
-        {/* 左侧汉堡菜单 */}
-        {showConversations && (
-          <button
-            onClick={() => setMobileDrawerOpen(true)}
-            className="p-1.5 -ml-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg shrink-0"
-            aria-label="打开会话历史"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        )}  
-      
-        {/* 模型选择器（胶囊形状） - 紧挨着汉堡菜单 */}
-        <ModelSelector
-          models={CHAT_MODELS}
-          selectedModel={conversations?.find(c => c.id === activeConversationId)?.selectedModel || CHAT_MODELS[0].id}
-          onModelChange={() => {}}
-          compact={true}
-        />
+      {/* 顶部导航栏 - 靠右排列以留出空间 */}
+      <header className="flex items-center justify-between py-3 px-4 shrink-0 bg-transparent">
+        {/* 左侧容器 - 汉堡菜单 + 模型选择器 */}
+        <div className="flex items-center gap-4">
+          {/* 左侧汉堡菜单 */}
+          {showConversations && (
+            <button
+              onClick={() => setMobileDrawerOpen(true)}
+              className="p-1.5 -ml-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg shrink-0"
+              aria-label="打开会话历史"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}  
+        
+          {/* 模型选择器（胶囊形状） */}
+          <ModelSelector
+            models={CHAT_MODELS}
+            selectedModel={conversations?.find(c => c.id === activeConversationId)?.selectedModel || CHAT_MODELS[0].id}
+            onModelChange={onModelChange || (() => {})}
+            compact={true}
+          />
+        </div>
       
         {/* 右侧新建会话按钮 */}
         {onNewConversation && (

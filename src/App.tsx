@@ -54,6 +54,7 @@ function App() {
         onNewConversation={chat.newConversation}
         onDeleteConversation={chat.deleteConversation}
         onRenameConversation={chat.renameConversation}
+        onModelChange={chat.setSelectedModel}
         mobileDrawerOpen={mobileDrawerOpen}
         setMobileDrawerOpen={setMobileDrawerOpen}
       >

@@ -145,7 +145,7 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder="询问任何问题..."
-          className="w-full bg-transparent text-white rounded-full pl-10 pr-4 py-3 resize-none placeholder-gray-500 max-h-[200px] min-h-[48px]"
+          className="w-full bg-transparent text-white rounded-full pl-10 pr-4 py-3 resize-none placeholder-gray-500 border border-gray-700 max-h-[200px] min-h-[48px]"
           rows={1}
         />
       </div>
