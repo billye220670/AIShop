@@ -338,13 +338,15 @@ export default function ChatPanel({
         className="flex-1 overflow-y-auto px-6 py-4"
       >
         {messages.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center h-full text-gray-500">
-            <div className="text-5xl mb-4">💬</div>
-            <p className="text-lg">开始和 AI 对话吧</p>
-            <p className="text-sm mt-2">支持多模型切换、图片上传</p>
-            <p className="text-xs mt-4 text-gray-600">
-              提示：可将 .aishop.json 文件拖入此处导入历史会话
-            </p>
+          <div className="pt-4 md:pt-10">
+            <h1 className="leading-tight">
+              <span className="text-4xl md:text-6xl font-extrabold tracking-tight text-white">
+                你好，
+              </span>
+              <span className="text-base md:text-xl text-gray-400 font-normal ml-1">
+                今天我能帮你什么？
+              </span>
+            </h1>
           </div>
         )}
         {messages.map((msg, index) => {
