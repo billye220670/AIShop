@@ -8,6 +8,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import type { Conversation, Message } from '../../types';
+import { CHAT_MODELS } from '../../config/models';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
 interface ChatPanelProps {
@@ -321,12 +322,15 @@ export default function ChatPanel({
         {messages.map((msg, index) => {
           const isLastAssistant =
             msg.role === 'assistant' && index === messages.length - 1;
+          const currentModel = CHAT_MODELS.find(m => m.id === conversation?.selectedModel);
           return (
             <MessageBubble
               key={msg.id}
               message={msg}
               showSuggestions={isLastAssistant}
               onSuggestionClick={isLastAssistant ? (text) => sendMessage(text) : undefined}
+              modelName={currentModel?.name}
+              modelProvider={currentModel?.provider}
             />
           );
         })}
