@@ -117,7 +117,7 @@ function MobileDrawer({
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               placeholder="搜索会话..."
-              className="w-full bg-gray-900 text-white text-sm rounded-xl pl-9 pr-3 py-2.5 border border-transparent focus:border-[rgb(127,96,255)] focus:outline-none placeholder-gray-500"
+              className="w-full bg-gray-900 text-white text-base rounded-xl pl-9 pr-3 py-3.5 border border-transparent focus:border-[rgb(127,96,255)] focus:outline-none placeholder-gray-500"
             />
           </div>
         </div>
@@ -125,7 +125,7 @@ function MobileDrawer({
         {/* 会话列表 */}
         <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4">
           {filteredConversations.length === 0 && searchText && (
-            <div className="text-center text-gray-500 text-sm py-8">无匹配结果</div>
+            <div className="text-center text-gray-500 text-base py-8">无匹配结果</div>
           )}
           {filteredConversations.map(conv => {
             const isActive = conv.id === activeConversationId;
@@ -139,12 +139,12 @@ function MobileDrawer({
                     : 'text-gray-300 active:bg-gray-800'
                 }`}
               >
-                <div className={`text-sm font-medium truncate ${
+                <div className={`text-base font-medium truncate ${
                   isActive ? 'text-white' : 'text-gray-200'
                 }`}>
                   {conv.title}
                 </div>
-                <div className={`text-xs truncate mt-0.5 ${
+                <div className={`text-sm truncate mt-0.5 ${
                   isActive ? 'text-white/70' : 'text-gray-500'
                 }`}>
                   {getLastMessagePreview(conv)}
