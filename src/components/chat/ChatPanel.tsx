@@ -13,8 +13,6 @@ import ChatInput from './ChatInput';
 interface ChatPanelProps {
   messages: Message[];
   isLoading: boolean;
-  selectedModel: string;
-  setSelectedModel: (id: string) => void;
   sendMessage: (
     content:
       | string
@@ -23,24 +21,17 @@ interface ChatPanelProps {
   stopGeneration: () => void;
   error: string | null;
   conversationTitle?: string;
-  webSearchEnabled: boolean;
-  setWebSearchEnabled: (enabled: boolean) => void;
   conversation?: Conversation;
   onImportConversation?: (data: Partial<Conversation>) => void;
-  onMobileMenuClick?: () => void;
-  onNewConversation?: () => void;
 }
 
 export default function ChatPanel({
   messages,
   isLoading,
-  selectedModel,
-  setSelectedModel,
   sendMessage,
   stopGeneration,
+  error,
   conversationTitle,
-  webSearchEnabled,
-  setWebSearchEnabled,
   conversation,
   onImportConversation,
 }: ChatPanelProps) {

@@ -25,18 +25,12 @@ function App() {
           <ChatPanel
             messages={chat.messages}
             isLoading={chat.isLoading}
-            selectedModel={chat.selectedModel}
-            setSelectedModel={chat.setSelectedModel}
             sendMessage={chat.sendMessage}
             stopGeneration={chat.stopGeneration}
             error={chat.error}
             conversationTitle={conversationTitle}
-            webSearchEnabled={chat.webSearchEnabled}
-            setWebSearchEnabled={chat.setWebSearchEnabled}
             conversation={activeConversation}
             onImportConversation={chat.importConversation}
-            onMobileMenuClick={() => setMobileDrawerOpen(true)}
-            onNewConversation={chat.newConversation}
           />
         );
       case 'image':
