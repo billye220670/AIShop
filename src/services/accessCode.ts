@@ -80,16 +80,32 @@ export async function probeAccessCode(): Promise<{ required: boolean; valid: boo
 
 /**
  * 校验某个候选访问码是否正确（不写入存储）。
+ * 返回：
+ *  - { ok: true }                       密码正确
+ *  - { ok: false, lockSeconds: number } 已被限速锁定，需等待 N 秒
+ *  - { ok: false }                      密码错误或网络异常
  */
-export async function verifyAccessCode(code: string): Promise<boolean> {
+export async function verifyAccessCode(
+  code: string
+): Promise<{ ok: boolean; lockSeconds?: number }> {
   try {
     const res = await fetch('/api/verify', {
       method: 'POST',
       headers: { 'X-Access-Code': code },
     });
-    return res.ok;
+    if (res.ok) return { ok: true };
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get('Retry-After')) || 0;
+      let lockSeconds = retryAfter;
+      if (!lockSeconds) {
+        const data = await res.json().catch(() => ({}));
+        lockSeconds = Number((data as { retryAfter?: number }).retryAfter) || 60;
+      }
+      return { ok: false, lockSeconds };
+    }
+    return { ok: false };
   } catch {
-    return false;
+    return { ok: false };
   }
 }
 

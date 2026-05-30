@@ -1,5 +1,7 @@
 // Vercel Edge Function：代理 highwayapi 的 OpenAI 兼容接口
 // 既支持流式（SSE）也支持非流式响应，密钥放在服务端环境变量 HIGHWAY_API_KEY
+import { checkAccessEdge } from './_lib/access';
+
 export const config = {
   runtime: 'edge',
 };
@@ -11,17 +13,9 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
-  // 访问码校验（防滥用）：仅在服务端配置 ACCESS_CODE 时启用
-  const expectedCode = process.env.ACCESS_CODE;
-  if (expectedCode) {
-    const provided = req.headers.get('x-access-code') || '';
-    if (provided !== expectedCode) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid access code' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-  }
+  // 访问码校验（防滥用 + 限速）：仅在服务端配置 ACCESS_CODE 时启用
+  const blocked = await checkAccessEdge(req);
+  if (blocked) return blocked;
 
   const apiKey = process.env.HIGHWAY_API_KEY;
   if (!apiKey) {

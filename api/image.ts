@@ -4,6 +4,15 @@
 // 使用 Vercel 标准 Node.js Serverless 格式（VercelRequest/VercelResponse），
 // 超时 60s（Edge Runtime 仅 25s，图片生成不够用）。
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import {
+  checkLocked,
+  delay,
+  FAIL_DELAY_MS,
+  getNodeClientIp,
+  recordFailure,
+  recordSuccess,
+  timingSafeEqual,
+} from './_lib/access';
 
 export const maxDuration = 60;
 
@@ -101,14 +110,26 @@ export default async function handler(
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // 2. 访问码校验（防滥用）：仅在服务端配置 ACCESS_CODE 时启用
+  // 2. 访问码校验（防滥用 + 限速）：仅在服务端配置 ACCESS_CODE 时启用
   const expectedCode = process.env.ACCESS_CODE;
   if (expectedCode) {
+    const ip = getNodeClientIp(req.headers);
+    const lockSeconds = checkLocked(ip);
+    if (lockSeconds > 0) {
+      res.setHeader('Retry-After', String(lockSeconds));
+      return res.status(429).json({
+        error: 'Too many failed attempts, try again later',
+        retryAfter: lockSeconds,
+      });
+    }
     const headerVal = req.headers['x-access-code'];
     const provided = Array.isArray(headerVal) ? headerVal[0] || '' : headerVal || '';
-    if (provided !== expectedCode) {
+    if (!timingSafeEqual(provided, expectedCode)) {
+      recordFailure(ip);
+      await delay(FAIL_DELAY_MS);
       return res.status(401).json({ error: 'Invalid access code' });
     }
+    recordSuccess(ip);
   }
 
   // 3. 校验密钥

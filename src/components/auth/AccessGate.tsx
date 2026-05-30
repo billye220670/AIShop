@@ -61,12 +61,18 @@ export default function AccessGate({ children }: AccessGateProps) {
     }
     setSubmitting(true);
     setError('');
-    const ok = await verifyAccessCode(code);
+    const result = await verifyAccessCode(code);
     setSubmitting(false);
-    if (ok) {
+    if (result.ok) {
       setAccessCode(code);
       setStatus('unlocked');
       setInput('');
+    } else if (result.lockSeconds && result.lockSeconds > 0) {
+      clearAccessCode();
+      const minutes = Math.ceil(result.lockSeconds / 60);
+      setError(
+        `尝试次数过多，请 ${minutes} 分钟后再试（请联系站点所有者获取正确访问码）`
+      );
     } else {
       clearAccessCode();
       setError('访问码不正确');
