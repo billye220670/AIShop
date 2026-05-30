@@ -1,5 +1,5 @@
 import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent } from 'react';
-import { Paperclip, Square, Send, Globe } from 'lucide-react';
+import { Paperclip, Square, Send, Mic, Plus } from 'lucide-react';
 import ModelSelector from '../common/ModelSelector';
 import { CHAT_MODELS } from '../../config/models';
 import type { MessageContent } from '../../types';
@@ -110,7 +110,7 @@ export default function ChatInput({
   };
 
   return (
-    <div className="border-t border-gray-700 bg-gray-900 p-4">
+    <div className="border-t border-gray-700 bg-gray-900 p-3 md:p-4">
       {/* Image preview */}
       {images.length > 0 && (
         <div className="flex gap-2 mb-3 flex-wrap">
@@ -127,8 +127,50 @@ export default function ChatInput({
           ))}
         </div>
       )}
-
-      <div className="flex items-end gap-3">
+  
+      {/* Mobile input bar (rounded capsule) */}
+      <div className="md:hidden flex items-center gap-2">
+        {/* 加号按钮 */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="p-2 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800"
+          title="添加媒体"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleFileUpload}
+        />
+  
+        {/* 输入框 */}
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={handleTextChange}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          placeholder="询问任何问题..."
+          className="flex-1 bg-gray-800 text-white rounded-full px-4 py-2.5 resize-none border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500 max-h-[200px] min-h-[40px]"
+          rows={1}
+        />
+  
+        {/* 麦克风按钮 */}
+        <button
+          className="p-2.5 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800"
+          title="语音输入"
+          disabled
+        >
+          <Mic className="w-5 h-5" />
+        </button>
+      </div>
+  
+      {/* Desktop input area (traditional layout) */}
+      <div className="hidden md:flex items-end gap-3">
         {/* File upload button */}
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -145,7 +187,7 @@ export default function ChatInput({
           className="hidden"
           onChange={handleFileUpload}
         />
-
+  
         {/* Text input */}
         <div className="flex-1 relative">
           <textarea
@@ -154,12 +196,12 @@ export default function ChatInput({
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+            placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
             className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 pr-12 resize-none border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500 max-h-[200px]"
             rows={1}
           />
         </div>
-
+  
         {/* Send / Stop button */}
         {isLoading ? (
           <button
@@ -181,29 +223,7 @@ export default function ChatInput({
         )}
       </div>
 
-      {/* Model selector */}
-      <div className="mt-3 flex items-center gap-2">
-        <span className="text-xs text-gray-400 hidden md:inline">模型:</span>
-        <div className="hidden md:inline-flex">
-          <ModelSelector
-            models={CHAT_MODELS}
-            selectedModel={selectedModel}
-            onModelChange={onModelChange}
-          />
-        </div>
-        <button
-          onClick={() => onWebSearchToggle(!webSearchEnabled)}
-          className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors ${
-            webSearchEnabled
-              ? 'bg-green-600/20 border-green-500 text-green-400'
-              : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500'
-          }`}
-          title="联网搜索"
-        >
-          <Globe className="w-3.5 h-3.5" />
-          <span>联网</span>
-        </button>
-      </div>
+
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
-import { X, MessageSquare, Image as ImageIcon, Film, Music } from 'lucide-react';
+import { X, Menu, MessageSquare, Image as ImageIcon, Film, Plus } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ConversationList from '../chat/ConversationList';
+import ModelSelector from '../common/ModelSelector';
+import { CHAT_MODELS } from '../../config/models';
 import type { TabMode, Conversation } from '../../types';
 
 type TabIcon = ComponentType<{ className?: string }>;
@@ -24,7 +26,6 @@ const MOBILE_TABS: { id: TabMode; label: string; Icon: TabIcon }[] = [
   { id: 'chat', label: '聊天', Icon: MessageSquare },
   { id: 'image', label: '图片', Icon: ImageIcon },
   { id: 'video', label: '视频', Icon: Film },
-  { id: 'music', label: '音乐', Icon: Music },
 ];
 
 function useIsDesktop(): boolean {
@@ -98,9 +99,44 @@ export default function MainLayout({
     );
   }
 
-  // 移动端布局：主内容上方 + 底部 Tab + 左侧抽屉(仅聊天)
+  // 移动端布局：主内容上方 + 底部 Tab + 左侧抽屉 (仅聊天)
   return (
     <div className="h-[100dvh] flex flex-col bg-gray-950 text-white overflow-hidden">
+      {/* 顶部导航栏 - 居中模型选择器胶囊 */}
+      <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-700 bg-gray-900/50 shrink-0">
+        {/* 左侧汉堡菜单 */}
+        {showConversations && (
+          <button
+            onClick={() => setMobileDrawerOpen(true)}
+            className="p-1.5 -ml-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg shrink-0"
+            aria-label="打开会话历史"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+          
+        {/* 居中模型选择器（胶囊形状） */}
+        <div className="flex-1 flex justify-center">
+          <ModelSelector
+            models={CHAT_MODELS}
+            selectedModel={conversations?.find(c => c.id === activeConversationId)?.selectedModel || CHAT_MODELS[0].id}
+            onModelChange={() => {}}
+          />
+        </div>
+          
+        {/* 右侧新建会话按钮 */}
+        {onNewConversation && (
+          <button
+            onClick={onNewConversation}
+            className="p-1.5 -mr-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg shrink-0"
+            aria-label="新建会话"
+            title="新建会话"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+        )}
+      </header>
+  
       <main className="flex-1 flex flex-col overflow-hidden min-h-0">{children}</main>
 
       {/* 底部 Tab 栏 */}

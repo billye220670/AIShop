@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Menu,
-  MessageSquarePlus,
   Download,
   Palette,
   Languages,
@@ -12,9 +10,6 @@ import {
 import type { Conversation, Message } from '../../types';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
-import ModelSelector from '../common/ModelSelector';
-import { CHAT_MODELS } from '../../config/models';
-
 interface ChatPanelProps {
   messages: Message[];
   isLoading: boolean;
@@ -48,8 +43,6 @@ export default function ChatPanel({
   setWebSearchEnabled,
   conversation,
   onImportConversation,
-  onMobileMenuClick,
-  onNewConversation,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -234,38 +227,11 @@ export default function ChatPanel({
       onDrop={handleDrop}
     >
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-4 md:px-6 py-3 border-b border-gray-700 bg-gray-900/50">
+      <div className="hidden md:flex items-center justify-between gap-2 px-4 md:px-6 py-3 border-b border-gray-700 bg-gray-900/50">
         <div className="flex items-center gap-2 min-w-0">
-          {onMobileMenuClick && (
-            <button
-              onClick={onMobileMenuClick}
-              className="md:hidden p-1.5 -ml-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg shrink-0"
-              aria-label="打开会话历史"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-          )}
           <h2 className="hidden md:block text-lg font-semibold truncate">AI 聊天</h2>
-          {/* 移动端：以模型选择器替换标题 */}
-          <div className="md:hidden min-w-0">
-            <ModelSelector
-              models={CHAT_MODELS}
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
-            />
-          </div>
         </div>
-        {/* 移动端：右上角显示“新建会话”按钮；桌面端：保留导出菜单 */}
-        {onNewConversation && (
-          <button
-            onClick={onNewConversation}
-            className="md:hidden p-1.5 -mr-1 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg shrink-0"
-            aria-label="新建会话"
-            title="新建会话"
-          >
-            <MessageSquarePlus className="w-5 h-5" />
-          </button>
-        )}
+
         <div className="relative hidden md:block" ref={exportMenuRef}>
           <button
             onClick={() => canExport && setShowExportMenu(v => !v)}
@@ -309,23 +275,23 @@ export default function ChatPanel({
         className="flex-1 overflow-y-auto px-6 py-4"
       >
         {messages.length === 0 && (
-          <div className="pt-2 md:pt-8 pl-1 md:pl-2">
+          <div className="pt-2 md:pt-8 pl-6 md:pl-12">
             <h1 className="leading-tight">
-              <span className="text-4xl md:text-6xl font-extrabold tracking-tight text-white">
+              <span className="text-3xl md:text-5xl font-extrabold tracking-tight text-white sm:text-4xl md:text-6xl">
                 你好
               </span>
-              <span className="text-base md:text-xl text-white/90 font-normal ml-1">
+              <span className="text-sm md:text-base text-white/90 font-normal ml-1.5 md:ml-2">
                 ，今天我能帮你什么？
               </span>
             </h1>
-            <ul className="mt-6 md:mt-10 space-y-3.5 md:space-y-4">
+            <ul className="mt-5 md:mt-8 space-y-3.5 md:space-y-4">
               <li>
                 <button
                   type="button"
                   onClick={() => sendMessage('帮我画一张图：')}
-                  className="flex items-center gap-2.5 text-[15px] md:text-base text-gray-100 hover:text-white"
+                  className="flex items-center gap-3 w-full text-[15px] md:text-base text-gray-100 hover:text-white py-1 px-2 rounded-lg hover:bg-gray-800 transition-colors"
                 >
-                  <Palette className="w-4 h-4 text-orange-400" />
+                  <Palette className="w-5 h-5 text-orange-400 shrink-0" />
                   <span>画图</span>
                 </button>
               </li>
@@ -333,9 +299,9 @@ export default function ChatPanel({
                 <button
                   type="button"
                   onClick={() => sendMessage('帮我翻译：')}
-                  className="flex items-center gap-2.5 text-[15px] md:text-base text-gray-100 hover:text-white"
+                  className="flex items-center gap-3 w-full text-[15px] md:text-base text-gray-100 hover:text-white py-1 px-2 rounded-lg hover:bg-gray-800 transition-colors"
                 >
-                  <Languages className="w-4 h-4 text-purple-400" />
+                  <Languages className="w-5 h-5 text-purple-400 shrink-0" />
                   <span>翻译</span>
                 </button>
               </li>
@@ -343,20 +309,21 @@ export default function ChatPanel({
                 <button
                   type="button"
                   onClick={() => sendMessage('我想就一份 PDF 向你提问：')}
-                  className="flex items-center gap-2.5 text-[15px] md:text-base text-gray-100 hover:text-white"
+                  className="flex items-center gap-3 w-full text-[15px] md:text-base text-gray-100 hover:text-white py-1 px-2 rounded-lg hover:bg-gray-800 transition-colors"
                 >
-                  <FileText className="w-4 h-4 text-blue-400" />
+                  <FileText className="w-5 h-5 text-blue-400 shrink-0" />
                   <span>PDF 聊天</span>
                 </button>
               </li>
               <li>
                 <button
                   type="button"
-                  className="flex items-center gap-2.5 text-[15px] md:text-base text-gray-300 hover:text-white"
+                  onClick={() => {}}
+                  className="flex items-center gap-3 w-full text-[15px] md:text-base text-gray-300 hover:text-white py-1 px-2 rounded-lg hover:bg-gray-800 transition-colors"
                 >
-                  <LayoutGrid className="w-4 h-4 text-gray-400" />
+                  <LayoutGrid className="w-5 h-5 text-gray-400 shrink-0" />
                   <span>新功能许愿</span>
-                  <ArrowRight className="w-4 h-4 text-gray-500 ml-1" />
+                  <ArrowRight className="w-4 h-4 text-gray-500 ml-auto shrink-0" />
                 </button>
               </li>
             </ul>
