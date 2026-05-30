@@ -103,7 +103,7 @@ export default function MainLayout({
   return (
     <div className="h-[100dvh] flex flex-col bg-gray-950 text-white overflow-hidden">
       {/* 顶部导航栏 - 居中模型选择器胶囊 */}
-      <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-700 bg-gray-900/50 shrink-0">
+      <header className="flex items-center justify-between gap-2 px-4 py-3 bg-gray-900/50 shrink-0">
         {/* 左侧汉堡菜单 */}
         {showConversations && (
           <button
@@ -141,7 +141,7 @@ export default function MainLayout({
 
       {/* 底部 Tab 栏 */}
       <nav
-        className="flex border-t border-gray-700 bg-gray-900 shrink-0"
+        className="flex bg-gray-900 shrink-0"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {MOBILE_TABS.map(tab => {

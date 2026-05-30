@@ -1,5 +1,5 @@
 import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent } from 'react';
-import { Paperclip, Square, Send, Mic, Plus } from 'lucide-react';
+import { Paperclip, Square, Send, Plus } from 'lucide-react';
 import type { MessageContent } from '../../types';
 
 interface ChatInputProps {
@@ -100,7 +100,7 @@ export default function ChatInput({
   };
 
   return (
-    <div className="border-t border-gray-700 bg-gray-900 p-3 md:p-4">
+    <div className="bg-gray-900 p-3 md:p-4">
       {/* Image preview */}
       {images.length > 0 && (
         <div className="flex gap-2 mb-3 flex-wrap">
@@ -117,7 +117,7 @@ export default function ChatInput({
           ))}
         </div>
       )}
-  
+    
       {/* Mobile input bar (rounded capsule) */}
       <div className="md:hidden flex items-center gap-2">
         {/* 加号按钮 */}
@@ -136,7 +136,7 @@ export default function ChatInput({
           className="hidden"
           onChange={handleFileUpload}
         />
-  
+        
         {/* 输入框 */}
         <textarea
           ref={textareaRef}
@@ -145,18 +145,9 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder="询问任何问题..."
-          className="flex-1 bg-gray-800 text-white rounded-full px-4 py-2.5 resize-none border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500 max-h-[200px] min-h-[40px]"
+          className="flex-1 bg-gray-800 text-white rounded-full px-4 py-2.5 resize-none placeholder-gray-500 max-h-[200px] min-h-[40px]"
           rows={1}
         />
-  
-        {/* 麦克风按钮 */}
-        <button
-          className="p-2.5 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800"
-          title="语音输入"
-          disabled
-        >
-          <Mic className="w-5 h-5" />
-        </button>
       </div>
   
       {/* Desktop input area (traditional layout) */}
@@ -187,7 +178,7 @@ export default function ChatInput({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
-            className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 pr-12 resize-none border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500 max-h-[200px]"
+            className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 pr-12 resize-none placeholder-gray-500 max-h-[200px]"
             rows={1}
           />
         </div>
