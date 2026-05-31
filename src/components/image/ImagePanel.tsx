@@ -313,14 +313,47 @@ export default function ImagePanel() {
     setIsDragging(false);
 
     const files = e.dataTransfer.files;
-    if (!files || files.length === 0) return;
 
-    // 只接受 image/* 类型
-    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
-    if (imageFiles.length === 0) {
-      setUploadError('仅支持拖拽图片文件');
+    // Case 1: 外部文件拖入
+    if (files && files.length > 0) {
+      const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+      if (imageFiles.length === 0) {
+        setUploadError('仅支持拖拽图片文件');
+        return;
+      }
+
+      if (uploadedImages.length >= maxUploadCount) {
+        setUploadError(`已达到最大上传数量 ${maxUploadCount}`);
+        return;
+      }
+
+      setUploadError(null);
+
+      const oversized: string[] = [];
+      const accepted: File[] = [];
+      imageFiles.forEach(f => {
+        if (f.size > MAX_FILE_SIZE) {
+          oversized.push(f.name);
+        } else {
+          accepted.push(f);
+        }
+      });
+
+      if (oversized.length > 0) {
+        setUploadError(`以下图片超过 50MB 已被忽略：${oversized.join(', ')}`);
+      }
+
+      if (accepted.length > 0) {
+        const dt = new DataTransfer();
+        accepted.forEach(f => dt.items.add(f));
+        await addImages(dt.files);
+      }
       return;
     }
+
+    // Case 2: 内部图片 URL 拖入（照片墙拖拽）
+    const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+    if (!url) return;
 
     if (uploadedImages.length >= maxUploadCount) {
       setUploadError(`已达到最大上传数量 ${maxUploadCount}`);
@@ -329,25 +362,46 @@ export default function ImagePanel() {
 
     setUploadError(null);
 
-    // 宽松大小校验（仅拦截超大文件防止浏览器卡死）
-    const oversized: string[] = [];
-    const accepted: File[] = [];
-    imageFiles.forEach(f => {
-      if (f.size > MAX_FILE_SIZE) {
-        oversized.push(f.name);
-      } else {
-        accepted.push(f);
+    try {
+      // 如果是 data: URL，直接用 fetch 转 blob
+      // 如果是 http(s) URL，也用 fetch（可能需要 CORS 支持）
+      let blob: Blob;
+      try {
+        const resp = await fetch(url);
+        blob = await resp.blob();
+      } catch {
+        // fetch 失败时尝试 Image + canvas 方式（处理跨域）
+        blob = await new Promise<Blob>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error('Canvas不可用')); return; }
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob(b => {
+              if (b) resolve(b);
+              else reject(new Error('转换失败'));
+            }, 'image/png');
+          };
+          img.onerror = () => reject(new Error('图片加载失败'));
+          img.src = url;
+        });
       }
-    });
 
-    if (oversized.length > 0) {
-      setUploadError(`以下图片超过 50MB 已被忽略：${oversized.join(', ')}`);
-    }
+      if (!blob.type.startsWith('image/')) {
+        setUploadError('拖入的内容不是有效图片');
+        return;
+      }
 
-    if (accepted.length > 0) {
+      const file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
       const dt = new DataTransfer();
-      accepted.forEach(f => dt.items.add(f));
+      dt.items.add(file);
       await addImages(dt.files);
+    } catch {
+      setUploadError('无法加载该图片作为参考图');
     }
   }, [uploadedImages.length, maxUploadCount, addImages]);
 
@@ -415,21 +469,7 @@ export default function ImagePanel() {
   return (
     <div
       className="flex-1 flex flex-col overflow-hidden relative"
-      onDragOver={handleDragOver}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
-      {/* Drag overlay */}
-      {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm border-2 border-dashed border-[rgb(127,96,255)] rounded-xl pointer-events-none">
-          <div className="flex flex-col items-center gap-2 text-white">
-            <Images className="w-12 h-12 text-[rgb(127,96,255)]" />
-            <span className="text-lg font-medium">拖拽图片到此处</span>
-            <span className="text-sm text-gray-300">支持 JPG、PNG、WebP 等格式</span>
-          </div>
-        </div>
-      )}
       {/* Upload error banner */}
       {uploadError && (
         <div className="px-6 py-2 bg-red-500/10 border-b border-red-500/30 text-red-400 text-sm flex items-start gap-2">
@@ -466,8 +506,12 @@ export default function ImagePanel() {
                 <img
                   src={card.url}
                   alt={card.prompt}
-                  draggable={false}
-                  className="w-full h-full object-cover"
+                  draggable={true}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/uri-list', card.url);
+                    e.dataTransfer.setData('text/plain', card.url);
+                  }}
+                  className="w-full h-full object-cover cursor-grab"
                   loading="lazy"
                 />
                 {/* Hover overlay */}
@@ -545,7 +589,23 @@ export default function ImagePanel() {
       </div>
 
       {/* Input area - aligned with ChatInput design */}
-      <div className="bg-transparent p-3 md:p-4">
+      <div
+        className="bg-transparent p-3 md:p-4 relative"
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Drag overlay - only covers input area */}
+        {isDragging && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm border-2 border-dashed border-[rgb(127,96,255)] rounded-xl pointer-events-none">
+            <div className="flex flex-col items-center gap-2 text-white">
+              <Images className="w-10 h-10 text-[rgb(127,96,255)]" />
+              <span className="text-base font-medium">拖拽图片到此处作为参考图</span>
+              <span className="text-xs text-gray-300">支持拖入外部图片或照片墙中的已生成图片</span>
+            </div>
+          </div>
+        )}
         {/* Row 1: Toolbar */}
         <div className="flex items-center justify-between mb-3">
           {/* Left: ModelSelector + Upload */}
