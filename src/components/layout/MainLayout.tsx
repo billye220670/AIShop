@@ -228,7 +228,7 @@ export default function MainLayout({
 
   if (isDesktop) {
     return (
-      <div className="h-[100dvh] flex bg-black text-white overflow-hidden">
+      <div className="h-[100dvh] flex bg-[#0d0a1a] text-white overflow-hidden">
         <Sidebar
           activeTab={activeTab}
           onTabChange={onTabChange}
@@ -239,7 +239,7 @@ export default function MainLayout({
           onDeleteConversation={onDeleteConversation}
           onRenameConversation={onRenameConversation}
         />
-        <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+        <main className="flex-1 flex flex-col overflow-hidden bg-[#1a1a2e] rounded-2xl m-2 ml-0">{children}</main>
       </div>
     );
   }

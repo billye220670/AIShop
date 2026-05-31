@@ -105,7 +105,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className="relative bg-[#0f0f1a] flex flex-col pt-4 shrink-0"
+      className="relative bg-transparent flex flex-col pt-4 shrink-0"
       style={{ width: `${width}px` }}
     >
       <nav className="space-y-1.5 px-2">
