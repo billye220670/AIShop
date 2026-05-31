@@ -260,7 +260,7 @@ export default function ChatInput({
               <button
                 onClick={handleSubmit}
                 disabled={!text.trim() && images.length === 0}
-                className="p-2 bg-[rgb(127,96,255)] hover:bg-[rgb(107,76,235)] disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-full transition-colors"
+                className="p-2 text-[rgb(127,96,255)] hover:text-[rgb(107,76,235)] disabled:text-gray-500 transition-colors"
                 title="发送"
               >
                 <SendHorizontal className="w-4 h-4" />
