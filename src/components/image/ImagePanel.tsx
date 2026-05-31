@@ -7,7 +7,7 @@ import {
   Loader2,
   Plus,
   Paperclip,
-  Sparkles,
+  SendHorizontal,
 } from 'lucide-react';
 import ModelSelector from '../common/ModelSelector';
 import { IMAGE_MODELS } from '../../config/models';
@@ -164,29 +164,6 @@ export default function ImagePanel() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-gray-900/50">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold">AI 绘图</h2>
-          <ModelSelector
-            models={IMAGE_MODELS}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-          />
-        </div>
-        {history.length > 0 && (
-          <button
-            onClick={() => {
-              if (confirm('确定要清空所有生成历史吗？')) clearHistory();
-            }}
-            className="text-xs text-gray-400 hover:text-red-400 px-2 py-1 rounded hover:bg-gray-700 transition-colors"
-            title="清空历史"
-          >
-            清空历史
-          </button>
-        )}
-      </div>
-
       {/* Upload error banner */}
       {uploadError && (
         <div className="px-6 py-2 bg-red-500/10 border-b border-red-500/30 text-red-400 text-sm flex items-start gap-2">
@@ -335,75 +312,100 @@ export default function ImagePanel() {
         </div>
       )}
 
-      {/* Parameters row */}
-      <div className="border-t border-gray-700 bg-gray-900 px-4 py-2 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-400">宽高比:</span>
-          <select
-            value={aspectRatio}
-            onChange={(e) => setAspectRatio(e.target.value)}
-            disabled={aspectRatioOptions.length <= 1}
-            className="bg-gray-700 text-white text-xs rounded-lg px-2.5 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {aspectRatioOptions.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-400">尺寸:</span>
-          <select
-            value={size}
-            onChange={(e) => setSize(e.target.value)}
-            className="bg-gray-700 text-white text-xs rounded-lg px-2.5 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer"
-          >
-            {sizeOptions.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        </div>
-
-        {showQuality && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-gray-400">质量:</span>
-            <select
-              value={quality}
-              onChange={(e) => setQuality(e.target.value)}
-              className="bg-gray-700 text-white text-xs rounded-lg px-2.5 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer"
+      {/* Input area - aligned with ChatInput design */}
+      <div className="bg-transparent p-3 md:p-4">
+        {/* Row 1: Toolbar */}
+        <div className="flex items-center justify-between mb-3">
+          {/* Left: ModelSelector + Upload */}
+          <div className="flex items-center">
+            <ModelSelector
+              models={IMAGE_MODELS}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              compact={true}
+            />
+            <button
+              onClick={handlePickFiles}
+              disabled={!canAddMore}
+              className="ml-2 p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={canAddMore ? '上传参考图' : `已达到最大数量 ${maxUploadCount}`}
             >
-              {qualityOptions.map(opt => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
+              <Paperclip className="w-5 h-5" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple={maxUploadCount > 1}
+              className="hidden"
+              onChange={handleFileChange}
+            />
           </div>
-        )}
 
-        <div className="ml-auto text-xs text-gray-500">
-          {isEditMode ? `编辑模式 · 已上传 ${uploadedImages.length}/${maxUploadCount}` : '生成模式'}
+          {/* Right: Parameters + Clear */}
+          <div className="flex items-center gap-3">
+            {/* Aspect Ratio */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">宽高比:</span>
+              <select
+                value={aspectRatio}
+                onChange={(e) => setAspectRatio(e.target.value)}
+                disabled={aspectRatioOptions.length <= 1}
+                className="bg-gray-700 text-white text-xs rounded-lg px-2.5 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {aspectRatioOptions.map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Size */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">尺寸:</span>
+              <select
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+                className="bg-gray-700 text-white text-xs rounded-lg px-2.5 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer"
+              >
+                {sizeOptions.map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Quality */}
+            {showQuality && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-400">质量:</span>
+                <select
+                  value={quality}
+                  onChange={(e) => setQuality(e.target.value)}
+                  className="bg-gray-700 text-white text-xs rounded-lg px-2.5 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  {qualityOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Clear History */}
+            {history.length > 0 && (
+              <button
+                onClick={() => {
+                  if (confirm('确定要清空所有生成历史吗？')) clearHistory();
+                }}
+                className="text-xs text-gray-400 hover:text-red-400 px-2 py-1 rounded hover:bg-gray-700 transition-colors"
+                title="清空历史"
+              >
+                清空历史
+              </button>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Input area */}
-      <div className="border-t border-gray-700 bg-gray-900 p-4">
-        <div className="flex items-end gap-3">
-          <button
-            onClick={handlePickFiles}
-            disabled={!canAddMore}
-            className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
-            title={canAddMore ? '上传参考图' : `已达到最大数量 ${maxUploadCount}`}
-          >
-            <Paperclip className="w-5 h-5" />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple={maxUploadCount > 1}
-            className="hidden"
-            onChange={handleFileChange}
-          />
-
+        {/* Row 2: Input textarea with embedded send button */}
+        <div className="relative">
           <textarea
             ref={textareaRef}
             value={prompt}
@@ -414,18 +416,21 @@ export default function ImagePanel() {
                 ? '描述如何编辑参考图... (Enter 发送, Shift+Enter 换行)'
                 : '描述你想生成的图片... (Enter 发送, Shift+Enter 换行)'
             }
-            className="flex-1 bg-gray-800 text-white rounded-xl px-4 py-3 resize-none border border-gray-600 focus:outline-none focus:border-blue-500 placeholder-gray-500 max-h-[160px]"
-            rows={1}
+            className="w-full bg-transparent text-white rounded-xl px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[160px] min-h-[80px] focus:outline-none focus:border-[rgb(127,96,255)] border border-white/10"
+            rows={3}
           />
 
-          <button
+          {/* Send button - absolute positioned bottom-right */}
+          <div className="absolute right-3 bottom-3">
+            <button
               onClick={handleSubmit}
               disabled={!canGenerate}
-              className="p-2.5 bg-gradient-to-br from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white rounded-xl transition-colors flex items-center gap-1"
+              className="p-2 text-[rgb(127,96,255)] hover:text-[rgb(107,76,235)] disabled:text-gray-500 transition-colors"
               title="生成"
             >
-              <Sparkles className="w-5 h-5" />
+              <SendHorizontal className="w-4 h-4" />
             </button>
+          </div>
         </div>
       </div>
     </div>
