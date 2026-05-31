@@ -1,12 +1,18 @@
 import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent } from 'react';
-import { Paperclip, Square, ArrowUp, Plus } from 'lucide-react';
-import type { MessageContent } from '../../types';
+import { Paperclip, Square, ArrowUp, Plus, Clock } from 'lucide-react';
+import type { MessageContent, Model } from '../../types';
+import ModelSelector from '../common/ModelSelector';
 
 interface ChatInputProps {
   onSend: (content: string | MessageContent[]) => void;
   isLoading: boolean;
   onStop: () => void;
   onFocusChange?: (focused: boolean) => void;
+  onToggleHistory?: () => void;
+  onNewConversation?: () => void;
+  models?: Model[];
+  selectedModel?: string;
+  onModelChange?: (modelId: string) => void;
 }
 
 export default function ChatInput({
@@ -14,6 +20,11 @@ export default function ChatInput({
   isLoading,
   onStop,
   onFocusChange,
+  onToggleHistory,
+  onNewConversation,
+  models,
+  selectedModel,
+  onModelChange,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -168,27 +179,63 @@ export default function ChatInput({
         )}
       </div>
   
-      {/* Desktop input area (traditional layout) */}
-      <div className="hidden md:flex items-end gap-3">
-        {/* File upload button */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
-          title="上传图片"
-        >
-          <Paperclip className="w-5 h-5" />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={handleFileUpload}
-        />
-  
-        {/* Text input */}
-        <div className="flex-1 relative">
+      {/* Desktop input area - two row layout */}
+      <div className="hidden md:block">
+        {/* Row 1: Toolbar */}
+        <div className="flex items-center justify-between mb-3">
+          {/* Left: ModelSelector */}
+          <div className="flex items-center">
+            {models && selectedModel && onModelChange && (
+              <ModelSelector
+                models={models}
+                selectedModel={selectedModel}
+                onModelChange={onModelChange}
+                compact={true}
+              />
+            )}
+          </div>
+
+          {/* Right: action buttons */}
+          <div className="flex items-center gap-2">
+            {/* File upload */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
+              title="上传图片"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleFileUpload}
+            />
+
+            {/* History toggle */}
+            <button
+              onClick={() => onToggleHistory?.()}
+              className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
+              title="会话历史"
+            >
+              <Clock className="w-5 h-5" />
+            </button>
+
+            {/* New conversation */}
+            <button
+              onClick={() => onNewConversation?.()}
+              className="w-7 h-7 bg-[rgb(127,96,255)] hover:bg-[rgb(107,76,235)] text-white rounded-full flex items-center justify-center transition-colors"
+              title="新建会话"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Input textarea with embedded send button */}
+        <div className="relative">
           <textarea
             ref={textareaRef}
             value={text}
@@ -196,30 +243,32 @@ export default function ChatInput({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
-            className="w-full bg-gray-900 text-white rounded-xl px-4 py-3.5 pr-12 resize-none placeholder-gray-500 max-h-[200px] focus:bg-gray-900 focus:outline-none focus:border-[rgb(127,96,255)] border border-transparent"
-            rows={1}
+            className="w-full bg-gray-900 text-white rounded-xl px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[200px] min-h-[80px] focus:bg-gray-900 focus:outline-none focus:border-[rgb(127,96,255)] border border-transparent"
+            rows={3}
           />
+
+          {/* Send / Stop button - absolute positioned bottom-right inside textarea */}
+          <div className="absolute right-3 bottom-3">
+            {isLoading ? (
+              <button
+                onClick={onStop}
+                className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-full transition-colors"
+                title="停止生成"
+              >
+                <Square className="w-4 h-4" fill="currentColor" strokeWidth={0} />
+              </button>
+            ) : (
+              <button
+                onClick={handleSubmit}
+                disabled={!text.trim() && images.length === 0}
+                className="p-2 bg-[rgb(127,96,255)] hover:bg-[rgb(107,76,235)] disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-full transition-colors"
+                title="发送"
+              >
+                <ArrowUp className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
-  
-        {/* Send / Stop button */}
-        {isLoading ? (
-          <button
-            onClick={onStop}
-            className="p-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors"
-            title="停止生成"
-          >
-            <Square className="w-5 h-5" fill="currentColor" strokeWidth={0} />
-          </button>
-        ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={!text.trim() && images.length === 0}
-            className="p-2.5 bg-[rgb(127,96,255)] hover:bg-[rgb(107,76,235)] disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-full transition-colors"
-            title="发送"
-          >
-            <ArrowUp className="w-5 h-5" />
-          </button>
-        )}
       </div>
 
 

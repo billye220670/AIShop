@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
 import { MessageSquare, Image as ImageIcon, Film, Music } from 'lucide-react';
 import type { TabMode, Conversation } from '../../types';
-import ConversationList from '../chat/ConversationList';
 
 type TabIcon = ComponentType<{ className?: string }>;
 
@@ -48,21 +47,7 @@ function readStoredWidth(): number {
 export default function Sidebar({
   activeTab,
   onTabChange,
-  conversations,
-  activeConversationId,
-  onSwitchConversation,
-  onNewConversation,
-  onDeleteConversation,
-  onRenameConversation,
 }: SidebarProps) {
-  const showConversations =
-    activeTab === 'chat' &&
-    conversations &&
-    activeConversationId &&
-    onSwitchConversation &&
-    onNewConversation &&
-    onDeleteConversation &&
-    onRenameConversation;
 
   const [width, setWidth] = useState<number>(() => readStoredWidth());
   const [isDragging, setIsDragging] = useState(false);
@@ -120,14 +105,10 @@ export default function Sidebar({
 
   return (
     <aside
-      className="relative bg-black border-r border-gray-700 flex flex-col py-4 shrink-0"
+      className="relative bg-[#0f0f1a] flex flex-col pt-4 shrink-0"
       style={{ width: `${width}px` }}
     >
-      <div className={`px-3 mb-6 ${compact ? 'hidden' : 'block'}`}>
-        <h1 className="text-xl font-bold text-white truncate">AIShop</h1>
-        <p className="text-xs text-gray-400 mt-1 truncate">AI 综合创作平台</p>
-      </div>
-      <nav className="space-y-1 px-2 shrink-0">
+      <nav className="space-y-1.5 px-2">
         {tabs.map(tab => {
           const Icon = tab.Icon;
           return (
@@ -135,10 +116,10 @@ export default function Sidebar({
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
               title={tab.label}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
                 activeTab === tab.id
                   ? 'bg-[rgb(127,96,255)] text-white'
-                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                  : 'text-gray-400 hover:bg-white/5 hover:text-white'
               }`}
             >
               <Icon className="w-5 h-5 shrink-0" />
@@ -149,26 +130,6 @@ export default function Sidebar({
           );
         })}
       </nav>
-
-      {showConversations && (
-        <>
-          {!compact && (
-            <div className="mt-4 mb-2 px-4 text-[11px] uppercase tracking-wider text-gray-500">
-              历史会话
-            </div>
-          )}
-          <div className="flex-1 min-h-0 flex flex-col">
-            <ConversationList
-              conversations={conversations}
-              activeId={activeConversationId}
-              onSwitch={onSwitchConversation}
-              onNew={onNewConversation}
-              onDelete={onDeleteConversation}
-              onRename={onRenameConversation}
-            />
-          </div>
-        </>
-      )}
 
       {/* 拖动手柄：放在右边缘，宽 6px 命中区，内部 1px 视觉线 */}
       <div

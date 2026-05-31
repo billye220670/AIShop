@@ -6,6 +6,7 @@ import VideoPanel from './components/video/VideoPanel';
 import MusicPanel from './components/music/MusicPanel';
 import AccessGate from './components/auth/AccessGate';
 import { useChat } from './hooks/useChat';
+import { CHAT_MODELS } from './config/models';
 import type { TabMode } from './types';
 
 function App() {
@@ -32,6 +33,13 @@ function App() {
             conversation={activeConversation}
             onImportConversation={chat.importConversation}
             onInputFocusChange={setInputFocused}
+            conversations={chat.conversations}
+            activeConversationId={chat.activeConversationId}
+            onSwitchConversation={chat.switchConversation}
+            onNewConversation={chat.newConversation}
+            selectedModel={activeConversation?.selectedModel || CHAT_MODELS[0].id}
+            onModelChange={chat.setSelectedModel}
+            models={CHAT_MODELS}
           />
         );
       case 'image':
