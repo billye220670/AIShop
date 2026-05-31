@@ -138,9 +138,7 @@ export default function HistoryPanel({
                         : 'hover:bg-white/5'
                     }`}
                   >
-                    <div className={`text-sm font-medium truncate ${
-                      isActive ? 'text-[rgb(127,96,255)]' : 'text-white'
-                    }`}>
+                    <div className="text-sm font-bold text-white truncate">
                       {conv.title}
                     </div>
                     <div className="text-xs text-gray-400 mt-1 line-clamp-2">
