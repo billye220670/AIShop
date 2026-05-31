@@ -352,7 +352,14 @@ export default function ImagePanel() {
     }
 
     // Case 2: 内部图片 URL 拖入（照片墙拖拽）
-    const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+    const rawUrl = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+    if (!rawUrl) return;
+
+    // 解析 text/uri-list 格式：可能包含多行，# 开头为注释，取第一个有效 URL
+    const url = rawUrl
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'))[0];
     if (!url) return;
 
     if (uploadedImages.length >= maxUploadCount) {
@@ -363,40 +370,69 @@ export default function ImagePanel() {
     setUploadError(null);
 
     try {
-      // 如果是 data: URL，直接用 fetch 转 blob
-      // 如果是 http(s) URL，也用 fetch（可能需要 CORS 支持）
-      let blob: Blob;
-      try {
+      let file: File;
+
+      if (url.startsWith('data:image')) {
+        // data URI：直接解码为 File，无需网络请求
         const resp = await fetch(url);
-        blob = await resp.blob();
-      } catch {
-        // fetch 失败时尝试 Image + canvas 方式（处理跨域）
-        blob = await new Promise<Blob>((resolve, reject) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) { reject(new Error('Canvas不可用')); return; }
-            ctx.drawImage(img, 0, 0);
-            canvas.toBlob(b => {
-              if (b) resolve(b);
-              else reject(new Error('转换失败'));
-            }, 'image/png');
-          };
-          img.onerror = () => reject(new Error('图片加载失败'));
-          img.src = url;
-        });
+        const blob = await resp.blob();
+        file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
+      } else if (url.startsWith('blob:')) {
+        // blob URL：直接 fetch 获取 blob
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
+      } else if (url.startsWith('http://') || url.startsWith('https://')) {
+        // 远程 URL：先尝试 fetch，失败则用 Image+canvas 回退
+        let blob: Blob | null = null;
+        try {
+          const resp = await fetch(url);
+          if (resp.ok) {
+            blob = await resp.blob();
+          }
+        } catch {
+          // fetch 失败（CORS等），使用 canvas 回退
+        }
+
+        if (!blob) {
+          // Image + canvas 回退方案（绕过 CORS 限制）
+          blob = await new Promise<Blob>((resolve, reject) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.naturalWidth;
+              canvas.height = img.naturalHeight;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) { reject(new Error('Canvas不可用')); return; }
+              ctx.drawImage(img, 0, 0);
+              canvas.toBlob(b => {
+                if (b) resolve(b);
+                else reject(new Error('转换失败'));
+              }, 'image/png');
+            };
+            img.onerror = () => {
+              // canvas 也失败时，尝试不带 crossOrigin 加载（仍可显示但无法读取像素）
+              // 此时直接用 URL 创建一个空 fetch 会失败，改为提示
+              reject(new Error('图片加载失败'));
+            };
+            img.src = url;
+          });
+        }
+
+        file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
+      } else {
+        // 其他格式的 URL（不认识的协议），尝试当作 data URI 兜底
+        try {
+          const resp = await fetch(url);
+          const blob = await resp.blob();
+          file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
+        } catch {
+          setUploadError('不支持该类型的拖入内容');
+          return;
+        }
       }
 
-      if (!blob.type.startsWith('image/')) {
-        setUploadError('拖入的内容不是有效图片');
-        return;
-      }
-
-      const file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
       const dt = new DataTransfer();
       dt.items.add(file);
       await addImages(dt.files);
@@ -501,22 +537,24 @@ export default function ImagePanel() {
             {flatCards.map(card => (
               <div
                 key={`${card.id}-${card.index}`}
-                className="relative group rounded-xl overflow-hidden bg-gray-800 border border-gray-700 aspect-square"
+                draggable={true}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/uri-list', card.url);
+                  e.dataTransfer.setData('text/plain', card.url);
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
+                className="relative group rounded-xl overflow-hidden bg-gray-800 border border-gray-700 aspect-square cursor-grab active:cursor-grabbing select-none"
               >
                 <img
                   src={card.url}
                   alt={card.prompt}
-                  draggable={true}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('text/uri-list', card.url);
-                    e.dataTransfer.setData('text/plain', card.url);
-                  }}
-                  className="w-full h-full object-cover cursor-grab"
+                  draggable={false}
+                  className="w-full h-full object-cover"
                   loading="lazy"
                 />
-                {/* Hover overlay */}
-                <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
-                  <div className="flex justify-end gap-2">
+                {/* Hover overlay - pointer-events-none 防止阻挡拖拽 */}
+                <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3 pointer-events-none">
+                  <div className="flex justify-end gap-2 pointer-events-auto">
                     <button
                       onClick={() => handleDownload(card.url, card.prompt, card.timestamp)}
                       className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg transition-colors"
