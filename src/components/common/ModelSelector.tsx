@@ -29,8 +29,8 @@ function getProviderIcon(provider: string): string | null {
   return file ? `/providers/${file}` : null;
 }
 
-const MENU_MAX_HEIGHT = 288; // max-h-72 (18rem)
 const MENU_GAP = 4;
+const MENU_TOP_PADDING = 16; // 菜单距视口顶部的最小间距
 
 interface MenuPosition {
   top: number;
@@ -87,12 +87,12 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
     const recalc = () => {
       const rect = buttonRef.current!.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP;
-      const spaceAbove = rect.top - MENU_GAP;
+      const spaceAbove = rect.top - MENU_GAP - MENU_TOP_PADDING;
       const placement: 'top' | 'bottom' =
-        spaceBelow >= MENU_MAX_HEIGHT || spaceBelow >= spaceAbove ? 'bottom' : 'top';
+        spaceBelow >= spaceAbove ? 'bottom' : 'top';
       const maxHeight = Math.max(
         120,
-        Math.min(MENU_MAX_HEIGHT, placement === 'bottom' ? spaceBelow : spaceAbove)
+        placement === 'bottom' ? spaceBelow - MENU_TOP_PADDING : spaceAbove
       );
       setPos({
         top: placement === 'bottom' ? rect.bottom + MENU_GAP : rect.top - MENU_GAP - maxHeight,
@@ -214,7 +214,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
               minWidth: pos.width,
               maxHeight: pos.maxHeight,
             }}
-            className={`z-[1000] overflow-y-auto bg-gray-900/95 backdrop-blur-sm border border-white/5 rounded-xl shadow-2xl py-2
+            className={`z-[1000] overflow-y-auto bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl py-2
               transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
               ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
           >
