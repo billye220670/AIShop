@@ -48,20 +48,36 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
+  const unmountTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const current = models.find((m) => m.id === selectedModel) ?? models[0];
 
-  // 动画控制：打开时先挂载DOM再触发动画，关闭时先退出动画再卸载DOM
+  // 关闭菜单：在事件回调中同步清除动画状态，避免 effect 内 setState
+  const close = () => {
+    setOpen(false);
+    setAnimVisible(false);
+  };
+
+  // 打开菜单：同步挂载 DOM
+  const toggle = () => {
+    if (!open) {
+      clearTimeout(unmountTimer.current);
+      setMounted(true);
+      setOpen(true);
+    } else {
+      close();
+    }
+  };
+
+  // 动画控制：打开时触发进入动画，关闭时延迟卸载 DOM
   useEffect(() => {
     if (open) {
-      setMounted(true);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setAnimVisible(true));
       });
     } else {
-      setAnimVisible(false);
-      const timer = setTimeout(() => setMounted(false), 200);
-      return () => clearTimeout(timer);
+      unmountTimer.current = setTimeout(() => setMounted(false), 200);
+      return () => clearTimeout(unmountTimer.current);
     }
   }, [open]);
 
@@ -102,10 +118,10 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
       const target = e.target as Node;
       if (containerRef.current?.contains(target)) return;
       if (menuRef.current?.contains(target)) return;
-      setOpen(false);
+      close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') close();
     };
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('keydown', onKey);
@@ -144,7 +160,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
           type="button"
           onClick={() => {
             onModelChange(model.id);
-            setOpen(false);
+            close();
           }}
           className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
             active
@@ -168,7 +184,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         className={`flex items-center gap-2 text-sm cursor-pointer ${
           compact
             ? 'rounded-full bg-transparent text-white border border-gray-700/50 px-4 py-2 hover:border-gray-600 ml-0'
