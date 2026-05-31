@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   ArrowRight,
   Search,
+  X,
 } from 'lucide-react';
 import PinyinMatch from 'pinyin-match';
 import type { Conversation, Message, Model } from '../../types';
@@ -86,18 +87,6 @@ export default function ChatPanel({
     }
   }, [messages]);
 
-  // 点击外部关闭历史面板
-  useEffect(() => {
-    if (!historyOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (historyPanelRef.current && !historyPanelRef.current.contains(e.target as Node)) {
-        setHistoryOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [historyOpen]);
-
   // Filtered conversations for history panel
   const filteredConversations = useMemo(() => {
     if (!conversations) return [];
@@ -109,6 +98,41 @@ export default function ChatPanel({
       return match !== false;
     });
   }, [conversations, historySearch]);
+
+  // 时间分组逻辑
+  const groupedConversations = useMemo(() => {
+    if (!filteredConversations.length) return [];
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterdayStart = todayStart - 86400000;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    const groups: { label: string; items: typeof filteredConversations }[] = [
+      { label: '今天', items: [] },
+      { label: '昨天', items: [] },
+      { label: '本月', items: [] },
+      { label: '更早', items: [] },
+    ];
+
+    for (const conv of filteredConversations) {
+      const t = conv.updatedAt;
+      if (t >= todayStart) groups[0].items.push(conv);
+      else if (t >= yesterdayStart) groups[1].items.push(conv);
+      else if (t >= monthStart) groups[2].items.push(conv);
+      else groups[3].items.push(conv);
+    }
+
+    return groups.filter(g => g.items.length > 0);
+  }, [filteredConversations]);
+
+  // 获取会话最后消息预览
+  const getLastMessagePreview = (conv: Conversation): string => {
+    const lastMsg = conv.messages[conv.messages.length - 1];
+    if (!lastMsg) return '';
+    if (typeof lastMsg.content === 'string') return lastMsg.content;
+    const textPart = lastMsg.content.find(p => p.type === 'text');
+    return textPart?.text || '[图片]';
+  };
 
   // 拖拽导入
   const handleDragEnter = (e: React.DragEvent) => {
@@ -249,33 +273,52 @@ export default function ChatPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Desktop history popup panel */}
-      {historyOpen && (
-        <div
-          ref={historyPanelRef}
-          className="hidden md:block absolute bottom-[140px] right-4 w-[320px] max-h-[400px] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden"
-        >
-          <div className="flex flex-col h-full max-h-[400px]">
-            {/* Search */}
-            <div className="p-3 border-b border-gray-700/50">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <input
-                  type="text"
-                  value={historySearch}
-                  onChange={e => setHistorySearch(e.target.value)}
-                  placeholder="搜索会话..."
-                  className="w-full bg-gray-800 text-white text-sm rounded-lg pl-9 pr-3 py-2 border border-transparent focus:border-[rgb(127,96,255)] focus:outline-none placeholder-gray-500"
-                />
-              </div>
-            </div>
+      {/* Desktop history sliding panel */}
+      <div
+        ref={historyPanelRef}
+        className={`hidden md:flex flex-col absolute right-0 top-0 bottom-0 w-[380px] z-50 bg-[#1a1a2e] border-l border-gray-700/50 shadow-2xl transition-transform duration-300 ease-in-out ${
+          historyOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* 顶部标题栏 */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h2 className="text-lg font-bold text-white">聊天历史</h2>
+          <button
+            onClick={() => setHistoryOpen(false)}
+            className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-400 hover:text-white" />
+          </button>
+        </div>
 
-            {/* Conversation list */}
-            <div className="flex-1 overflow-y-auto p-2">
-              {filteredConversations.length === 0 && historySearch && (
-                <div className="text-center text-gray-500 text-sm py-4">无匹配结果</div>
-              )}
-              {filteredConversations.map(conv => {
+        {/* "所有" tab */}
+        <div className="px-5 pb-3">
+          <span className="text-sm text-white border-b-2 border-[rgb(127,96,255)] pb-1">所有</span>
+        </div>
+
+        {/* 搜索框 */}
+        <div className="px-5 pb-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <input
+              type="text"
+              value={historySearch}
+              onChange={e => setHistorySearch(e.target.value)}
+              placeholder="搜索"
+              className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[rgb(127,96,255)]"
+            />
+          </div>
+        </div>
+
+        {/* 会话列表（按时间分组，可滚动） */}
+        <div className="flex-1 overflow-y-auto px-3">
+          {filteredConversations.length === 0 && historySearch && (
+            <div className="text-center text-gray-500 text-sm py-8">无匹配结果</div>
+          )}
+          {groupedConversations.map(group => (
+            <div key={group.label}>
+              <div className="px-2 pt-3 pb-1.5 text-xs text-gray-500 font-medium">{group.label}</div>
+              {group.items.map(conv => {
                 const isActive = conv.id === activeConversationId;
                 return (
                   <button
@@ -284,19 +327,34 @@ export default function ChatPanel({
                       onSwitchConversation?.(conv.id);
                       setHistoryOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg mb-1 transition-colors truncate text-sm ${
+                    className={`w-full text-left px-3 py-3 rounded-lg mb-1 transition-colors ${
                       isActive
-                        ? 'bg-[rgb(127,96,255)]/20 text-[rgb(127,96,255)]'
-                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                        ? 'bg-[rgb(127,96,255)]/20'
+                        : 'hover:bg-white/5'
                     }`}
                   >
-                    {conv.title}
+                    <div className={`text-sm font-medium truncate ${
+                      isActive ? 'text-[rgb(127,96,255)]' : 'text-white'
+                    }`}>
+                      {conv.title}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1 line-clamp-2">
+                      {getLastMessagePreview(conv)}
+                    </div>
                   </button>
                 );
               })}
             </div>
-          </div>
+          ))}
         </div>
+      </div>
+
+      {/* 遮罩层 - 点击关闭面板 */}
+      {historyOpen && (
+        <div
+          className="hidden md:block absolute inset-0 z-40"
+          onClick={() => setHistoryOpen(false)}
+        />
       )}
 
       {/* Input */}
