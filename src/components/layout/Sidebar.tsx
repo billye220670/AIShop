@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
-import { MessageSquare, Image as ImageIcon, Film, Music } from 'lucide-react';
+import { MessageSquare, Image as ImageIcon, Film, Music, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { TabMode, Conversation } from '../../types';
 
 type TabIcon = ComponentType<{ className?: string }>;
@@ -25,8 +25,10 @@ const tabs: { id: TabMode; label: string; Icon: TabIcon }[] = [
 
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 500;
-const DEFAULT_WIDTH = 224; // 对应原先 md:w-56 (14rem)
+const DEFAULT_WIDTH = 224;
+const COLLAPSED_WIDTH = 60;
 const STORAGE_KEY = 'sidebar-width';
+const COLLAPSED_STORAGE_KEY = 'sidebar-collapsed';
 
 function clampWidth(value: number): number {
   if (Number.isNaN(value)) return DEFAULT_WIDTH;
@@ -44,12 +46,22 @@ function readStoredWidth(): number {
   }
 }
 
+function readStoredCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export default function Sidebar({
   activeTab,
   onTabChange,
 }: SidebarProps) {
 
   const [width, setWidth] = useState<number>(() => readStoredWidth());
+  const [collapsed, setCollapsed] = useState<boolean>(() => readStoredCollapsed());
   const [isDragging, setIsDragging] = useState(false);
   const draggingRef = useRef(false);
 
@@ -62,11 +74,21 @@ export default function Sidebar({
     }
   }, [width]);
 
+  // 持久化折叠状态
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(collapsed));
+    } catch {
+      // ignore
+    }
+  }, [collapsed]);
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (collapsed) return;
     e.preventDefault();
     draggingRef.current = true;
     setIsDragging(true);
-  }, []);
+  }, [collapsed]);
 
   // 全局监听 mousemove/mouseup —— 拖动期间避免文本选中、保持流畅
   useEffect(() => {
@@ -74,7 +96,6 @@ export default function Sidebar({
 
     const handleMove = (e: MouseEvent) => {
       if (!draggingRef.current) return;
-      // 侧边栏靠左，宽度 = 鼠标 X 距离视口左侧的距离
       setWidth(clampWidth(e.clientX));
     };
 
@@ -100,58 +121,91 @@ export default function Sidebar({
     };
   }, [isDragging]);
 
-  // 折叠态阈值：小于一定宽度时只显示图标（替代原先的 md: 响应式行为）
-  const compact = width < 140;
+  // 折叠态阈值：小于一定宽度时只显示图标
+  const compact = !collapsed && width < 140;
+  const currentWidth = collapsed ? COLLAPSED_WIDTH : width;
 
   return (
     <aside
-      className="relative bg-transparent flex flex-col pt-4 shrink-0"
-      style={{ width: `${width}px` }}
+      className="relative bg-transparent flex flex-col pt-4 shrink-0 overflow-visible transition-all duration-200"
+      style={{ width: `${currentWidth}px` }}
     >
-      <nav className="space-y-1.5 px-2">
+      {/* 顶部标题 + 折叠按钮 */}
+      <div className={`flex items-center px-3 mb-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
+        {!collapsed && (
+          <span className="text-lg font-bold text-white select-none">AISHOP</span>
+        )}
+        <button
+          onClick={() => setCollapsed(prev => !prev)}
+          className="p-1.5 rounded-md text-gray-400 hover:text-white transition-colors"
+          title={collapsed ? '展开侧边栏' : '折叠侧边栏'}
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="w-5 h-5" />
+          ) : (
+            <PanelLeftClose className="w-5 h-5" />
+          )}
+        </button>
+      </div>
+
+      <nav className="space-y-1.5 px-2 overflow-visible">
         {tabs.map(tab => {
           const Icon = tab.Icon;
           return (
-            <button
-              key={tab.id}
-              onClick={() => onTabChange(tab.id)}
-              title={tab.label}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-[rgb(127,96,255)] text-white'
-                  : 'text-gray-400 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <Icon className="w-5 h-5 shrink-0" />
-              {!compact && (
-                <span className="text-sm font-medium truncate">{tab.label}</span>
+            <div key={tab.id} className="relative group">
+              <button
+                onClick={() => onTabChange(tab.id)}
+                {...(!collapsed ? { title: tab.label } : {})}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                  collapsed ? 'justify-center' : ''
+                } ${
+                  activeTab === tab.id
+                    ? 'bg-[rgb(127,96,255)] text-white'
+                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <Icon className="w-5 h-5 shrink-0" />
+                {!collapsed && !compact && (
+                  <span className="text-sm font-medium truncate">{tab.label}</span>
+                )}
+              </button>
+
+              {/* 折叠态自定义 Tooltip */}
+              {collapsed && (
+                <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 z-50">
+                  {/* 小三角箭头 */}
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[5px] border-r-gray-900/95" />
+                  <div className="bg-gray-900/95 text-white text-sm rounded-md px-3 py-1.5 shadow-lg whitespace-nowrap">
+                    {tab.label}
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
           );
         })}
       </nav>
 
-      {/* 拖动手柄：放在右边缘，宽 6px 命中区，内部 1px 视觉线 */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="调节侧边栏宽度"
-        onMouseDown={handleMouseDown}
-        onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
-        title="拖动调节宽度，双击重置"
-        className={`group absolute top-0 right-0 h-full w-1.5 -mr-0.5 cursor-col-resize z-10 select-none ${
-          isDragging ? '' : ''
-        }`}
-        style={{ touchAction: 'none' }}
-      >
+      {/* 拖动手柄 - 折叠态隐藏 */}
+      {!collapsed && (
         <div
-          className={`absolute top-0 right-0 h-full w-px transition-colors duration-150 ${
-            isDragging
-              ? 'bg-blue-500'
-              : 'bg-transparent group-hover:bg-blue-500/70'
-          }`}
-        />
-      </div>
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="调节侧边栏宽度"
+          onMouseDown={handleMouseDown}
+          onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
+          title="拖动调节宽度，双击重置"
+          className="group absolute top-0 right-0 h-full w-1.5 -mr-0.5 cursor-col-resize z-10 select-none"
+          style={{ touchAction: 'none' }}
+        >
+          <div
+            className={`absolute top-0 right-0 h-full w-px transition-colors duration-150 ${
+              isDragging
+                ? 'bg-blue-500'
+                : 'bg-transparent group-hover:bg-blue-500/70'
+            }`}
+          />
+        </div>
+      )}
     </aside>
   );
 }
