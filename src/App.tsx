@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import MainLayout from './components/layout/MainLayout';
 import ChatPanel from './components/chat/ChatPanel';
+import HistoryPanel from './components/chat/HistoryPanel';
 import ImagePanel from './components/image/ImagePanel';
 import VideoPanel from './components/video/VideoPanel';
 import MusicPanel from './components/music/MusicPanel';
@@ -13,6 +14,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const chat = useChat();
 
   const activeConversation = chat.conversations.find(
@@ -33,9 +35,7 @@ function App() {
             conversation={activeConversation}
             onImportConversation={chat.importConversation}
             onInputFocusChange={setInputFocused}
-            conversations={chat.conversations}
-            activeConversationId={chat.activeConversationId}
-            onSwitchConversation={chat.switchConversation}
+            onToggleHistory={() => setHistoryOpen(v => !v)}
             onNewConversation={chat.newConversation}
             selectedModel={activeConversation?.selectedModel || CHAT_MODELS[0].id}
             onModelChange={chat.setSelectedModel}
@@ -71,6 +71,15 @@ function App() {
       >
         {renderContent()}
       </MainLayout>
+
+      {/* History panel at App level - fixed positioning, not clipped by any parent */}
+      <HistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        conversations={chat.conversations}
+        activeConversationId={chat.activeConversationId}
+        onSwitchConversation={chat.switchConversation}
+      />
     </AccessGate>
   );
 }
