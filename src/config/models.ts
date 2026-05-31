@@ -11,6 +11,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 1000000,
     inputCapabilities: ['text', 'image'],
     outputCapabilities: ['text'],
+    category: '高级',
     price: { input: '$5/百万tokens', output: '$25/百万tokens' },
   },
   {
@@ -22,6 +23,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 1000000,
     inputCapabilities: ['text', 'image'],
     outputCapabilities: ['text'],
+    category: '高级',
     price: { input: '$2.85/百万tokens', output: '$14.25/百万tokens' },
   },
   {
@@ -33,6 +35,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 20000,
     inputCapabilities: ['text', 'image'],
     outputCapabilities: ['text'],
+    category: '基础',
     price: { input: '$1/百万tokens', output: '$5/百万tokens' },
   },
   // OpenAI
@@ -45,6 +48,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 1050000,
     inputCapabilities: ['text', 'image'],
     outputCapabilities: ['text'],
+    category: '高级',
     price: { input: '$5/百万tokens', output: '$30/百万tokens' },
   },
   {
@@ -56,6 +60,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 1050000,
     inputCapabilities: ['text', 'image'],
     outputCapabilities: ['text'],
+    category: '基础',
     price: { input: '$0.19/百万tokens', output: '$1.1875/百万tokens' },
   },
   // Google
@@ -68,6 +73,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 1048576,
     inputCapabilities: ['text', 'image', 'video', 'audio'],
     outputCapabilities: ['text'],
+    category: '高级',
     price: { input: '$1.9/百万tokens', output: '$11.4/百万tokens' },
   },
   {
@@ -79,6 +85,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 1048576,
     inputCapabilities: ['text', 'image', 'video', 'audio'],
     outputCapabilities: ['text'],
+    category: '基础',
     price: { input: '$0.2375/百万tokens', output: '$1.425/百万tokens' },
   },
   // xAI
@@ -91,6 +98,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 2000000,
     inputCapabilities: ['text', 'image'],
     outputCapabilities: ['text'],
+    category: '高级',
     price: { input: '$1.9/百万tokens', output: '$5.7/百万tokens' },
   },
   {
@@ -102,6 +110,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 1000000,
     inputCapabilities: ['text', 'image'],
     outputCapabilities: ['text'],
+    category: '基础',
     price: { input: '$1.25/百万tokens', output: '$2.5/百万tokens' },
   },
   // DeepSeek
@@ -114,6 +123,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 1048576,
     inputCapabilities: ['text'],
     outputCapabilities: ['text'],
+    category: '高级',
     price: { input: '$1.74/百万tokens', output: '$3.48/百万tokens' },
   },
   // 智谱 GLM
@@ -126,6 +136,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 202800,
     inputCapabilities: ['text'],
     outputCapabilities: ['text'],
+    category: '基础',
     price: { input: '$1.2/百万tokens', output: '$4/百万tokens' },
   },
   // Moonshot
@@ -138,6 +149,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 262144,
     inputCapabilities: ['text', 'image', 'video'],
     outputCapabilities: ['text'],
+    category: '基础',
     price: { input: '$0.6/百万tokens', output: '$3/百万tokens' },
   },
   // Alibaba Qwen
@@ -150,6 +162,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 262144,
     inputCapabilities: ['text', 'image', 'video'],
     outputCapabilities: ['text'],
+    category: '基础',
     price: { input: '$0.3/百万tokens', output: '$2.4/百万tokens' },
   },
   // ByteDance Doubao
@@ -162,6 +175,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 128000,
     inputCapabilities: ['text', 'image'],
     outputCapabilities: ['text'],
+    category: '基础',
     price: { input: '$0.11/百万tokens', output: '$0.275/百万tokens' },
   },
   // Xiaomi MiMo
@@ -174,6 +188,7 @@ export const CHAT_MODELS: Model[] = [
     contextLength: 262144,
     inputCapabilities: ['text'],
     outputCapabilities: ['text'],
+    category: '基础',
     price: { input: '$0.1/百万tokens', output: '$0.3/百万tokens' },
   },
 ];

@@ -31,6 +31,7 @@ export interface Model {
   contextLength: number;
   inputCapabilities: string[];
   outputCapabilities: string[];
+  category?: '基础' | '高级';
   price: {
     input: string;
     output: string;

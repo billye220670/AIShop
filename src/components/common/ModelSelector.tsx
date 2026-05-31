@@ -42,6 +42,8 @@ interface MenuPosition {
 
 export default function ModelSelector({ models, selectedModel, onModelChange, compact = false }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [animVisible, setAnimVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [pos, setPos] = useState<MenuPosition | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -49,9 +51,23 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
 
   const current = models.find((m) => m.id === selectedModel) ?? models[0];
 
+  // 动画控制：打开时先挂载DOM再触发动画，关闭时先退出动画再卸载DOM
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setAnimVisible(true));
+      });
+    } else {
+      setAnimVisible(false);
+      const timer = setTimeout(() => setMounted(false), 200);
+      return () => clearTimeout(timer);
+    }
+  }, [open]);
+
   // 计算弹出菜单的定位（fixed 坐标，不受祖先 overflow:hidden 影响）
   useLayoutEffect(() => {
-    if (!open || !buttonRef.current) return;
+    if (!mounted || !buttonRef.current) return;
     const recalc = () => {
       const rect = buttonRef.current!.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP;
@@ -77,8 +93,9 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
       window.removeEventListener('resize', recalc);
       window.removeEventListener('scroll', recalc, true);
     };
-  }, [open]);
+  }, [mounted]);
 
+  // ESC 和外部点击关闭
   useEffect(() => {
     if (!open) return;
     const onMouseDown = (e: MouseEvent) => {
@@ -101,6 +118,50 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
   if (!current) return null;
 
   const currentIcon = getProviderIcon(current.provider);
+
+  // 分组逻辑
+  const hasCategories = models.some((m) => m.category);
+  const grouped = models.reduce<Record<string, Model[]>>((acc, m) => {
+    const cat = m.category || '未分类';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(m);
+    return acc;
+  }, {});
+  const categoryOrder = ['基础', '高级'];
+  const sortedCategories = Object.keys(grouped).sort(
+    (a, b) =>
+      (categoryOrder.indexOf(a) === -1 ? 99 : categoryOrder.indexOf(a)) -
+      (categoryOrder.indexOf(b) === -1 ? 99 : categoryOrder.indexOf(b))
+  );
+
+  // 渲染单个模型项
+  const renderModelItem = (model: Model) => {
+    const icon = getProviderIcon(model.provider);
+    const active = model.id === selectedModel;
+    return (
+      <li key={model.id}>
+        <button
+          type="button"
+          onClick={() => {
+            onModelChange(model.id);
+            setOpen(false);
+          }}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
+            active
+              ? 'bg-purple-500/20 text-purple-200 rounded-lg mx-1.5 !w-[calc(100%-0.75rem)]'
+              : 'text-gray-300 hover:bg-white/5'
+          }`}
+        >
+          {icon ? (
+            <img src={icon} alt={model.provider} className="w-4 h-4 shrink-0" />
+          ) : (
+            <span className="w-4 h-4 shrink-0" />
+          )}
+          <span className="whitespace-nowrap">{model.name}</span>
+        </button>
+      </li>
+    );
+  };
 
   return (
     <div ref={containerRef} className="relative inline-block text-left">
@@ -125,7 +186,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
         />
       </button>
 
-      {open && pos &&
+      {mounted && pos &&
         createPortal(
           <ul
             ref={menuRef}
@@ -137,33 +198,24 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
               minWidth: pos.width,
               maxHeight: pos.maxHeight,
             }}
-            className="z-[1000] overflow-y-auto bg-gray-800 border border-gray-600 rounded-lg shadow-lg py-1"
+            className={`z-[1000] overflow-y-auto bg-gray-900/95 backdrop-blur-sm border border-white/5 rounded-xl shadow-2xl py-2
+              transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
+              ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
           >
-            {models.map((model) => {
-              const icon = getProviderIcon(model.provider);
-              const active = model.id === selectedModel;
-              return (
-                <li key={model.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onModelChange(model.id);
-                      setOpen(false);
-                    }}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors ${
-                      active ? 'bg-blue-600/20 text-blue-300' : 'text-gray-200 hover:bg-gray-700'
-                    }`}
-                  >
-                    {icon ? (
-                      <img src={icon} alt={model.provider} className="w-4 h-4 shrink-0" />
-                    ) : (
-                      <span className="w-4 h-4 shrink-0" />
-                    )}
-                    <span className="whitespace-nowrap">{model.name}</span>
-                  </button>
+            {hasCategories ? (
+              sortedCategories.map((cat) => (
+                <li key={cat}>
+                  <div className="px-3 pt-3 pb-1 text-xs font-medium text-purple-400">
+                    {cat}
+                  </div>
+                  <ul>
+                    {grouped[cat].map((model) => renderModelItem(model))}
+                  </ul>
                 </li>
-              );
-            })}
+              ))
+            ) : (
+              models.map((model) => renderModelItem(model))
+            )}
           </ul>,
           document.body
         )}
