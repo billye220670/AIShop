@@ -310,7 +310,7 @@ function AspectRatioGrid({ options, value, onChange, disabled }: AspectRatioGrid
 
       {mounted && (
         <div
-          className={`absolute bottom-full mb-2 right-0 z-[1000] bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl p-3 grid grid-cols-3 gap-2 transition-all duration-200 ease-out origin-bottom
+          className={`absolute bottom-full mb-2 right-0 z-[1000] bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl p-4 grid grid-cols-3 gap-3 transition-all duration-200 ease-out origin-bottom
             ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
         >
           {options.map(opt => (
@@ -318,14 +318,14 @@ function AspectRatioGrid({ options, value, onChange, disabled }: AspectRatioGrid
               key={opt}
               type="button"
               onClick={() => { onChange(opt); setOpen(false); setAnimVisible(false); }}
-              className={`flex flex-col items-center justify-between px-3 py-2.5 rounded-lg transition-colors min-w-[56px] ${
+              className={`flex flex-col items-center justify-between px-4 py-3 rounded-lg transition-colors min-w-[64px] ${
                 value === opt ? 'bg-white/10 text-white' : 'text-gray-300 hover:bg-white/5'
               }`}
             >
-              <div className="flex items-start justify-center h-7">
+              <div className="flex items-start justify-center h-8">
                 <AspectRatioIcon ratio={opt} />
               </div>
-              <span className="text-xs mt-1.5">{opt}</span>
+              <span className="text-xs mt-2">{opt}</span>
             </button>
           ))}
         </div>
