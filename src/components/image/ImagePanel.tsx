@@ -185,7 +185,7 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
             transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
             ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
         >
-          <div className="py-1.5 flex flex-col gap-1">
+          <div className="py-2 px-2 flex flex-col gap-1">
             {options.map(opt => {
               const active = opt.value === value;
               return (
@@ -778,7 +778,6 @@ export default function ImagePanel() {
 
             {/* Size - FloatingSelect */}
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-gray-400">尺寸:</span>
               <FloatingSelect
                 options={sizeOptions.map(opt => ({ value: opt, label: opt }))}
                 value={size}
