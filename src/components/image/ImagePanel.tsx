@@ -310,7 +310,7 @@ function AspectRatioGrid({ options, value, onChange, disabled }: AspectRatioGrid
 
       {mounted && (
         <div
-          className={`absolute bottom-full mb-2 right-0 z-[1000] bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl p-4 grid grid-cols-3 gap-3 transition-all duration-200 ease-out origin-bottom
+          className={`absolute bottom-full mb-2 right-0 z-[1000] w-max bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl p-4 grid grid-cols-3 gap-3 transition-all duration-200 ease-out origin-bottom
             ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
         >
           {options.map(opt => (
