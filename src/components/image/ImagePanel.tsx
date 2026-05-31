@@ -14,7 +14,7 @@ import { IMAGE_MODELS } from '../../config/models';
 import { useImage } from '../../hooks/useImage';
 import type { ImageHistoryItem } from '../../types';
 
-const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB 宽松上限，防止拖入超大文件卡死浏览器
 
 interface FlatCard {
   id: string;          // history.id
@@ -150,7 +150,7 @@ export default function ImagePanel() {
 
     setUploadError(null);
 
-    // 大小校验
+    // 宽松大小校验（仅拦截超大文件防止浏览器卡死）
     const oversized: string[] = [];
     const accepted: File[] = [];
     imageFiles.forEach(f => {
@@ -162,7 +162,7 @@ export default function ImagePanel() {
     });
 
     if (oversized.length > 0) {
-      setUploadError(`以下图片超过 4MB 已被忽略：${oversized.join(', ')}`);
+      setUploadError(`以下图片超过 50MB 已被忽略：${oversized.join(', ')}`);
     }
 
     if (accepted.length > 0) {
@@ -178,7 +178,7 @@ export default function ImagePanel() {
 
     setUploadError(null);
 
-    // 大小校验
+    // 宽松大小校验（仅拦截超大文件防止浏览器卡死）
     const oversized: string[] = [];
     const accepted: File[] = [];
     Array.from(files).forEach(f => {
@@ -190,7 +190,7 @@ export default function ImagePanel() {
     });
 
     if (oversized.length > 0) {
-      setUploadError(`以下图片超过 4MB 已被忽略：${oversized.join(', ')}`);
+      setUploadError(`以下图片超过 50MB 已被忽略：${oversized.join(', ')}`);
     }
 
     if (accepted.length > 0) {
@@ -247,7 +247,7 @@ export default function ImagePanel() {
           <div className="flex flex-col items-center gap-2 text-white">
             <Images className="w-12 h-12 text-[rgb(127,96,255)]" />
             <span className="text-lg font-medium">拖拽图片到此处</span>
-            <span className="text-sm text-gray-300">支持 JPG、PNG、WebP 等格式，单张不超过 4MB</span>
+            <span className="text-sm text-gray-300">支持 JPG、PNG、WebP 等格式</span>
           </div>
         </div>
       )}

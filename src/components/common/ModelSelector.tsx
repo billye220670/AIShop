@@ -53,7 +53,8 @@ const MENU_GAP = 4;
 const MENU_TOP_PADDING = 16; // 菜单距视口顶部的最小间距
 
 interface MenuPosition {
-  top: number;
+  top?: number;      // bottom placement 使用
+  bottom?: number;   // top placement 使用
   left: number;
   width: number;
   maxHeight: number;
@@ -115,13 +116,23 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
         120,
         placement === 'bottom' ? spaceBelow - MENU_TOP_PADDING : spaceAbove
       );
-      setPos({
-        top: placement === 'bottom' ? rect.bottom + MENU_GAP : rect.top - MENU_GAP - maxHeight,
-        left: rect.left,
-        width: rect.width,
-        maxHeight,
-        placement,
-      });
+      if (placement === 'bottom') {
+        setPos({
+          top: rect.bottom + MENU_GAP,
+          left: rect.left,
+          width: rect.width,
+          maxHeight,
+          placement,
+        });
+      } else {
+        setPos({
+          bottom: window.innerHeight - rect.top + MENU_GAP,
+          left: rect.left,
+          width: rect.width,
+          maxHeight,
+          placement,
+        });
+      }
     };
     // 使用 rAF 确保 DOM 完全渲染后再测量位置
     requestAnimationFrame(recalc);
@@ -243,7 +254,8 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
             ref={menuRef}
             style={{
               position: 'fixed',
-              top: pos.top,
+              ...(pos.top !== undefined ? { top: pos.top } : {}),
+              ...(pos.bottom !== undefined ? { bottom: pos.bottom } : {}),
               left: pos.left,
               minWidth: pos.width,
               maxHeight: pos.maxHeight,
