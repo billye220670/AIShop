@@ -12,7 +12,7 @@ import {
   recordFailure,
   recordSuccess,
   timingSafeEqual,
-} from './_lib/access';
+} from './_lib/access.js';
 
 export const maxDuration = 60;
 
