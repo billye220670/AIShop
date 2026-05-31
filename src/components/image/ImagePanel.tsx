@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo, type KeyboardEvent, type ChangeEvent } from 'react';
+import { useRef, useState, useMemo, useCallback, type KeyboardEvent, type ChangeEvent, type DragEvent } from 'react';
 import {
   TriangleAlert,
   Images,
@@ -91,8 +91,10 @@ export default function ImagePanel() {
 
   const [prompt, setPrompt] = useState('');
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dragCounter = useRef(0);
 
   const flatCards = useMemo(() => flattenHistory(history), [history]);
 
@@ -100,6 +102,75 @@ export default function ImagePanel() {
     if (uploadedImages.length >= maxUploadCount) return;
     fileInputRef.current?.click();
   };
+
+  // ===== Drag & Drop handlers =====
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
+    if (dragCounter.current === 1) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current -= 1;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = 0;
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    // 只接受 image/* 类型
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      setUploadError('仅支持拖拽图片文件');
+      return;
+    }
+
+    if (uploadedImages.length >= maxUploadCount) {
+      setUploadError(`已达到最大上传数量 ${maxUploadCount}`);
+      return;
+    }
+
+    setUploadError(null);
+
+    // 大小校验
+    const oversized: string[] = [];
+    const accepted: File[] = [];
+    imageFiles.forEach(f => {
+      if (f.size > MAX_FILE_SIZE) {
+        oversized.push(f.name);
+      } else {
+        accepted.push(f);
+      }
+    });
+
+    if (oversized.length > 0) {
+      setUploadError(`以下图片超过 4MB 已被忽略：${oversized.join(', ')}`);
+    }
+
+    if (accepted.length > 0) {
+      const dt = new DataTransfer();
+      accepted.forEach(f => dt.items.add(f));
+      await addImages(dt.files);
+    }
+  }, [uploadedImages.length, maxUploadCount, addImages]);
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -163,7 +234,23 @@ export default function ImagePanel() {
   const canAddMore = uploadedImages.length < maxUploadCount;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div
+      className="flex-1 flex flex-col overflow-hidden relative"
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm border-2 border-dashed border-[rgb(127,96,255)] rounded-xl pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-white">
+            <Images className="w-12 h-12 text-[rgb(127,96,255)]" />
+            <span className="text-lg font-medium">拖拽图片到此处</span>
+            <span className="text-sm text-gray-300">支持 JPG、PNG、WebP 等格式，单张不超过 4MB</span>
+          </div>
+        </div>
+      )}
       {/* Upload error banner */}
       {uploadError && (
         <div className="px-6 py-2 bg-red-500/10 border-b border-red-500/30 text-red-400 text-sm flex items-start gap-2">

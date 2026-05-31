@@ -103,9 +103,10 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
 
   // 计算弹出菜单的定位（fixed 坐标，不受祖先 overflow:hidden 影响）
   useLayoutEffect(() => {
-    if (!mounted || !buttonRef.current) return;
+    if (!open || !mounted || !buttonRef.current) return;
     const recalc = () => {
-      const rect = buttonRef.current!.getBoundingClientRect();
+      if (!buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP;
       const spaceAbove = rect.top - MENU_GAP - MENU_TOP_PADDING;
       const placement: 'top' | 'bottom' =
@@ -122,14 +123,15 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
         placement,
       });
     };
-    recalc();
+    // 使用 rAF 确保 DOM 完全渲染后再测量位置
+    requestAnimationFrame(recalc);
     window.addEventListener('resize', recalc);
     window.addEventListener('scroll', recalc, true);
     return () => {
       window.removeEventListener('resize', recalc);
       window.removeEventListener('scroll', recalc, true);
     };
-  }, [mounted]);
+  }, [mounted, open]);
 
   // ESC 和外部点击关闭
   useEffect(() => {
