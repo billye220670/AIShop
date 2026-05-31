@@ -1,4 +1,5 @@
-import { useRef, useState, useMemo, useCallback, type KeyboardEvent, type ChangeEvent, type DragEvent } from 'react';
+import { useRef, useState, useMemo, useCallback, useEffect, useLayoutEffect, type KeyboardEvent, type ChangeEvent, type DragEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   TriangleAlert,
   Images,
@@ -8,6 +9,8 @@ import {
   Plus,
   Paperclip,
   SendHorizontal,
+  ChevronDown,
+  X,
 } from 'lucide-react';
 import ModelSelector from '../common/ModelSelector';
 import { IMAGE_MODELS } from '../../config/models';
@@ -58,6 +61,182 @@ function triggerDownload(url: string, prompt: string, timestamp: number): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+}
+
+/* ============ FloatingSelect 通用浮动面板子组件 ============ */
+interface FloatingSelectOption {
+  value: string;
+  label: string;
+}
+
+interface FloatingSelectProps {
+  options: FloatingSelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  renderOption?: (opt: FloatingSelectOption, active: boolean) => React.ReactNode;
+  itemClassName?: string;
+}
+
+function FloatingSelect({ options, value, onChange, disabled, renderOption, itemClassName = 'py-2 px-3' }: FloatingSelectProps) {
+  const [open, setOpen] = useState(false);
+  const [animVisible, setAnimVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; minWidth: number; placement: 'top' | 'bottom' } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const unmountTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const currentLabel = options.find(o => o.value === value)?.label || value;
+
+  const close = () => {
+    setOpen(false);
+    setAnimVisible(false);
+  };
+
+  const toggle = () => {
+    if (disabled) return;
+    if (!open) {
+      clearTimeout(unmountTimer.current);
+      setMounted(true);
+      setOpen(true);
+    } else {
+      close();
+    }
+  };
+
+  useEffect(() => {
+    if (open) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setAnimVisible(true));
+      });
+    } else {
+      unmountTimer.current = setTimeout(() => setMounted(false), 200);
+      return () => clearTimeout(unmountTimer.current);
+    }
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || !mounted || !triggerRef.current) return;
+    const recalc = () => {
+      if (!triggerRef.current) return;
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const spaceAbove = rect.top - 8;
+      const placement: 'top' | 'bottom' = spaceBelow >= spaceAbove ? 'bottom' : 'top';
+      if (placement === 'bottom') {
+        setPos({ top: rect.bottom + 4, left: rect.left, minWidth: rect.width, placement });
+      } else {
+        setPos({ bottom: window.innerHeight - rect.top + 4, left: rect.left, minWidth: rect.width, placement });
+      }
+    };
+    requestAnimationFrame(recalc);
+    window.addEventListener('resize', recalc);
+    window.addEventListener('scroll', recalc, true);
+    return () => {
+      window.removeEventListener('resize', recalc);
+      window.removeEventListener('scroll', recalc, true);
+    };
+  }, [mounted, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (triggerRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKey as unknown as EventListener);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKey as unknown as EventListener);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative inline-block">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={toggle}
+        disabled={disabled}
+        className="flex items-center gap-1.5 rounded-full bg-transparent text-white text-xs border border-gray-700/50 px-3 py-1 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        <span className="whitespace-nowrap">{currentLabel}</span>
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {mounted && pos && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            ...(pos.top !== undefined ? { top: pos.top } : {}),
+            ...(pos.bottom !== undefined ? { bottom: pos.bottom } : {}),
+            left: pos.left,
+            minWidth: pos.minWidth,
+          }}
+          className={`z-[1000] overflow-hidden bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl
+            transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
+            ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
+        >
+          <div className="py-1.5 flex flex-col gap-1">
+            {options.map(opt => {
+              const active = opt.value === value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { onChange(opt.value); close(); }}
+                  className={`w-full flex items-center gap-2.5 text-sm text-left transition-colors rounded-lg mx-auto ${itemClassName} ${
+                    active ? 'bg-white/10 text-white' : 'text-gray-300 hover:bg-white/5'
+                  }`}
+                >
+                  {renderOption ? renderOption(opt, active) : <span>{opt.label}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+/* ============ AspectRatioIcon 比例示意图 ============ */
+function AspectRatioIcon({ ratio }: { ratio: string }) {
+  const baseH = 24;
+  let w = baseH;
+  let h = baseH;
+  let dashed = false;
+
+  if (ratio === 'auto' || ratio === 'Auto') {
+    dashed = true;
+  } else {
+    const parts = ratio.split(':');
+    if (parts.length === 2) {
+      const rw = parseFloat(parts[0]);
+      const rh = parseFloat(parts[1]);
+      if (rw > 0 && rh > 0) {
+        const scale = baseH / Math.max(rw, rh);
+        w = Math.round(rw * scale);
+        h = Math.round(rh * scale);
+      }
+    }
+  }
+
+  return (
+    <div
+      className={`rounded border bg-gray-600/30 flex-shrink-0 ${dashed ? 'border-dashed border-gray-400' : 'border-gray-400'}`}
+      style={{ width: w, height: h }}
+    />
+  );
 }
 
 export default function ImagePanel() {
@@ -364,41 +543,6 @@ export default function ImagePanel() {
         )}
       </div>
 
-      {/* Uploaded images preview bar */}
-      {isEditMode && (
-        <div className="border-t border-gray-700 bg-gray-900/70 px-4 py-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400">参考图 ({uploadedImages.length}/{maxUploadCount}):</span>
-            {uploadedImages.map((b64, idx) => (
-              <div key={idx} className="relative group">
-                <img
-                  src={`data:image/jpeg;base64,${b64}`}
-                  alt={`upload-${idx}`}
-                  className="w-16 h-16 object-cover rounded-lg border border-gray-600"
-                />
-                <button
-                  onClick={() => removeImage(idx)}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center transition-colors"
-                  title="移除"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            {canAddMore && (
-              <button
-                onClick={handlePickFiles}
-                className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 border border-dashed border-gray-600 hover:border-blue-500 rounded-lg text-gray-400 hover:text-blue-400 transition-colors"
-                title="添加更多"
-              >
-                <Plus className="w-5 h-5" />
-                <span className="text-[10px]">添加</span>
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Input area - aligned with ChatInput design */}
       <div className="bg-transparent p-3 md:p-4">
         {/* Row 1: Toolbar */}
@@ -431,48 +575,45 @@ export default function ImagePanel() {
 
           {/* Right: Parameters + Clear */}
           <div className="flex items-center gap-3">
-            {/* Aspect Ratio */}
+            {/* Aspect Ratio - FloatingSelect */}
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-gray-400">宽高比:</span>
-              <select
+              <FloatingSelect
+                options={aspectRatioOptions.map(opt => ({ value: opt, label: opt }))}
                 value={aspectRatio}
-                onChange={(e) => setAspectRatio(e.target.value)}
+                onChange={setAspectRatio}
                 disabled={aspectRatioOptions.length <= 1}
-                className="bg-gray-700 text-white text-xs rounded-lg px-2.5 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {aspectRatioOptions.map(opt => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
+                itemClassName="py-2.5 px-3"
+                renderOption={(opt) => (
+                  <>
+                    <AspectRatioIcon ratio={opt.value} />
+                    <span>{opt.label}</span>
+                  </>
+                )}
+              />
             </div>
 
-            {/* Size */}
+            {/* Size - FloatingSelect */}
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-gray-400">尺寸:</span>
-              <select
+              <FloatingSelect
+                options={sizeOptions.map(opt => ({ value: opt, label: opt }))}
                 value={size}
-                onChange={(e) => setSize(e.target.value)}
-                className="bg-gray-700 text-white text-xs rounded-lg px-2.5 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer"
-              >
-                {sizeOptions.map(opt => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
+                onChange={setSize}
+                disabled={sizeOptions.length <= 1}
+              />
             </div>
 
             {/* Quality */}
             {showQuality && (
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-gray-400">质量:</span>
-                <select
+                <FloatingSelect
+                  options={qualityOptions.map(opt => ({ value: opt, label: opt }))}
                   value={quality}
-                  onChange={(e) => setQuality(e.target.value)}
-                  className="bg-gray-700 text-white text-xs rounded-lg px-2.5 py-1 border border-gray-600 focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  {qualityOptions.map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
+                  onChange={setQuality}
+                  disabled={qualityOptions.length <= 1}
+                />
               </div>
             )}
 
@@ -491,32 +632,78 @@ export default function ImagePanel() {
           </div>
         </div>
 
-        {/* Row 2: Input textarea with embedded send button */}
-        <div className="relative">
-          <textarea
-            ref={textareaRef}
-            value={prompt}
-            onChange={handleTextChange}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              isEditMode
-                ? '描述如何编辑参考图... (Enter 发送, Shift+Enter 换行)'
-                : '描述你想生成的图片... (Enter 发送, Shift+Enter 换行)'
-            }
-            className="w-full bg-transparent text-white rounded-xl px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[160px] min-h-[80px] focus:outline-none focus:border-[rgb(127,96,255)] border border-white/10"
-            rows={3}
-          />
+        {/* Row 2: Unified input container with embedded thumbnails */}
+        <div className={`relative rounded-xl transition-colors ${
+          uploadedImages.length > 0
+            ? 'border border-white/10 focus-within:border-[rgb(127,96,255)]'
+            : ''
+        }`}>
+          {/* Thumbnails area inside input container */}
+          {isEditMode && uploadedImages.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2.5 flex-wrap">
+                {uploadedImages.map((b64, idx) => (
+                  <div key={idx} className="relative group">
+                    <img
+                      src={`data:image/jpeg;base64,${b64}`}
+                      alt={`upload-${idx}`}
+                      className="w-16 h-16 object-cover rounded-lg border border-gray-600"
+                    />
+                    <button
+                      onClick={() => removeImage(idx)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs items-center justify-center transition-colors hidden group-hover:flex"
+                      title="移除"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {canAddMore && (
+                  <button
+                    onClick={handlePickFiles}
+                    className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 border border-dashed border-gray-600 hover:border-blue-500 rounded-lg text-gray-400 hover:text-blue-400 transition-colors"
+                    title="添加更多"
+                  >
+                    <Plus className="w-5 h-5" />
+                    <span className="text-[10px]">添加</span>
+                  </button>
+                )}
+              </div>
+              <div className="border-b border-gray-600/40" />
+            </>
+          )}
 
-          {/* Send button - absolute positioned bottom-right */}
-          <div className="absolute right-3 bottom-3">
-            <button
-              onClick={handleSubmit}
-              disabled={!canGenerate}
-              className="p-2 text-[rgb(127,96,255)] hover:text-[rgb(107,76,235)] disabled:text-gray-500 transition-colors"
-              title="生成"
-            >
-              <SendHorizontal className="w-4 h-4" />
-            </button>
+          {/* Textarea */}
+          <div className={`relative ${uploadedImages.length === 0 ? '' : ''}`}>
+            <textarea
+              ref={textareaRef}
+              value={prompt}
+              onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                isEditMode
+                  ? '描述如何编辑参考图... (Enter 发送, Shift+Enter 换行)'
+                  : '描述你想生成的图片... (Enter 发送, Shift+Enter 换行)'
+              }
+              className={`w-full bg-transparent text-white px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[160px] min-h-[80px] focus:outline-none ${
+                uploadedImages.length > 0
+                  ? 'border-none rounded-b-xl'
+                  : 'rounded-xl border border-white/10 focus:border-[rgb(127,96,255)]'
+              }`}
+              rows={3}
+            />
+
+            {/* Send button - absolute positioned bottom-right */}
+            <div className="absolute right-3 bottom-3">
+              <button
+                onClick={handleSubmit}
+                disabled={!canGenerate}
+                className="p-2 text-[rgb(127,96,255)] hover:text-[rgb(107,76,235)] disabled:text-gray-500 transition-colors"
+                title="生成"
+              >
+                <SendHorizontal className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
