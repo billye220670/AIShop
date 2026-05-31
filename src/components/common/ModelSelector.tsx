@@ -67,7 +67,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
   const [pos, setPos] = useState<MenuPosition | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLUListElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const unmountTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const current = models.find((m) => m.id === selectedModel) ?? models[0];
@@ -188,7 +188,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
         >
           {icon ? (
             DARK_ICON_PROVIDERS.includes(model.provider) ? (
-              <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-gray-400/20">
+              <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-white/70">
                 <img src={icon} alt={model.provider} className="w-3 h-3" />
               </span>
             ) : (
@@ -208,7 +208,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
     if (!currentIcon) return <span className="w-4 h-4 shrink-0" />;
     if (DARK_ICON_PROVIDERS.includes(current.provider)) {
       return (
-        <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-gray-400/20">
+        <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-white/70">
           <img src={currentIcon} alt={current.provider} className="w-3 h-3" />
         </span>
       );
@@ -237,9 +237,8 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
 
       {mounted && pos &&
         createPortal(
-          <ul
+          <div
             ref={menuRef}
-            role="listbox"
             style={{
               position: 'fixed',
               top: pos.top,
@@ -247,10 +246,14 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
               minWidth: pos.width,
               maxHeight: pos.maxHeight,
             }}
-            className={`z-[1000] overflow-y-auto bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl py-3
+            className={`z-[1000] overflow-hidden bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl
               transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
               ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
           >
+            <ul
+              role="listbox"
+              className="overflow-y-auto py-3 h-full max-h-[inherit]"
+            >
             {hasGroups ? (
               sortedGroups.map((group) => (
                 <li key={group}>
@@ -265,7 +268,8 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
             ) : (
               models.map((model) => renderModelItem(model))
             )}
-          </ul>,
+            </ul>
+          </div>,
           document.body
         )}
     </div>
