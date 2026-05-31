@@ -621,10 +621,7 @@ export default function ImagePanel() {
         {flatCards.length === 0 && pendingTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <Images className="w-16 h-16 mb-4 text-gray-600" strokeWidth={1.5} />
-            <p className="text-lg">输入提示词开始创作</p>
-            <p className="text-sm mt-2">
-              支持 GPT Image 2 / Nanobanana 2 / Nanobanana Pro，可上传参考图进行编辑
-            </p>
+            <p className="text-sm">创作的内容将在这里显示</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -855,7 +852,7 @@ export default function ImagePanel() {
               placeholder={
                 isEditMode
                   ? '描述如何编辑参考图... (Enter 发送, Shift+Enter 换行)'
-                  : '描述你想生成的图片... (Enter 发送, Shift+Enter 换行)'
+                  : '描述你的图片，或拖拽图片到此处作为参考'
               }
               className={`w-full bg-transparent text-white px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[160px] min-h-[80px] focus:outline-none ${
                 uploadedImages.length > 0
