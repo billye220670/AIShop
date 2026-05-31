@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Palette,
-  Languages,
-  FileText,
-  LayoutGrid,
-  ArrowRight,
-} from 'lucide-react';
+
 import type { Conversation, Message, Model } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
 import MessageBubble from './MessageBubble';
@@ -143,57 +137,14 @@ export default function ChatPanel({
       >
         {messages.length === 0 && (
           <div className="pt-2 md:pt-8 pl-4 md:pl-12">
-            <h1 className="leading-tight">
-              <span className="text-3xl md:text-5xl font-extrabold tracking-tight text-white sm:text-4xl md:text-6xl">
-                你好
+            <div className="flex flex-col">
+              <span className="text-3xl md:text-5xl font-extrabold tracking-tight text-white">
+                你好，
               </span>
-              <span className="text-sm md:text-base text-white/90 font-normal ml-1.5 md:ml-2">
-                ，今天我能帮你什么？
+              <span className="text-2xl md:text-4xl font-bold text-white mt-2">
+                今天我能帮你什么？
               </span>
-            </h1>
-            <ul className="mt-5 md:mt-8 space-y-3.5 md:space-y-4 ml-2">
-              <li>
-                <button
-                  type="button"
-                  onClick={() => sendMessage('帮我画一张图：')}
-                  className="flex items-center gap-3 w-full text-[15px] md:text-base text-gray-100 hover:text-white py-1 px-2 rounded-lg hover:bg-gray-800 transition-colors"
-                >
-                  <Palette className="w-5 h-5 text-orange-400 shrink-0" />
-                  <span>画图</span>
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => sendMessage('帮我翻译：')}
-                  className="flex items-center gap-3 w-full text-[15px] md:text-base text-gray-100 hover:text-white py-1 px-2 rounded-lg hover:bg-gray-800 transition-colors"
-                >
-                  <Languages className="w-5 h-5 text-[rgb(127,96,255)] shrink-0" />
-                  <span>翻译</span>
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => sendMessage('我想就一份 PDF 向你提问：')}
-                  className="flex items-center gap-3 w-full text-[15px] md:text-base text-gray-100 hover:text-white py-1 px-2 rounded-lg hover:bg-gray-800 transition-colors"
-                >
-                  <FileText className="w-5 h-5 text-blue-400 shrink-0" />
-                  <span>PDF 聊天</span>
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {}}
-                  className="flex items-center gap-3 w-full text-[15px] md:text-base text-gray-300 hover:text-white py-1 px-2 rounded-lg hover:bg-gray-800 transition-colors"
-                >
-                  <LayoutGrid className="w-5 h-5 text-gray-400 shrink-0" />
-                  <span>新功能许愿</span>
-                  <ArrowRight className="w-4 h-4 text-gray-500 ml-auto shrink-0" />
-                </button>
-              </li>
-            </ul>
+            </div>
           </div>
         )}
         {messages.map((msg, index) => {

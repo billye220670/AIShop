@@ -1,5 +1,5 @@
 import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent } from 'react';
-import { Paperclip, Square, ArrowUp, Plus, Clock } from 'lucide-react';
+import { Paperclip, Square, ArrowUp, SendHorizontal, Plus, Clock } from 'lucide-react';
 import type { MessageContent, Model } from '../../types';
 import ModelSelector from '../common/ModelSelector';
 
@@ -183,7 +183,7 @@ export default function ChatInput({
       <div className="hidden md:block">
         {/* Row 1: Toolbar */}
         <div className="flex items-center justify-between mb-3">
-          {/* Left: ModelSelector */}
+          {/* Left: ModelSelector + Upload */}
           <div className="flex items-center">
             {models && selectedModel && onModelChange && (
               <ModelSelector
@@ -193,14 +193,10 @@ export default function ChatInput({
                 compact={true}
               />
             )}
-          </div>
-
-          {/* Right: action buttons */}
-          <div className="flex items-center gap-2">
             {/* File upload */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
+              className="ml-2 p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
               title="上传图片"
             >
               <Paperclip className="w-5 h-5" />
@@ -213,7 +209,10 @@ export default function ChatInput({
               className="hidden"
               onChange={handleFileUpload}
             />
+          </div>
 
+          {/* Right: action buttons */}
+          <div className="flex items-center gap-2">
             {/* History toggle */}
             <button
               onClick={() => onToggleHistory?.()}
@@ -243,7 +242,7 @@ export default function ChatInput({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
-            className="w-full bg-gray-900 text-white rounded-xl px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[200px] min-h-[80px] focus:bg-gray-900 focus:outline-none focus:border-[rgb(127,96,255)] border border-transparent"
+            className="w-full bg-transparent text-white rounded-xl px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[200px] min-h-[80px] focus:outline-none focus:border-[rgb(127,96,255)] border border-white/10"
             rows={3}
           />
 
@@ -264,7 +263,7 @@ export default function ChatInput({
                 className="p-2 bg-[rgb(127,96,255)] hover:bg-[rgb(107,76,235)] disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-full transition-colors"
                 title="发送"
               >
-                <ArrowUp className="w-4 h-4" />
+                <SendHorizontal className="w-4 h-4" />
               </button>
             )}
           </div>
