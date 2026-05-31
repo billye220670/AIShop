@@ -24,6 +24,26 @@ const PROVIDER_ICON_MAP: Record<string, string> = {
   Xiaomi: 'xiaomimimo.svg',
 };
 
+// provider → 显示的组名
+const PROVIDER_GROUP_MAP: Record<string, string> = {
+  Anthropic: 'Anthropic',
+  OpenAI: 'OpenAI',
+  Google: 'Google',
+  xAI: 'xAI',
+  DeepSeek: '国内模型',
+  '智谱': '国内模型',
+  Alibaba: '国内模型',
+  ByteDance: '国内模型',
+  Moonshot: '国内模型',
+  Xiaomi: '国内模型',
+};
+
+// 分组显示顺序
+const GROUP_ORDER = ['Anthropic', 'OpenAI', 'Google', 'xAI', '国内模型'];
+
+// 需要圆形背景的深色图标 provider
+const DARK_ICON_PROVIDERS = ['OpenAI', 'xAI', 'Xiaomi'];
+
 function getProviderIcon(provider: string): string | null {
   const file = PROVIDER_ICON_MAP[provider];
   return file ? `/providers/${file}` : null;
@@ -135,19 +155,17 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
 
   const currentIcon = getProviderIcon(current.provider);
 
-  // 分组逻辑
-  const hasCategories = models.some((m) => m.category);
+  // 按厂商分组
+  const hasGroups = models.some((m) => PROVIDER_GROUP_MAP[m.provider]);
   const grouped = models.reduce<Record<string, Model[]>>((acc, m) => {
-    const cat = m.category || '未分类';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(m);
+    const group = PROVIDER_GROUP_MAP[m.provider] || '其他';
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(m);
     return acc;
   }, {});
-  const categoryOrder = ['基础', '高级'];
-  const sortedCategories = Object.keys(grouped).sort(
-    (a, b) =>
-      (categoryOrder.indexOf(a) === -1 ? 99 : categoryOrder.indexOf(a)) -
-      (categoryOrder.indexOf(b) === -1 ? 99 : categoryOrder.indexOf(b))
+  const sortedGroups = Object.keys(grouped).sort(
+    (a, b) => (GROUP_ORDER.indexOf(a) === -1 ? 99 : GROUP_ORDER.indexOf(a)) -
+              (GROUP_ORDER.indexOf(b) === -1 ? 99 : GROUP_ORDER.indexOf(b))
   );
 
   // 渲染单个模型项
@@ -162,14 +180,20 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
             onModelChange(model.id);
             close();
           }}
-          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
+          className={`w-full flex items-center gap-2.5 px-4 py-2 text-sm text-left transition-colors ${
             active
-              ? 'bg-purple-500/20 text-purple-200 rounded-lg mx-1.5 !w-[calc(100%-0.75rem)]'
+              ? 'bg-[rgb(70,61,123)] text-white rounded-lg mx-2 !w-[calc(100%-1rem)]'
               : 'text-gray-300 hover:bg-white/5'
           }`}
         >
           {icon ? (
-            <img src={icon} alt={model.provider} className="w-4 h-4 shrink-0" />
+            DARK_ICON_PROVIDERS.includes(model.provider) ? (
+              <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-gray-400/20">
+                <img src={icon} alt={model.provider} className="w-3 h-3" />
+              </span>
+            ) : (
+              <img src={icon} alt={model.provider} className="w-4 h-4 shrink-0" />
+            )
           ) : (
             <span className="w-4 h-4 shrink-0" />
           )}
@@ -177,6 +201,19 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
         </button>
       </li>
     );
+  };
+
+  // 渲染触发器上的图标
+  const renderTriggerIcon = () => {
+    if (!currentIcon) return <span className="w-4 h-4 shrink-0" />;
+    if (DARK_ICON_PROVIDERS.includes(current.provider)) {
+      return (
+        <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-gray-400/20">
+          <img src={currentIcon} alt={current.provider} className="w-3 h-3" />
+        </span>
+      );
+    }
+    return <img src={currentIcon} alt={current.provider} className="w-4 h-4 shrink-0" />;
   };
 
   return (
@@ -191,11 +228,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
             : 'bg-gray-700 text-white rounded-lg px-3 py-1.5 border border-gray-600 hover:border-gray-500 focus:outline-none focus:border-blue-500'
         }`}
       >
-        {currentIcon ? (
-          <img src={currentIcon} alt={current.provider} className="w-4 h-4 shrink-0" />
-        ) : (
-          <span className="w-4 h-4 shrink-0" />
-        )}
+        {renderTriggerIcon()}
         <span className="whitespace-nowrap">{current.name}</span>
         <ChevronDown
           className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
@@ -214,18 +247,18 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
               minWidth: pos.width,
               maxHeight: pos.maxHeight,
             }}
-            className={`z-[1000] overflow-y-auto bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl py-2
+            className={`z-[1000] overflow-y-auto bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl py-3
               transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
               ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
           >
-            {hasCategories ? (
-              sortedCategories.map((cat) => (
-                <li key={cat}>
-                  <div className="px-3 pt-3 pb-1 text-xs font-medium text-purple-400">
-                    {cat}
+            {hasGroups ? (
+              sortedGroups.map((group) => (
+                <li key={group}>
+                  <div className="px-4 pt-4 pb-1.5 text-sm font-bold text-[rgb(114,115,138)]">
+                    {group}
                   </div>
                   <ul>
-                    {grouped[cat].map((model) => renderModelItem(model))}
+                    {grouped[group].map((model) => renderModelItem(model))}
                   </ul>
                 </li>
               ))
