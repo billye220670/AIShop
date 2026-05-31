@@ -131,7 +131,7 @@ export default function Sidebar({
       style={{ width: `${currentWidth}px` }}
     >
       {/* 顶部标题 + 折叠按钮 */}
-      <div className={`flex items-center px-3 mb-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
+      <div className={`flex items-center px-3 py-4 mb-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
         {!collapsed && (
           <span className="text-lg font-bold text-white select-none">AISHOP</span>
         )}
