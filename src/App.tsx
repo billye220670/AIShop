@@ -79,6 +79,8 @@ function App() {
         conversations={chat.conversations}
         activeConversationId={chat.activeConversationId}
         onSwitchConversation={chat.switchConversation}
+        onDelete={chat.deleteConversation}
+        onRename={chat.renameConversation}
       />
     </AccessGate>
   );
