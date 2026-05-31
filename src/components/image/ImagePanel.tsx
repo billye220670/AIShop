@@ -165,7 +165,7 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
         type="button"
         onClick={toggle}
         disabled={disabled}
-        className="flex items-center gap-1.5 rounded-full bg-transparent text-white text-xs border border-gray-700/50 px-3 py-1 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center gap-2 rounded-full bg-transparent text-white text-sm border border-gray-700/50 px-4 py-2 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         <span className="whitespace-nowrap">{currentLabel}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -239,6 +239,99 @@ function AspectRatioIcon({ ratio }: { ratio: string }) {
   );
 }
 
+/* ============ AspectRatioGrid 九宫格比例选择器 ============ */
+interface AspectRatioGridProps {
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+function AspectRatioGrid({ options, value, onChange, disabled }: AspectRatioGridProps) {
+  const [open, setOpen] = useState(false);
+  const [animVisible, setAnimVisible] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const unmountTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [mounted, setMounted] = useState(false);
+
+  const toggle = () => {
+    if (disabled) return;
+    if (!open) {
+      clearTimeout(unmountTimer.current);
+      setMounted(true);
+      setOpen(true);
+    } else {
+      setOpen(false);
+      setAnimVisible(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setAnimVisible(true));
+      });
+    } else {
+      unmountTimer.current = setTimeout(() => setMounted(false), 200);
+      return () => clearTimeout(unmountTimer.current);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (containerRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+      setAnimVisible(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); setAnimVisible(false); }
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative inline-block" ref={containerRef}>
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={disabled}
+        className="flex items-center gap-2 rounded-full bg-transparent text-white text-sm border border-gray-700/50 px-4 py-2 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        <AspectRatioIcon ratio={value} />
+        <span className="whitespace-nowrap">{value}</span>
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {mounted && (
+        <div
+          className={`absolute top-full mt-2 right-0 z-[1000] bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl p-2 grid grid-cols-3 gap-1 transition-all duration-200 ease-out origin-top
+            ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
+        >
+          {options.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => { onChange(opt); setOpen(false); setAnimVisible(false); }}
+              className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors ${
+                value === opt ? 'bg-white/10 text-white' : 'text-gray-300 hover:bg-white/5'
+              }`}
+            >
+              <AspectRatioIcon ratio={opt} />
+              <span className="text-xs">{opt}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ImagePanel() {
   const {
     selectedModel,
@@ -259,7 +352,6 @@ export default function ImagePanel() {
     dismissTask,
     history,
     deleteHistoryItem,
-    clearHistory,
     isEditMode,
     maxUploadCount,
     aspectRatioOptions,
@@ -674,23 +766,13 @@ export default function ImagePanel() {
 
           {/* Right: Parameters + Clear */}
           <div className="flex items-center gap-3">
-            {/* Aspect Ratio - FloatingSelect */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-gray-400">宽高比:</span>
-              <FloatingSelect
-                options={aspectRatioOptions.map(opt => ({ value: opt, label: opt }))}
-                value={aspectRatio}
-                onChange={setAspectRatio}
-                disabled={aspectRatioOptions.length <= 1}
-                itemClassName="py-2.5 px-3"
-                renderOption={(opt) => (
-                  <>
-                    <AspectRatioIcon ratio={opt.value} />
-                    <span>{opt.label}</span>
-                  </>
-                )}
-              />
-            </div>
+            {/* Aspect Ratio - 九宫格面板 */}
+            <AspectRatioGrid
+              options={aspectRatioOptions}
+              value={aspectRatio}
+              onChange={setAspectRatio}
+              disabled={aspectRatioOptions.length <= 1}
+            />
 
             {/* Size - FloatingSelect */}
             <div className="flex items-center gap-1.5">
@@ -716,18 +798,7 @@ export default function ImagePanel() {
               </div>
             )}
 
-            {/* Clear History */}
-            {history.length > 0 && (
-              <button
-                onClick={() => {
-                  if (confirm('确定要清空所有生成历史吗？')) clearHistory();
-                }}
-                className="text-xs text-gray-400 hover:text-red-400 px-2 py-1 rounded hover:bg-gray-700 transition-colors"
-                title="清空历史"
-              >
-                清空历史
-              </button>
-            )}
+
           </div>
         </div>
 
