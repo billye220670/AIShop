@@ -78,7 +78,7 @@ interface FloatingSelectProps {
   itemClassName?: string;
 }
 
-function FloatingSelect({ options, value, onChange, disabled, renderOption, itemClassName = 'py-2 px-3' }: FloatingSelectProps) {
+function FloatingSelect({ options, value, onChange, disabled, renderOption, itemClassName = 'py-2 px-5' }: FloatingSelectProps) {
   const [open, setOpen] = useState(false);
   const [animVisible, setAnimVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
