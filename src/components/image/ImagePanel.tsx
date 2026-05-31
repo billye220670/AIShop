@@ -466,6 +466,7 @@ export default function ImagePanel() {
                 <img
                   src={card.url}
                   alt={card.prompt}
+                  draggable={false}
                   className="w-full h-full object-cover"
                   loading="lazy"
                 />
@@ -647,6 +648,7 @@ export default function ImagePanel() {
                     <img
                       src={`data:image/jpeg;base64,${b64}`}
                       alt={`upload-${idx}`}
+                      draggable={false}
                       className="w-16 h-16 object-cover rounded-lg border border-gray-600"
                     />
                     <button
