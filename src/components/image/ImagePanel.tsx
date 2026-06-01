@@ -82,7 +82,7 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
   const [open, setOpen] = useState(false);
   const [animVisible, setAnimVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; minWidth: number; placement: 'top' | 'bottom' } | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; minWidth: number; width: number; placement: 'top' | 'bottom' } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const unmountTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -124,10 +124,20 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
       const spaceBelow = window.innerHeight - rect.bottom - 8;
       const spaceAbove = rect.top - 8;
       const placement: 'top' | 'bottom' = spaceBelow >= spaceAbove ? 'bottom' : 'top';
+      // 测量菜单宽度
+      const tempMenu = document.createElement('div');
+      tempMenu.className = 'z-[1000] overflow-hidden bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl py-2 px-2 flex flex-col gap-1';
+      tempMenu.style.visibility = 'hidden';
+      tempMenu.style.position = 'fixed';
+      document.body.appendChild(tempMenu);
+      const menuWidth = tempMenu.offsetWidth;
+      document.body.removeChild(tempMenu);
+      // 菜单右对齐：left = buttonRight - menuWidth
+      const rightAlignedLeft = rect.right - menuWidth;
       if (placement === 'bottom') {
-        setPos({ top: rect.bottom + 4, left: rect.left, minWidth: rect.width, placement });
+        setPos({ top: rect.bottom + 4, left: rightAlignedLeft, minWidth: rect.width, width: menuWidth, placement });
       } else {
-        setPos({ bottom: window.innerHeight - rect.top + 4, left: rect.left, minWidth: rect.width, placement });
+        setPos({ bottom: window.innerHeight - rect.top + 4, left: rightAlignedLeft, minWidth: rect.width, width: menuWidth, placement });
       }
     };
     requestAnimationFrame(recalc);
@@ -180,6 +190,7 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
             ...(pos.bottom !== undefined ? { bottom: pos.bottom } : {}),
             left: pos.left,
             minWidth: pos.minWidth,
+            width: pos.width,
           }}
           className={`z-[1000] overflow-hidden bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl
             transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
