@@ -189,8 +189,7 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
             ...(pos.top !== undefined ? { top: pos.top } : {}),
             ...(pos.bottom !== undefined ? { bottom: pos.bottom } : {}),
             left: pos.left,
-            minWidth: pos.minWidth,
-            width: pos.width,
+            width: `${pos.width}px`,
           }}
           className={`z-[1000] overflow-hidden bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl
             transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
@@ -204,7 +203,8 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
                   key={opt.value}
                   type="button"
                   onClick={() => { onChange(opt.value); close(); }}
-                  className={`w-full flex items-center gap-2.5 text-sm text-left transition-colors rounded-lg mx-auto ${itemClassName} ${
+                  style={{ width: `${pos.width - 16}px` }}
+                  className={`flex items-center gap-2.5 text-sm text-left transition-colors rounded-lg ${itemClassName} ${
                     active ? 'bg-white/10 text-white' : 'text-gray-300 hover:bg-white/5'
                   }`}
                 >
