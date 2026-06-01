@@ -1,5 +1,14 @@
 export type MessageRole = 'user' | 'assistant' | 'system';
 
+export interface ArtifactBlock {
+  id: string;
+  type: 'html';
+  title: string;
+  description?: string;
+  code: string;
+  createdAt: number;
+}
+
 export interface MessageContent {
   type: 'text' | 'image_url';
   text?: string;
@@ -29,6 +38,7 @@ export interface Message {
     siteName: string;
   }>;
   attachments?: FileAttachment[];
+  artifact?: ArtifactBlock;  // 关联的 artifact 数据
 }
 
 export interface Model {
