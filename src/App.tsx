@@ -33,7 +33,6 @@ function App() {
             stopGeneration={chat.stopGeneration}
             conversationTitle={conversationTitle}
             conversation={activeConversation}
-            onImportConversation={chat.importConversation}
             onInputFocusChange={setInputFocused}
             onToggleHistory={() => setHistoryOpen(v => !v)}
             onNewConversation={chat.newConversation}
