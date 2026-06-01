@@ -124,20 +124,13 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
       const spaceBelow = window.innerHeight - rect.bottom - 8;
       const spaceAbove = rect.top - 8;
       const placement: 'top' | 'bottom' = spaceBelow >= spaceAbove ? 'bottom' : 'top';
-      // 测量菜单宽度
-      const tempMenu = document.createElement('div');
-      tempMenu.className = 'z-[1000] overflow-hidden bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl py-2 px-2 flex flex-col gap-1';
-      tempMenu.style.visibility = 'hidden';
-      tempMenu.style.position = 'fixed';
-      document.body.appendChild(tempMenu);
-      const menuWidth = tempMenu.offsetWidth;
-      document.body.removeChild(tempMenu);
-      // 菜单右对齐：left = buttonRight - menuWidth
-      const rightAlignedLeft = rect.right - menuWidth;
+      // 计算右对齐的位置：left = buttonRight - menuWidth
+      // menuWidth 使用按钮宽度，确保右对齐
+      const rightAlignedLeft = rect.right - rect.width;
       if (placement === 'bottom') {
-        setPos({ top: rect.bottom + 4, left: rightAlignedLeft, minWidth: rect.width, width: menuWidth, placement });
+        setPos({ top: rect.bottom + 4, left: rightAlignedLeft, minWidth: rect.width, width: rect.width, placement });
       } else {
-        setPos({ bottom: window.innerHeight - rect.top + 4, left: rightAlignedLeft, minWidth: rect.width, width: menuWidth, placement });
+        setPos({ bottom: window.innerHeight - rect.top + 4, left: rightAlignedLeft, minWidth: rect.width, width: rect.width, placement });
       }
     };
     requestAnimationFrame(recalc);
@@ -189,7 +182,8 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
             ...(pos.top !== undefined ? { top: pos.top } : {}),
             ...(pos.bottom !== undefined ? { bottom: pos.bottom } : {}),
             left: pos.left,
-            width: `${pos.width}px`,
+            minWidth: pos.minWidth,
+            width: pos.width,
           }}
           className={`z-[1000] overflow-hidden bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl
             transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
@@ -203,8 +197,7 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
                   key={opt.value}
                   type="button"
                   onClick={() => { onChange(opt.value); close(); }}
-                  style={{ width: `${pos.width - 16}px` }}
-                  className={`flex items-center gap-2.5 text-sm text-left transition-colors rounded-lg ${itemClassName} ${
+                  className={`w-full flex items-center gap-2.5 text-sm text-left transition-colors rounded-lg ${itemClassName} ${
                     active ? 'bg-white/10 text-white' : 'text-gray-300 hover:bg-white/5'
                   }`}
                 >
