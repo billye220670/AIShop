@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Globe, TriangleAlert, Copy, Check } from 'lucide-react';
+import { Globe, TriangleAlert, Copy, Check, FileText } from 'lucide-react';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import type { Message, MessageContent } from '../../types';
@@ -65,22 +65,6 @@ function getProviderIcon(provider: string): string {
   return icon ? `/providers/${icon}` : '/providers/openai.svg';
 }
 
-function getFileIcon(filename: string): string {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'pdf': return '\u{1F4D5}';
-    case 'json': return '\u{1F4CB}';
-    case 'csv': return '\u{1F4CA}';
-    case 'md': return '\u{1F4DD}';
-    default: return '\u{1F4C4}';
-  }
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-}
 
 interface MessageBubbleProps {
   message: Message;
@@ -165,20 +149,23 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
   // 用户消息：保持原样
   if (isUser) {
     return (
-      <div className="flex justify-end mb-4">
-        <div className="max-w-[80%] rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br px-4 py-3 bg-[rgb(127,96,255)] text-white">
-          {message.attachments && message.attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2">
-              {message.attachments.map((file, idx) => (
-                <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-lg text-xs">
-                  <span>{getFileIcon(file.name)}</span>
-                  <span className="font-medium max-w-[150px] truncate">{file.name}</span>
-                  <span className="opacity-60">{formatFileSize(file.size)}</span>
-                  {file.truncated && <span className="text-yellow-400">(已截断)</span>}
+      <div className="flex flex-col items-end mb-4">
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2 max-w-[80%] justify-end">
+            {message.attachments.map((file, idx) => (
+              <div key={idx} className="flex items-center gap-3 px-3 py-2.5 bg-[#1e2030] border border-gray-700/50 rounded-lg min-w-[200px] max-w-[280px]">
+                <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-purple-500/15">
+                  <FileText className="w-5 h-5 text-[rgb(127,96,255)]" />
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-gray-200 font-medium truncate">{file.name}</div>
+                  <div className="text-xs text-gray-500">File</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="max-w-[80%] rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br px-4 py-3 bg-[rgb(127,96,255)] text-white">
           {renderContent()}
         </div>
       </div>

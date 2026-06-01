@@ -178,15 +178,9 @@ export function useChat() {
         // 构建带文件上下文的消息用于 API 发送
         let apiContent: string | MessageContent[] = content;
         if (attachments && attachments.length > 0) {
-          const formatSize = (bytes: number) => {
-            if (bytes < 1024) return `${bytes}B`;
-            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-            return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-          };
-
           let fileContext = '';
           attachments.forEach(f => {
-            fileContext += `\u{1F4CE} 附件：${f.name}（${formatSize(f.size)}）\n---\n${f.textContent}\n---\n\n`;
+            fileContext += `[用户上传了文档「${f.name}」，以下是文档内容]\n---\n${f.textContent}\n---\n\n`;
           });
 
           if (typeof content === 'string') {
