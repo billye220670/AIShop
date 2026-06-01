@@ -1,4 +1,6 @@
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
+import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 
 // 设置 PDF.js worker
 GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href;
@@ -87,6 +89,26 @@ export async function parseFile(file: File): Promise<ParsedFile> {
       case 'pdf':
         rawText = await parsePdfFile(file);
         break;
+      case 'doc':
+      case 'docx': {
+        const docBuffer = await file.arrayBuffer();
+        const docResult = await mammoth.extractRawText({ arrayBuffer: docBuffer });
+        rawText = docResult.value;
+        break;
+      }
+      case 'xls':
+      case 'xlsx': {
+        const xlsBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(xlsBuffer, { type: 'array' });
+        const sheets: string[] = [];
+        workbook.SheetNames.forEach(name => {
+          const sheet = workbook.Sheets[name];
+          const csv = XLSX.utils.sheet_to_csv(sheet);
+          sheets.push(`[Sheet: ${name}]\n${csv}`);
+        });
+        rawText = sheets.join('\n\n');
+        break;
+      }
       case 'json':
         rawText = await parseJsonFile(file);
         break;

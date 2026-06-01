@@ -14,13 +14,15 @@
     "@tailwindcss/vite": "^4.3.0",
     "highlight.js": "^11.11.1",
     "lucide-react": "^1.17.0",
+    "mammoth": "^1.12.0",
     "pdfjs-dist": "^6.0.227",
     "pinyin-match": "^1.2.10",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "tailwindcss": "^4.3.0"
+    "tailwindcss": "^4.3.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
