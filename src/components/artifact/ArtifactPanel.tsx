@@ -174,7 +174,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
       {/* 内容区域 */}
       <div className="flex-1 overflow-hidden relative">
         {mode === 'code' ? (
-          <pre ref={codeContainerRef} className="h-full overflow-auto p-4 bg-[#0d0a1a] text-sm font-mono leading-relaxed">
+          <pre ref={codeContainerRef} className="h-full overflow-auto bg-[#0d0a1a] text-sm font-mono leading-relaxed">
             <code
               className="art-code-highlight"
               dangerouslySetInnerHTML={{
