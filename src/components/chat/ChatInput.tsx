@@ -1,10 +1,11 @@
 import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent } from 'react';
-import { Paperclip, Square, ArrowUp, SendHorizontal, Plus, Clock } from 'lucide-react';
-import type { MessageContent, Model } from '../../types';
+import { Paperclip, Square, ArrowUp, SendHorizontal, Plus, Clock, X } from 'lucide-react';
+import type { MessageContent, Model, FileAttachment } from '../../types';
 import ModelSelector from '../common/ModelSelector';
+import { parseFile, type ParsedFile } from '../../services/fileParser';
 
 interface ChatInputProps {
-  onSend: (content: string | MessageContent[]) => void;
+  onSend: (content: string | MessageContent[], attachments?: FileAttachment[]) => void;
   isLoading: boolean;
   onStop: () => void;
   onFocusChange?: (focused: boolean) => void;
@@ -29,29 +30,46 @@ export default function ChatInput({
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [files, setFiles] = useState<ParsedFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+  const MAX_TOTAL_FILES = 5;
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+  };
+
   const handleSubmit = () => {
     const trimmedText = text.trim();
-    if (!trimmedText && images.length === 0) return;
+    if (!trimmedText && images.length === 0 && files.length === 0) return;
     if (isLoading) return;
+
+    // 构建 attachments 元数据
+    const attachments: FileAttachment[] = files.map(f => ({
+      name: f.name,
+      size: f.size,
+      textContent: f.textContent,
+      truncated: f.truncated,
+    }));
 
     if (images.length > 0) {
       const content: MessageContent[] = [];
-      if (trimmedText) {
-        content.push({ type: 'text', text: trimmedText });
-      }
+      content.push({ type: 'text', text: trimmedText || '' });
       images.forEach(img => {
         content.push({ type: 'image_url', image_url: { url: img } });
       });
-      onSend(content);
+      onSend(content, attachments.length > 0 ? attachments : undefined);
     } else {
-      onSend(trimmedText);
+      onSend(trimmedText, attachments.length > 0 ? attachments : undefined);
     }
 
     setText('');
     setImages([]);
+    setFiles([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -92,25 +110,54 @@ export default function ChatInput({
     }
   };
 
-  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
+  const isImageFile = (file: File): boolean => {
+    if (file.type.startsWith('image/')) return true;
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+  };
 
-    Array.from(files).forEach(file => {
-      if (file.type.startsWith('image/')) {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles) return;
+
+    for (const file of Array.from(selectedFiles)) {
+      // 大小限制
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`文件 "${file.name}" 超过 20MB 限制`);
+        continue;
+      }
+      // 总数限制
+      const currentTotal = images.length + files.length;
+      if (currentTotal >= MAX_TOTAL_FILES) {
+        alert(`最多只能添加 ${MAX_TOTAL_FILES} 个文件（图片+文档合计）`);
+        break;
+      }
+
+      if (isImageFile(file)) {
         const reader = new FileReader();
         reader.onload = (ev) => {
           const base64 = ev.target?.result as string;
           setImages(prev => [...prev, base64]);
         };
         reader.readAsDataURL(file);
+      } else {
+        try {
+          const parsed = await parseFile(file);
+          setFiles(prev => [...prev, parsed]);
+        } catch (err) {
+          alert(`文件解析失败: ${err instanceof Error ? err.message : '未知错误'}`);
+        }
       }
-    });
+    }
     e.target.value = '';
   };
 
   const removeImage = (index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -131,6 +178,26 @@ export default function ChatInput({
           ))}
         </div>
       )}
+
+      {/* File attachments preview */}
+      {files.length > 0 && (
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {files.map((file, idx) => (
+            <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-200 group">
+              <span>{file.name.endsWith('.pdf') ? '📕' : file.name.endsWith('.json') ? '📋' : file.name.endsWith('.csv') ? '📊' : file.name.endsWith('.md') ? '📝' : '📄'}</span>
+              <span className="font-medium max-w-[120px] truncate">{file.name}</span>
+              <span className="text-gray-400">{formatFileSize(file.size)}</span>
+              {file.truncated && <span className="text-yellow-400">已截断</span>}
+              <button
+                onClick={() => removeFile(idx)}
+                className="ml-1 text-gray-500 hover:text-red-400 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     
       {/* Mobile input bar - add button overlay on textarea */}
       <div className="md:hidden relative">
@@ -145,7 +212,7 @@ export default function ChatInput({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept=".txt,.md,.pdf,.csv,.json,image/*"
           multiple
           className="hidden"
           onChange={handleFileUpload}
@@ -204,7 +271,7 @@ export default function ChatInput({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept=".txt,.md,.pdf,.csv,.json,image/*"
               multiple
               className="hidden"
               onChange={handleFileUpload}
@@ -259,7 +326,7 @@ export default function ChatInput({
             ) : (
               <button
                 onClick={handleSubmit}
-                disabled={!text.trim() && images.length === 0}
+                disabled={!text.trim() && images.length === 0 && files.length === 0}
                 className="p-2 text-[rgb(127,96,255)] hover:text-[rgb(107,76,235)] disabled:text-gray-500 transition-colors"
                 title="发送"
               >

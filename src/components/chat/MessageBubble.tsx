@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Globe, TriangleAlert, Copy, Check } from 'lucide-react';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
-import type { Message, MessageContent } from '../../types';
+import type { Message, MessageContent, FileAttachment } from '../../types';
 import LoadingDots from './LoadingDots';
 
 /* ─── CodeBlock 组件：语法高亮 + 复制按钮 + 语言标签 ─── */
@@ -63,6 +63,23 @@ const PROVIDER_ICON_MAP: Record<string, string> = {
 function getProviderIcon(provider: string): string {
   const icon = PROVIDER_ICON_MAP[provider];
   return icon ? `/providers/${icon}` : '/providers/openai.svg';
+}
+
+function getFileIcon(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'pdf': return '\u{1F4D5}';
+    case 'json': return '\u{1F4CB}';
+    case 'csv': return '\u{1F4CA}';
+    case 'md': return '\u{1F4DD}';
+    default: return '\u{1F4C4}';
+  }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
 interface MessageBubbleProps {
@@ -150,6 +167,18 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     return (
       <div className="flex justify-end mb-4">
         <div className="max-w-[80%] rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br px-4 py-3 bg-[rgb(127,96,255)] text-white">
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {message.attachments.map((file, idx) => (
+                <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-lg text-xs">
+                  <span>{getFileIcon(file.name)}</span>
+                  <span className="font-medium max-w-[150px] truncate">{file.name}</span>
+                  <span className="opacity-60">{formatFileSize(file.size)}</span>
+                  {file.truncated && <span className="text-yellow-400">(已截断)</span>}
+                </div>
+              ))}
+            </div>
+          )}
           {renderContent()}
         </div>
       </div>

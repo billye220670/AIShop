@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { Conversation, Message, Model } from '../../types';
+import type { Conversation, Message, Model, FileAttachment } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
@@ -11,7 +11,8 @@ interface ChatPanelProps {
   sendMessage: (
     content:
       | string
-      | Array<{ type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }>
+      | Array<{ type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }>,
+    attachments?: FileAttachment[]
   ) => void;
   stopGeneration: () => void;
   conversationTitle?: string;

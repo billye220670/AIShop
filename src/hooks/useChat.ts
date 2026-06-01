@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Message, Conversation } from '../types';
+import type { Message, Conversation, FileAttachment, MessageContent } from '../types';
 import { streamChat } from '../services/api';
 import { CHAT_MODELS } from '../config/models';
 import {
@@ -136,7 +136,8 @@ export function useChat() {
     async (
       content:
         | string
-        | Array<{ type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }>
+        | Array<{ type: 'text' | 'image_url'; text?: string; image_url?: { url: string } }>,
+      attachments?: FileAttachment[]
     ) => {
       setError(null);
 
@@ -145,6 +146,7 @@ export function useChat() {
         role: 'user',
         content,
         timestamp: Date.now(),
+        attachments,
       };
 
       const assistantMessage: Message = {
@@ -172,7 +174,36 @@ export function useChat() {
 
       try {
         abortControllerRef.current = new AbortController();
-        const allMessages = [...messages, userMessage];
+
+        // 构建带文件上下文的消息用于 API 发送
+        let apiContent: string | MessageContent[] = content;
+        if (attachments && attachments.length > 0) {
+          const formatSize = (bytes: number) => {
+            if (bytes < 1024) return `${bytes}B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+            return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+          };
+
+          let fileContext = '';
+          attachments.forEach(f => {
+            fileContext += `\u{1F4CE} 附件：${f.name}（${formatSize(f.size)}）\n---\n${f.textContent}\n---\n\n`;
+          });
+
+          if (typeof content === 'string') {
+            apiContent = fileContext + content;
+          } else {
+            // MessageContent[] 模式（含图片时）
+            apiContent = (content as MessageContent[]).map(item => {
+              if (item.type === 'text') {
+                return { ...item, text: fileContext + (item.text || '') };
+              }
+              return item;
+            });
+          }
+        }
+
+        const apiUserMessage: Message = { ...userMessage, content: apiContent };
+        const allMessages = [...messages, apiUserMessage];
 
         // 联网搜索（可选）
         let searchContext = '';
