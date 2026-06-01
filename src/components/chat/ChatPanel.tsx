@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import type { Conversation, Message, Model, FileAttachment } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
@@ -44,8 +44,9 @@ export default function ChatPanel({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const lastUserMsgIdRef = useRef<string | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const dragCounterRef = useRef(0);
+  // [已屏蔽] 拖拽JSON导入功能 - 改为在ChatInput中实现拖拽上传
+  // const [isDragOver, setIsDragOver] = useState(false);
+  // const dragCounterRef = useRef(0);
 
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -70,65 +71,15 @@ export default function ChatPanel({
     }
   }, [messages]);
 
-  // 拖拽导入
-  const handleDragEnter = (e: React.DragEvent) => {
-    if (!onImportConversation) return;
-    if (!e.dataTransfer.types.includes('Files')) return;
-    e.preventDefault();
-    dragCounterRef.current += 1;
-    setIsDragOver(true);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    if (!onImportConversation) return;
-    if (!e.dataTransfer.types.includes('Files')) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    if (!onImportConversation) return;
-    e.preventDefault();
-    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
-    if (dragCounterRef.current === 0) {
-      setIsDragOver(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    if (!onImportConversation) return;
-    e.preventDefault();
-    dragCounterRef.current = 0;
-    setIsDragOver(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    const jsonFile = files.find(f => f.name.endsWith('.aishop.json'));
-    if (!jsonFile) return;
-
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const data = JSON.parse(ev.target?.result as string);
-        if (data.app !== 'AIShop' || data.version !== 1 || !data.conversation) {
-          alert('不支持的文件格式');
-          return;
-        }
-        onImportConversation(data.conversation as Partial<Conversation>);
-      } catch {
-        alert('文件解析失败');
-      }
-    };
-    reader.onerror = () => alert('文件读取失败');
-    reader.readAsText(jsonFile);
-  };
+  // [已屏蔽] 拖拽JSON导入功能 - 改为在ChatInput中实现拖拽上传
+  // const handleDragEnter = (e: React.DragEvent) => { ... };
+  // const handleDragOver = (e: React.DragEvent) => { ... };
+  // const handleDragLeave = (e: React.DragEvent) => { ... };
+  // const handleDrop = (e: React.DragEvent) => { ... };
 
   return (
     <div
       className="flex-1 flex flex-col overflow-hidden relative"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
       {/* Messages */}
       <div
@@ -179,14 +130,7 @@ export default function ChatPanel({
         onModelChange={onModelChange}
       />
 
-      {/* 拖拽遮罩 */}
-      {isDragOver && (
-        <div className="absolute inset-0 bg-blue-600/20 border-2 border-dashed border-blue-400 rounded-lg flex items-center justify-center z-40 pointer-events-none">
-          <div className="text-blue-200 text-lg font-medium px-6 py-3 bg-gray-900/80 rounded-lg shadow-lg">
-            拖放 .aishop.json 文件导入会话
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

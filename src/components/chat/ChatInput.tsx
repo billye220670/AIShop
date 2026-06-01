@@ -1,4 +1,4 @@
-import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent } from 'react';
+import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
 import { Paperclip, Square, ArrowUp, SendHorizontal, Plus, Clock, X } from 'lucide-react';
 import type { MessageContent, Model, FileAttachment } from '../../types';
 import ModelSelector from '../common/ModelSelector';
@@ -31,6 +31,7 @@ export default function ChatInput({
   const [isFocused, setIsFocused] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [files, setFiles] = useState<ParsedFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -116,11 +117,9 @@ export default function ChatInput({
     return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
   };
 
-  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files;
-    if (!selectedFiles) return;
-
-    for (const file of Array.from(selectedFiles)) {
+  // 共用文件处理逻辑
+  const processFiles = async (fileList: File[]) => {
+    for (const file of fileList) {
       // 大小限制
       if (file.size > MAX_FILE_SIZE) {
         alert(`文件 "${file.name}" 超过 20MB 限制`);
@@ -149,7 +148,49 @@ export default function ChatInput({
         }
       }
     }
+  };
+
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles) return;
+    await processFiles(Array.from(selectedFiles));
     e.target.value = '';
+  };
+
+  // 拖拽上传
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFiles = e.dataTransfer.files;
+    if (!droppedFiles || droppedFiles.length === 0) return;
+
+    const allowedExts = ['txt', 'md', 'pdf', 'csv', 'json'];
+    const validFiles = Array.from(droppedFiles).filter(file => {
+      if (file.type.startsWith('image/')) return true;
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      return allowedExts.includes(ext);
+    });
+
+    if (validFiles.length === 0) {
+      alert('不支持的文件格式');
+      return;
+    }
+
+    await processFiles(validFiles);
   };
 
   const removeImage = (index: number) => {
@@ -161,7 +202,30 @@ export default function ChatInput({
   };
 
   return (
-    <div className="bg-transparent p-3 md:p-4">
+    <div
+      className={`bg-transparent p-3 md:p-4 relative transition-all ${isDragging ? 'ring-2 ring-purple-500 bg-purple-500/5 rounded-xl' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* 共用的文件 input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".txt,.md,.pdf,.csv,.json,image/*"
+        multiple
+        className="hidden"
+        onChange={handleFileUpload}
+      />
+
+      {/* 拖拽遮罩提示 */}
+      {isDragging && (
+        <div className="absolute inset-0 bg-purple-600/10 border-2 border-dashed border-purple-400 rounded-xl flex items-center justify-center z-40 pointer-events-none">
+          <div className="text-purple-200 text-sm font-medium px-4 py-2 bg-gray-900/80 rounded-lg shadow-lg">
+            拖放文件到此处上传
+          </div>
+        </div>
+      )}
       {/* Image preview */}
       {images.length > 0 && (
         <div className="flex gap-2 mb-3 flex-wrap">
@@ -209,15 +273,6 @@ export default function ChatInput({
         >
           <Plus className="w-5 h-5" />
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".txt,.md,.pdf,.csv,.json,image/*"
-          multiple
-          className="hidden"
-          onChange={handleFileUpload}
-        />
-    
         {/* 输入框 */}
         <textarea
           ref={textareaRef}
@@ -268,14 +323,7 @@ export default function ChatInput({
             >
               <Paperclip className="w-5 h-5" />
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.md,.pdf,.csv,.json,image/*"
-              multiple
-              className="hidden"
-              onChange={handleFileUpload}
-            />
+
           </div>
 
           {/* Right: action buttons */}
