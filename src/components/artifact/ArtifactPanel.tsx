@@ -89,7 +89,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
   }, [artifact.code]);
 
   return (
-    <div className="flex flex-col h-full bg-[#0d0a1a] rounded-tl-2xl rounded-bl-2xl overflow-hidden">
+    <div className="flex flex-col h-full bg-[#0d0a1a] overflow-hidden">
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50 bg-[#1a1a2e]">
         {/* 左侧：图标 + 标题 */}
@@ -203,17 +203,15 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
         )}
       </div>
 
-      {/* 底部 */}
-      <div className="px-4 py-2 border-t border-gray-700/50 text-center">
-        {isGenerating ? (
+      {/* 底部 - 仅生成中显示状态 */}
+      {isGenerating && (
+        <div className="px-4 py-2 border-t border-gray-700/50 text-center">
           <div className="flex items-center justify-center gap-2">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
             <span className="text-xs text-purple-300">正在生成代码...</span>
           </div>
-        ) : (
-          <span className="text-xs text-gray-500">由 AI 生成</span>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
