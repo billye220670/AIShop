@@ -249,19 +249,21 @@ export default function ChatInput({
                   </div>
                 ))}
                 {files.map((file, idx) => (
-                  <div key={`file-${idx}`} className="relative flex items-center gap-3 px-3 py-2.5 bg-[#1e2030] border border-gray-700/50 rounded-lg min-w-[200px] max-w-[280px]">
-                    <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-purple-500/15">
-                      <FileText className="w-5 h-5 text-[rgb(127,96,255)]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm text-gray-200 font-medium truncate">{file.name}</div>
-                      <div className="text-xs text-gray-500">File · {formatFileSize(file.size)}{file.truncated ? ' · 已截断' : ''}</div>
+                  <div key={`file-${idx}`} className="relative group min-w-[200px] max-w-[280px]">
+                    <div className="flex items-center gap-3 px-3 py-2.5 bg-[#1e2030] border border-gray-700/50 rounded-lg">
+                      <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-purple-500/15">
+                        <FileText className="w-5 h-5 text-[rgb(127,96,255)]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-200 font-medium truncate">{file.name}</div>
+                        <div className="text-xs text-gray-500">File · {formatFileSize(file.size)}{file.truncated ? ' · 已截断' : ''}</div>
+                      </div>
                     </div>
                     <button
                       onClick={() => removeFile(idx)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 hover:bg-red-500 text-white rounded-full text-xs flex items-center justify-center transition-colors shadow-sm"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-gray-700 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      ×
+                      <X className="w-3 h-3" />
                     </button>
                   </div>
                 ))}
@@ -370,19 +372,21 @@ export default function ChatInput({
                   </div>
                 ))}
                 {files.map((file, idx) => (
-                  <div key={`file-${idx}`} className="relative flex items-center gap-3 px-3 py-2.5 bg-[#1e2030] border border-gray-700/50 rounded-lg min-w-[200px] max-w-[280px]">
-                    <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-purple-500/15">
-                      <FileText className="w-5 h-5 text-[rgb(127,96,255)]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm text-gray-200 font-medium truncate">{file.name}</div>
-                      <div className="text-xs text-gray-500">File · {formatFileSize(file.size)}{file.truncated ? ' · 已截断' : ''}</div>
+                  <div key={`file-${idx}`} className="relative group min-w-[200px] max-w-[280px]">
+                    <div className="flex items-center gap-3 px-3 py-2.5 bg-[#1e2030] border border-gray-700/50 rounded-lg">
+                      <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-purple-500/15">
+                        <FileText className="w-5 h-5 text-[rgb(127,96,255)]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-200 font-medium truncate">{file.name}</div>
+                        <div className="text-xs text-gray-500">File · {formatFileSize(file.size)}{file.truncated ? ' · 已截断' : ''}</div>
+                      </div>
                     </div>
                     <button
                       onClick={() => removeFile(idx)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 hover:bg-red-500 text-white rounded-full text-xs flex items-center justify-center transition-colors shadow-sm"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-gray-700 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      ×
+                      <X className="w-3 h-3" />
                     </button>
                   </div>
                 ))}
