@@ -27,7 +27,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
   return (
     <div className="relative group rounded-lg overflow-hidden my-3 border border-gray-700">
       {/* 顶部栏：语言标签 + 复制按钮 */}
-      <div className="flex items-center justify-between px-4 py-1.5 bg-gray-800 text-xs text-gray-400">
+      <div className="flex items-center justify-between px-4 py-3 bg-[#1c2128] text-xs text-gray-400">
         <span>{language || 'code'}</span>
         <button
           onClick={handleCopy}
@@ -37,7 +37,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
         </button>
       </div>
       {/* 代码区域 */}
-      <pre className="!m-0 !rounded-none !bg-[#1e293b]">
+      <pre className="!m-0 !rounded-none !bg-[#161b22]">
         <code
           className="block px-4 py-3 overflow-x-auto text-sm !bg-transparent"
           dangerouslySetInnerHTML={{ __html: highlighted }}
