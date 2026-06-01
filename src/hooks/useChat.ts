@@ -3,6 +3,11 @@ import type { Message, Conversation, FileAttachment, MessageContent } from '../t
 import { streamChat } from '../services/api';
 import { CHAT_MODELS } from '../config/models';
 import {
+  parseArtifactFromContent,
+  getDisplayContentWithoutArtifact,
+  isArtifactStreaming,
+} from './useArtifact';
+import {
   loadConversations,
   saveConversations,
   createConversation,
@@ -50,20 +55,31 @@ function parseSuggestions(content: string): { text: string; suggestions: string[
 
 // 用于流式显示时隐藏建议标记，避免 <<<SUGGESTIONS>>> 等中间状态闪现给用户
 function getDisplayContent(content: string): string {
+  // 先去除 artifact 标记
+  let cleaned = getDisplayContentWithoutArtifact(content);
+
+  // 如果正在流式生成 artifact，用提示代替
+  if (isArtifactStreaming(content)) {
+    const startMarker = '<<<ARTIFACT_START>>>';
+    const startIdx = content.indexOf(startMarker);
+    cleaned = content.substring(0, startIdx).trimEnd();
+    cleaned += '\n\n✨ 正在生成网页...';
+  }
+
   // 一旦看到完整开始标记，截断标记及其后所有内容
-  const startMarker = '<<<SUGGESTIONS>>>';
-  const startIdx = content.indexOf(startMarker);
+  const suggestionsMarker = '<<<SUGGESTIONS>>>';
+  const startIdx = cleaned.indexOf(suggestionsMarker);
   if (startIdx !== -1) {
-    return content.substring(0, startIdx).trimEnd();
+    return cleaned.substring(0, startIdx).trimEnd();
   }
   // 处理标记正在逐字出现的部分匹配：<, <<, <<<, <<<S, <<<SU, ...
-  for (let i = Math.min(startMarker.length - 1, content.length); i >= 1; i--) {
-    const partial = startMarker.substring(0, i);
-    if (content.endsWith(partial)) {
-      return content.substring(0, content.length - i);
+  for (let i = Math.min(suggestionsMarker.length - 1, cleaned.length); i >= 1; i--) {
+    const partial = suggestionsMarker.substring(0, i);
+    if (cleaned.endsWith(partial)) {
+      return cleaned.substring(0, cleaned.length - i);
     }
   }
-  return content;
+  return cleaned;
 }
 
 export function useChat() {
@@ -255,12 +271,16 @@ export function useChat() {
         updateActiveConversation(conv => {
           const updated = [...conv.messages];
           const lastIdx = updated.length - 1;
-          const { text, suggestions } = parseSuggestions(fullContent);
+          // 先去除 artifact 标记，再解析 suggestions
+          const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
+          const { text, suggestions } = parseSuggestions(contentWithoutArtifact);
+          const artifact = parseArtifactFromContent(fullContent);
           updated[lastIdx] = {
             ...updated[lastIdx],
             content: text,
             isStreaming: false,
             suggestions,
+            artifact: artifact || undefined,
             webSearched: searchSources.length > 0,
             searchResults: searchSources.length > 0 ? searchSources : undefined,
             webSearchFailed: searchFailed,

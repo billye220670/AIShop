@@ -2,6 +2,7 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Globe, TriangleAlert, Copy, Check, FileText } from 'lucide-react';
+import type { ArtifactBlock } from '../../types';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import type { Message, MessageContent } from '../../types';
@@ -72,9 +73,10 @@ interface MessageBubbleProps {
   showSuggestions?: boolean;
   modelName?: string;
   modelProvider?: string;
+  onOpenArtifact?: (artifact: ArtifactBlock) => void;
 }
 
-export default function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName, modelProvider }: MessageBubbleProps) {
+export default function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName, modelProvider, onOpenArtifact }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
   // AI消息内容为空且正在流式输出 → 显示加载状态
@@ -226,6 +228,20 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                   </div>
                 </div>
               )}
+            {message.artifact && (
+              <div
+                onClick={() => onOpenArtifact?.(message.artifact!)}
+                className="mt-3 p-3 bg-[#1a1a2e] border border-gray-700 rounded-xl cursor-pointer hover:border-purple-500 transition-colors flex items-center gap-3"
+              >
+                <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                  <Globe className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <div className="text-white font-medium text-sm">{message.artifact.title}</div>
+                  <div className="text-gray-400 text-xs">点击预览</div>
+                </div>
+              </div>
+            )}
             {showSuggestions &&
               message.suggestions &&
               message.suggestions.length > 0 &&
