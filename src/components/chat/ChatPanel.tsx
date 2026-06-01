@@ -48,6 +48,11 @@ export default function ChatPanel({
   const lastUserMsgIdRef = useRef<string | null>(null);
   const artifactStreamStartedRef = useRef(false);
   const { activeArtifact, isArtifactGenerating, openArtifact, closeArtifact, startStreamingArtifact, updateStreamingCode, finishStreamingArtifact } = useArtifact();
+  // 会话切换时关闭 Artifact 面板
+  useEffect(() => {
+    closeArtifact();
+  }, [conversation?.id]);
+
   // [已屏蔽] 拖拽JSON导入功能 - 改为在ChatInput中实现拖拽上传
   // const [isDragOver, setIsDragOver] = useState(false);
   // const dragCounterRef = useRef(0);
