@@ -39,6 +39,7 @@ function App() {
             selectedModel={activeConversation?.selectedModel || CHAT_MODELS[0].id}
             onModelChange={chat.setSelectedModel}
             models={CHAT_MODELS}
+            streamingArtifact={chat.streamingArtifact}
           />
         );
       case 'image':

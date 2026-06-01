@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Code, Eye, RefreshCw, Copy, Download, X, Check, Globe } from 'lucide-react';
 import type { ArtifactBlock } from '../../types';
 
 interface ArtifactPanelProps {
   artifact: ArtifactBlock;
   onClose: () => void;
+  isGenerating?: boolean;
 }
 
 type ViewMode = 'code' | 'preview';
@@ -30,10 +31,25 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export default function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps) {
-  const [mode, setMode] = useState<ViewMode>('preview');
+export default function ArtifactPanel({ artifact, onClose, isGenerating = false }: ArtifactPanelProps) {
+  const [mode, setMode] = useState<ViewMode>('code');
   const [copied, setCopied] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const codeContainerRef = useRef<HTMLPreElement>(null);
+
+  // 流式生成时强制代码模式
+  useEffect(() => {
+    if (isGenerating) {
+      setMode('code');
+    }
+  }, [isGenerating]);
+
+  // 代码区域自动滚动到底部（跟随新内容）
+  useEffect(() => {
+    if (isGenerating && codeContainerRef.current) {
+      codeContainerRef.current.scrollTop = codeContainerRef.current.scrollHeight;
+    }
+  }, [isGenerating, artifact.code]);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(artifact.code);
@@ -90,12 +106,15 @@ export default function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps)
               代码
             </button>
             <button
-              onClick={() => setMode('preview')}
+              onClick={() => !isGenerating && setMode('preview')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 mode === 'preview'
                   ? 'bg-purple-600 text-white'
-                  : 'text-gray-400 hover:text-gray-200'
+                  : isGenerating
+                    ? 'text-gray-600 cursor-not-allowed'
+                    : 'text-gray-400 hover:text-gray-200'
               }`}
+              title={isGenerating ? '代码生成中，完成后可预览' : ''}
             >
               <Eye className="w-3.5 h-3.5" />
               预览
@@ -143,15 +162,18 @@ export default function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps)
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
         {mode === 'code' ? (
-          <pre className="h-full overflow-auto p-4 bg-[#0d0a1a] text-sm font-mono leading-relaxed">
+          <pre ref={codeContainerRef} className="h-full overflow-auto p-4 bg-[#0d0a1a] text-sm font-mono leading-relaxed">
             <code
               className="art-code-highlight"
               dangerouslySetInnerHTML={{
                 __html: highlightHtml(escapeHtml(artifact.code)),
               }}
             />
+            {isGenerating && (
+              <span className="inline-block w-2 h-4 bg-purple-400 animate-pulse ml-0.5 align-middle" />
+            )}
             <style>{`
               .art-code-highlight { color: #e4e4e7; }
               .art-tag { color: #f472b6; }
@@ -173,7 +195,14 @@ export default function ArtifactPanel({ artifact, onClose }: ArtifactPanelProps)
 
       {/* 底部 */}
       <div className="px-4 py-2 border-t border-gray-700/50 text-center">
-        <span className="text-xs text-gray-500">由 AI 生成</span>
+        {isGenerating ? (
+          <div className="flex items-center justify-center gap-2">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+            <span className="text-xs text-purple-300">正在生成代码...</span>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-500">由 AI 生成</span>
+        )}
       </div>
     </div>
   );

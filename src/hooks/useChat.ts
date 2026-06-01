@@ -6,6 +6,7 @@ import {
   parseArtifactFromContent,
   getDisplayContentWithoutArtifact,
   isArtifactStreaming,
+  extractStreamingArtifact,
 } from './useArtifact';
 import {
   loadConversations,
@@ -99,6 +100,7 @@ export function useChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [webSearchEnabled, setWebSearchEnabledState] = useState<boolean>(() => loadWebSearchEnabled());
+  const [streamingArtifact, setStreamingArtifact] = useState<{ title: string; code: string } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const activeConversation = conversations.find(c => c.id === activeId) || conversations[0];
@@ -245,6 +247,7 @@ export function useChat() {
         }
 
         let fullContent = '';
+        let artifactStreamStarted = false;
         for await (const chunk of streamChat(
           allMessages,
           selectedModel,
@@ -259,7 +262,20 @@ export function useChat() {
             updated[lastIdx] = { ...updated[lastIdx], content: displayContent };
             return { ...conv, messages: updated };
           });
+
+          // 流式 artifact 检测
+          if (isArtifactStreaming(fullContent)) {
+            const streaming = extractStreamingArtifact(fullContent);
+            if (streaming) {
+              if (!artifactStreamStarted) {
+                artifactStreamStarted = true;
+              }
+              setStreamingArtifact(streaming);
+            }
+          }
         }
+        // 流式结束，清除流式 artifact 状态
+        setStreamingArtifact(null);
 
         // 移动端的触觉反馈 - AI 回答结束时再触发两次清脆有力的振动
         if ('vibrate' in navigator) {
@@ -416,6 +432,7 @@ export function useChat() {
     clearMessages,
     webSearchEnabled,
     setWebSearchEnabled,
+    streamingArtifact,
     // 会话管理
     conversations,
     activeConversationId: activeId,

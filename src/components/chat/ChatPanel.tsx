@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import type { Conversation, Message, Model, FileAttachment } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
-import { useArtifact } from '../../hooks/useArtifact';
+import { useArtifact, parseArtifactFromContent } from '../../hooks/useArtifact';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
 import ArtifactPanel from '../artifact/ArtifactPanel';
@@ -25,6 +25,7 @@ interface ChatPanelProps {
   selectedModel?: string;
   onModelChange?: (modelId: string) => void;
   models?: Model[];
+  streamingArtifact?: { title: string; code: string } | null;
 }
 
 export default function ChatPanel({
@@ -39,15 +40,54 @@ export default function ChatPanel({
   selectedModel,
   onModelChange,
   models,
+  streamingArtifact,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const lastUserMsgIdRef = useRef<string | null>(null);
-  const { activeArtifact, openArtifact, closeArtifact } = useArtifact();
+  const artifactStreamStartedRef = useRef(false);
+  const { activeArtifact, isArtifactGenerating, openArtifact, closeArtifact, startStreamingArtifact, updateStreamingCode, finishStreamingArtifact } = useArtifact();
   // [已屏蔽] 拖拽JSON导入功能 - 改为在ChatInput中实现拖拽上传
   // const [isDragOver, setIsDragOver] = useState(false);
   // const dragCounterRef = useRef(0);
+
+  // 监听 streamingArtifact 状态变化，控制 artifact 面板
+  useEffect(() => {
+    if (streamingArtifact) {
+      if (!artifactStreamStartedRef.current) {
+        // 第一次检测到 - 打开面板
+        artifactStreamStartedRef.current = true;
+        startStreamingArtifact({
+          id: 'streaming_' + Date.now(),
+          type: 'html',
+          title: streamingArtifact.title,
+          code: streamingArtifact.code,
+          createdAt: Date.now(),
+        });
+      } else {
+        // 后续更新代码
+        updateStreamingCode(streamingArtifact.code);
+      }
+    } else if (artifactStreamStartedRef.current) {
+      // streamingArtifact 变为 null → 流式结束
+      artifactStreamStartedRef.current = false;
+      // 从最后一条消息中获取完整 artifact
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg?.artifact) {
+        finishStreamingArtifact(lastMsg.artifact);
+      } else {
+        // 尝试从消息的原始内容解析
+        const parsed = typeof lastMsg?.content === 'string' ? parseArtifactFromContent(lastMsg.content) : null;
+        if (parsed) {
+          finishStreamingArtifact(parsed);
+        } else if (activeArtifact) {
+          // 保持当前 artifact 但标记为完成
+          finishStreamingArtifact(activeArtifact);
+        }
+      }
+    }
+  }, [streamingArtifact]);
 
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -138,14 +178,14 @@ export default function ChatPanel({
       {/* 右侧 Artifact 面板 - 桌面端 */}
       {activeArtifact && (
         <div className="hidden md:block w-[55%] border-l border-gray-700/50 transition-all duration-300">
-          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} />
+          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} />
         </div>
       )}
 
       {/* 移动端 Artifact 面板 - 全屏覆盖 */}
       {activeArtifact && (
         <div className="fixed inset-0 z-50 md:hidden bg-[#0d0a1a]">
-          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} />
+          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} />
         </div>
       )}
     </div>
