@@ -231,7 +231,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             {message.artifact && (
               <div
                 onClick={() => onOpenArtifact?.(message.artifact!)}
-                className="mt-3 p-3 bg-[#1a1a2e] border border-gray-700 rounded-xl cursor-pointer hover:border-purple-500 transition-colors flex items-center gap-3"
+                className="mt-3 p-3 bg-[#1a1a2e] border border-gray-700 rounded-xl cursor-pointer hover:bg-[#252540] transition-colors flex items-center gap-3"
               >
                 <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
                   <Globe className="w-5 h-5 text-white" />

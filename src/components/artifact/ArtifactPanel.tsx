@@ -33,7 +33,7 @@ function escapeHtml(str: string): string {
 }
 
 export default function ArtifactPanel({ artifact, onClose, isGenerating = false, autoPreviewSignal = 0 }: ArtifactPanelProps) {
-  const [mode, setMode] = useState<ViewMode>('code');
+  const [mode, setMode] = useState<ViewMode>('preview');
   const [copied, setCopied] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const codeContainerRef = useRef<HTMLPreElement>(null);
