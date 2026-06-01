@@ -1,5 +1,5 @@
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
-import { parseOfficeAsync } from 'officeparser';
+import { parseOffice } from 'officeparser';
 import * as XLSX from 'xlsx';
 
 // 设置 PDF.js worker
@@ -101,8 +101,8 @@ export async function parseFile(file: File): Promise<ParsedFile> {
       case 'odp':
       case 'ods': {
         const officeBuffer = await file.arrayBuffer();
-        const officeText = await parseOfficeAsync(officeBuffer);
-        rawText = officeText;
+        const ast = await parseOffice(officeBuffer);
+        rawText = ast.toText();
         break;
       }
       case 'xls':
