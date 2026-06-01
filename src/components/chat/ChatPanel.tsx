@@ -17,7 +17,6 @@ interface ChatPanelProps {
   stopGeneration: () => void;
   conversationTitle?: string;
   conversation?: Conversation;
-  onImportConversation?: (data: Partial<Conversation>) => void;
   onInputFocusChange?: (focused: boolean) => void;
   onToggleHistory?: () => void;
   onNewConversation?: () => void;
@@ -32,7 +31,6 @@ export default function ChatPanel({
   sendMessage,
   stopGeneration,
   conversation,
-  onImportConversation,
   onInputFocusChange,
   onToggleHistory,
   onNewConversation,

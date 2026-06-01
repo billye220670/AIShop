@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Globe, TriangleAlert, Copy, Check } from 'lucide-react';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
-import type { Message, MessageContent, FileAttachment } from '../../types';
+import type { Message, MessageContent } from '../../types';
 import LoadingDots from './LoadingDots';
 
 /* ─── CodeBlock 组件：语法高亮 + 复制按钮 + 语言标签 ─── */
