@@ -259,9 +259,9 @@ export default function ChatInput({
                     </div>
                     <button
                       onClick={() => removeFile(idx)}
-                      className="absolute top-1 right-1 p-0.5 text-gray-500 hover:text-red-400 transition-colors rounded"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 hover:bg-red-500 text-white rounded-full text-xs flex items-center justify-center transition-colors shadow-sm"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      ×
                     </button>
                   </div>
                 ))}
@@ -380,9 +380,9 @@ export default function ChatInput({
                     </div>
                     <button
                       onClick={() => removeFile(idx)}
-                      className="absolute top-1 right-1 p-0.5 text-gray-500 hover:text-red-400 transition-colors rounded"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 hover:bg-red-500 text-white rounded-full text-xs flex items-center justify-center transition-colors shadow-sm"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      ×
                     </button>
                   </div>
                 ))}
