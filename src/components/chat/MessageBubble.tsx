@@ -1,8 +1,51 @@
+import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Globe, TriangleAlert } from 'lucide-react';
+import { Globe, TriangleAlert, Copy, Check } from 'lucide-react';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/atom-one-dark.css';
 import type { Message, MessageContent } from '../../types';
 import LoadingDots from './LoadingDots';
+
+/* ─── CodeBlock 组件：语法高亮 + 复制按钮 + 语言标签 ─── */
+function CodeBlock({ code, language }: { code: string; language?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  let highlighted: string;
+  if (language && hljs.getLanguage(language)) {
+    highlighted = hljs.highlight(code, { language }).value;
+  } else {
+    highlighted = hljs.highlightAuto(code).value;
+  }
+
+  return (
+    <div className="relative group rounded-lg overflow-hidden my-3 border border-gray-700">
+      {/* 顶部栏：语言标签 + 复制按钮 */}
+      <div className="flex items-center justify-between px-4 py-1.5 bg-gray-800 text-xs text-gray-400">
+        <span>{language || 'code'}</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-gray-400 hover:text-gray-200 transition-colors"
+        >
+          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+      {/* 代码区域 */}
+      <pre className="!m-0 !rounded-none !bg-[#1e293b]">
+        <code
+          className="block px-4 py-3 overflow-x-auto text-sm !bg-transparent"
+          dangerouslySetInnerHTML={{ __html: highlighted }}
+        />
+      </pre>
+    </div>
+  );
+}
 
 const PROVIDER_ICON_MAP: Record<string, string> = {
   Anthropic: 'claude-color.svg',
@@ -44,8 +87,31 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
         return <p className="whitespace-pre-wrap">{message.content}</p>;
       }
       return (
-        <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-700 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({ className, children, ...props }) {
+                const match = /language-(\w+)/.exec(className || '');
+                const codeStr = String(children).replace(/\n$/, '');
+                // 有 language 标记视为代码块
+                if (match) {
+                  return <CodeBlock code={codeStr} language={match[1]} />;
+                }
+                // 没有 language 但被 pre 包裹的（无语言标注的代码块）
+                // react-markdown 对 fenced code block 总会加 className，这里处理行内代码
+                return (
+                  <code className="bg-gray-700/50 px-1.5 py-0.5 rounded text-sm" {...props}>
+                    {children}
+                  </code>
+                );
+              },
+              pre({ children }) {
+                // 如果子元素已经是 CodeBlock，直接返回，不再包裹 pre
+                return <>{children}</>;
+              }
+            }}
+          >
             {message.content}
           </ReactMarkdown>
           {message.isStreaming && (

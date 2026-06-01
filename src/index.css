@@ -54,3 +54,8 @@ pre code code {
   background: none;
   padding: 0;
 }
+
+/* highlight.js 主题覆盖 - 确保代码块背景一致 */
+.hljs {
+  background: transparent !important;
+}
