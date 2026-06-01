@@ -92,12 +92,21 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
     <div className="flex flex-col h-full bg-[#0d0a1a] overflow-hidden">
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50 bg-[#1a1a2e]">
-        {/* 左侧：图标 + 标题 */}
+        {/* 左侧：图标 + 标题 + 刷新按钮 */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
             <Globe className="w-4 h-4 text-white" />
           </div>
           <span className="text-white font-medium text-sm truncate">{artifact.title}</span>
+          {mode === 'preview' && (
+            <button
+              onClick={handleRefresh}
+              className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10 flex-shrink-0"
+              title="刷新预览"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* 右侧：模式切换 + 操作按钮 */}
@@ -131,17 +140,6 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
             </button>
           </div>
 
-          {/* 刷新按钮（仅预览模式） */}
-          {mode === 'preview' && (
-            <button
-              onClick={handleRefresh}
-              className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10"
-              title="刷新预览"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-          )}
-
           {/* 复制按钮 */}
           <button
             onClick={handleCopy}
@@ -174,7 +172,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
       {/* 内容区域 */}
       <div className="flex-1 overflow-hidden relative">
         {mode === 'code' ? (
-          <pre ref={codeContainerRef} className="h-full overflow-auto bg-[#0d0a1a] text-sm font-mono leading-relaxed">
+          <pre ref={codeContainerRef} className="h-full overflow-auto bg-[#161b22] text-sm font-mono leading-relaxed p-4">
             <code
               className="art-code-highlight"
               dangerouslySetInnerHTML={{
@@ -186,7 +184,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
             )}
             <style>{`
               .art-code-highlight { color: #e4e4e7; border-radius: 0; padding: 0; background: transparent; }
-              .art-tag { color: #f472b6; }
+              .art-tag { color: rgb(127, 96, 255); }
               .art-attr { color: #93c5fd; }
               .art-val { color: #86efac; }
               .art-comment { color: #6b7280; font-style: italic; }
