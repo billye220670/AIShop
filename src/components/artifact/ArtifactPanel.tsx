@@ -6,6 +6,7 @@ interface ArtifactPanelProps {
   artifact: ArtifactBlock;
   onClose: () => void;
   isGenerating?: boolean;
+  autoPreviewSignal?: number;
 }
 
 type ViewMode = 'code' | 'preview';
@@ -31,11 +32,12 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export default function ArtifactPanel({ artifact, onClose, isGenerating = false }: ArtifactPanelProps) {
+export default function ArtifactPanel({ artifact, onClose, isGenerating = false, autoPreviewSignal = 0 }: ArtifactPanelProps) {
   const [mode, setMode] = useState<ViewMode>('code');
   const [copied, setCopied] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const codeContainerRef = useRef<HTMLPreElement>(null);
+  const prevSignalRef = useRef(autoPreviewSignal);
 
   // 流式生成时强制代码模式
   useEffect(() => {
@@ -43,6 +45,14 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false 
       setMode('code');
     }
   }, [isGenerating]);
+
+  // 流式结束信号：自动切换到预览模式
+  useEffect(() => {
+    if (autoPreviewSignal > 0 && autoPreviewSignal !== prevSignalRef.current) {
+      setMode('preview');
+    }
+    prevSignalRef.current = autoPreviewSignal;
+  }, [autoPreviewSignal]);
 
   // 代码区域自动滚动到底部（跟随新内容）
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Conversation, Message, Model, FileAttachment } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
@@ -48,6 +48,7 @@ export default function ChatPanel({
   const lastUserMsgIdRef = useRef<string | null>(null);
   const artifactStreamStartedRef = useRef(false);
   const { activeArtifact, isArtifactGenerating, openArtifact, closeArtifact, startStreamingArtifact, updateStreamingCode, finishStreamingArtifact } = useArtifact();
+  const [autoPreviewSignal, setAutoPreviewSignal] = useState(0);
   // 会话切换时关闭 Artifact 面板
   useEffect(() => {
     closeArtifact();
@@ -91,6 +92,8 @@ export default function ChatPanel({
           finishStreamingArtifact(activeArtifact);
         }
       }
+      // 流式结束，发送信号让面板自动切换到预览模式
+      setAutoPreviewSignal(prev => prev + 1);
     }
   }, [streamingArtifact]);
 
@@ -183,14 +186,14 @@ export default function ChatPanel({
       {/* 右侧 Artifact 面板 - 桌面端 */}
       {activeArtifact && (
         <div className="hidden md:block w-[55%] border-l border-gray-700/50 transition-all duration-300">
-          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} />
+          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} />
         </div>
       )}
 
       {/* 移动端 Artifact 面板 - 全屏覆盖 */}
       {activeArtifact && (
         <div className="fixed inset-0 z-50 md:hidden bg-[#0d0a1a]">
-          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} />
+          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} />
         </div>
       )}
     </div>
