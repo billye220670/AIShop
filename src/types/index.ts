@@ -6,6 +6,14 @@ export interface MessageContent {
   image_url?: { url: string };
 }
 
+// 文件附件类型
+export interface FileAttachment {
+  name: string;
+  size: number;
+  textContent: string;
+  truncated: boolean;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -20,6 +28,7 @@ export interface Message {
     url: string;
     siteName: string;
   }>;
+  attachments?: FileAttachment[];
 }
 
 export interface Model {
