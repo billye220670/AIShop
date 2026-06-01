@@ -239,7 +239,7 @@ export default function MainLayout({
           onDeleteConversation={onDeleteConversation}
           onRenameConversation={onRenameConversation}
         />
-        <main className="flex-1 flex flex-col overflow-hidden bg-[#1a1a2e] rounded-2xl m-2 ml-0">{children}</main>
+        <main className="flex-1 flex flex-col overflow-hidden bg-[#1a1a2e] rounded-l-2xl m-2 ml-0">{children}</main>
       </div>
     );
   }
