@@ -1,5 +1,5 @@
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
-import mammoth from 'mammoth';
+import { parseOfficeAsync } from 'officeparser';
 import * as XLSX from 'xlsx';
 
 // 设置 PDF.js worker
@@ -90,10 +90,19 @@ export async function parseFile(file: File): Promise<ParsedFile> {
         rawText = await parsePdfFile(file);
         break;
       case 'doc':
-      case 'docx': {
-        const docBuffer = await file.arrayBuffer();
-        const docResult = await mammoth.extractRawText({ arrayBuffer: docBuffer });
-        rawText = docResult.value;
+      case 'ppt':
+        throw new Error(
+          `不支持 .${ext} 旧二进制格式，请使用 Word/PowerPoint 另存为 .docx/.pptx 格式后重新上传`
+        );
+      case 'docx':
+      case 'pptx':
+      case 'rtf':
+      case 'odt':
+      case 'odp':
+      case 'ods': {
+        const officeBuffer = await file.arrayBuffer();
+        const officeText = await parseOfficeAsync(officeBuffer);
+        rawText = officeText;
         break;
       }
       case 'xls':

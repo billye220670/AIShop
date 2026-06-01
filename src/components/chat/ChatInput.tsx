@@ -178,7 +178,7 @@ export default function ChatInput({
     const droppedFiles = e.dataTransfer.files;
     if (!droppedFiles || droppedFiles.length === 0) return;
 
-    const allowedExts = ['txt', 'md', 'pdf', 'csv', 'json', 'doc', 'docx', 'xlsx', 'xls'];
+    const allowedExts = ['txt', 'md', 'pdf', 'csv', 'json', 'doc', 'docx', 'pptx', 'ppt', 'rtf', 'odt', 'odp', 'ods', 'xlsx', 'xls'];
     const validFiles = Array.from(droppedFiles).filter(file => {
       if (file.type.startsWith('image/')) return true;
       const ext = file.name.split('.').pop()?.toLowerCase() || '';
@@ -212,7 +212,7 @@ export default function ChatInput({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.md,.pdf,.csv,.json,.doc,.docx,.xlsx,.xls,image/*"
+        accept=".txt,.md,.pdf,.csv,.json,.doc,.docx,.pptx,.ppt,.rtf,.odt,.odp,.ods,.xlsx,.xls,image/*"
         multiple
         className="hidden"
         onChange={handleFileUpload}
