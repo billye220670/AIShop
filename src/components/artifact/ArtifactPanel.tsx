@@ -194,7 +194,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
           <iframe
             ref={iframeRef}
             srcDoc={artifact.code}
-            sandbox="allow-scripts allow-forms"
+            sandbox="allow-scripts allow-forms allow-same-origin"
             className="w-full h-full border-0 bg-white"
             title={artifact.title}
           />
