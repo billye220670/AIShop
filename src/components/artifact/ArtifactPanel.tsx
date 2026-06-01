@@ -185,7 +185,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
               <span className="inline-block w-2 h-4 bg-purple-400 animate-pulse ml-0.5 align-middle" />
             )}
             <style>{`
-              .art-code-highlight { color: #e4e4e7; }
+              .art-code-highlight { color: #e4e4e7; border-radius: 0; padding: 0; background: transparent; }
               .art-tag { color: #f472b6; }
               .art-attr { color: #93c5fd; }
               .art-val { color: #86efac; }
