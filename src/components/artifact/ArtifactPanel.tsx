@@ -117,7 +117,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
               onClick={() => setMode('code')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 mode === 'code'
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-[rgb(127,96,255)] text-white'
                   : 'text-gray-400 hover:text-gray-200'
               }`}
             >
@@ -128,7 +128,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
               onClick={() => !isGenerating && setMode('preview')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 mode === 'preview'
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-[rgb(127,96,255)] text-white'
                   : isGenerating
                     ? 'text-gray-600 cursor-not-allowed'
                     : 'text-gray-400 hover:text-gray-200'
