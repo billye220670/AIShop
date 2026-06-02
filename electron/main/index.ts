@@ -1,10 +1,10 @@
-import { app, BrowserWindow, ipcMain, Menu, globalShortcut, session, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, globalShortcut, session, nativeImage, protocol, net } from 'electron';
 import { join } from 'path';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { tmpdir } from 'os';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import * as settingsStore from './settingsStore';
 
 let mainWindow: BrowserWindow | null = null;
+let imagesDir = '';
 
 function createWindow() {
   // 移除默认菜单栏（File/Edit/View/Help）
@@ -98,27 +98,39 @@ function registerSettingsHandlers() {
     return { error: false, data };
   });
 
-  // 图片拖拽到桌面：下载图片到临时文件后启动原生拖拽
-  const dragCacheDir = join(tmpdir(), 'aishop-drag-cache');
-  if (!existsSync(dragCacheDir)) mkdirSync(dragCacheDir, { recursive: true });
-
-  ipcMain.on('image:native-drag', async (event, imageDataUrl: string, fileName: string) => {
+  // 保存图片到本地
+  ipcMain.handle('image:save-local', async (_event, imageUrl: string, fileName: string) => {
     try {
-      // 解码 data URI → Buffer
-      const base64Data = imageDataUrl.split(',')[1] || '';
-      const buffer = Buffer.from(base64Data, 'base64');
+      let buffer: Buffer;
+      if (imageUrl.startsWith('data:')) {
+        const base64Data = imageUrl.split(',')[1] || '';
+        buffer = Buffer.from(base64Data, 'base64');
+      } else {
+        const resp = await fetch(imageUrl);
+        if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
+        buffer = Buffer.from(await resp.arrayBuffer());
+      }
+      const filePath = join(imagesDir, fileName);
+      writeFileSync(filePath, buffer);
+      return fileName;
+    } catch (err) {
+      console.error('Failed to save image locally:', err);
+      return null;
+    }
+  });
 
-      // 保存完整文件
-      const tempPath = join(dragCacheDir, fileName);
-      writeFileSync(tempPath, buffer);
+  // 获取本地图片完整路径（供拖拽使用）
+  ipcMain.handle('image:get-local-path', (_event, fileName: string) => {
+    return join(imagesDir, fileName);
+  });
 
-      // 创建拖拽缩略图 icon（128x128）
+  // 图片原生拖拽到桌面
+  ipcMain.on('image:native-drag', (event, localPath: string, fileName: string) => {
+    try {
+      if (!existsSync(localPath)) return;
+      const buffer = readFileSync(localPath);
       const icon = nativeImage.createFromBuffer(buffer).resize({ width: 128, height: 128 });
-
-      event.sender.startDrag({
-        file: tempPath,
-        icon,
-      });
+      event.sender.startDrag({ file: localPath, icon });
     } catch (err) {
       console.error('Native drag failed:', err);
     }
@@ -126,6 +138,17 @@ function registerSettingsHandlers() {
 }
 
 app.whenReady().then(() => {
+  // 图片本地缓存目录
+  imagesDir = join(app.getPath('userData'), 'images');
+  if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true });
+
+  // 注册自定义协议 local-image://
+  protocol.handle('local-image', (request) => {
+    const fileName = decodeURIComponent(request.url.replace('local-image://', ''));
+    const filePath = join(imagesDir, fileName);
+    return net.fetch(`file://${filePath}`);
+  });
+
   // 绕过 CORS 限制：拦截 API 请求的响应头，添加跨域许可
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...details.responseHeaders };

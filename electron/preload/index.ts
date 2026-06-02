@@ -12,6 +12,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   imageGenerate: (url: string, body: string, apiKey: string) =>
     ipcRenderer.invoke('image:generate', url, body, apiKey),
   // 启动原生拖拽：将图片拖拽到桌面等外部位置
-  startDrag: (imageUrl: string, fileName: string) =>
-    ipcRenderer.send('image:native-drag', imageUrl, fileName),
+  startDrag: (localPath: string, fileName: string) =>
+    ipcRenderer.send('image:native-drag', localPath, fileName),
+  // 保存图片到本地磁盘
+  saveImageLocal: (url: string, fileName: string) =>
+    ipcRenderer.invoke('image:save-local', url, fileName),
+  // 获取本地图片绝对路径
+  getLocalImagePath: (fileName: string) =>
+    ipcRenderer.invoke('image:get-local-path', fileName),
 });

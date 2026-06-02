@@ -245,11 +245,27 @@ export function useImage() {
 
     try {
       const urls = await apiGenerateImage(params, controller.signal);
+      // 成功后保存到本地
+      const electronAPI = (window as unknown as { electronAPI?: { saveImageLocal?: (url: string, fileName: string) => Promise<string | null> } }).electronAPI;
+      const localUrls: string[] = [];
+      for (const url of urls) {
+        const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`;
+        if (electronAPI?.saveImageLocal) {
+          const saved = await electronAPI.saveImageLocal(url, fileName);
+          if (saved) {
+            localUrls.push(`local-image://${saved}`);
+          } else {
+            localUrls.push(url); // fallback to original
+          }
+        } else {
+          localUrls.push(url); // non-electron fallback
+        }
+      }
       // 成功：从队列移除，加入历史
       setPendingTasks(prev => prev.filter(t => t.id !== taskId));
       const historyItem: ImageHistoryItem = {
         id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8),
-        urls,
+        urls: localUrls,
         prompt: params.prompt,
         model: params.model,
         timestamp: Date.now(),

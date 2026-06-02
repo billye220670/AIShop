@@ -633,32 +633,16 @@ export default function ImagePanel() {
               <div
                 key={`${card.id}-${card.index}`}
                 draggable={true}
-                onDragStart={(e) => {
-                  // Electron 环境：通过 canvas 同步提取已加载图片像素，然后启动原生拖拽
-                  const electronAPI = (window as unknown as { electronAPI?: { startDrag?: (dataUrl: string, name: string) => void } }).electronAPI;
-                  if (electronAPI?.startDrag) {
+                onDragStart={async (e) => {
+                  const electronAPI = (window as unknown as { electronAPI?: { getLocalImagePath?: (name: string) => Promise<string>; startDrag?: (path: string, name: string) => void } }).electronAPI;
+                  if (electronAPI?.startDrag && electronAPI?.getLocalImagePath && card.url.startsWith('local-image://')) {
                     e.preventDefault();
-                    const imgEl = e.currentTarget.querySelector('img');
-                    if (!imgEl) return;
-                    try {
-                      const canvas = document.createElement('canvas');
-                      canvas.width = imgEl.naturalWidth;
-                      canvas.height = imgEl.naturalHeight;
-                      const ctx = canvas.getContext('2d');
-                      if (!ctx) return;
-                      ctx.drawImage(imgEl, 0, 0);
-                      const dataUrl = canvas.toDataURL('image/png');
-                      const safeName = card.prompt.replace(/[\\/:*?"<>|]/g, '_').slice(0, 30) || 'image';
-                      const fileName = `${safeName}_${card.timestamp}.png`;
-                      electronAPI.startDrag(dataUrl, fileName);
-                    } catch {
-                      // canvas tainted 回退：HTML5 拖拽
-                      e.dataTransfer.setData('text/uri-list', card.url);
-                      e.dataTransfer.setData('text/plain', card.url);
-                    }
+                    const fileName = card.url.replace('local-image://', '');
+                    const localPath = await electronAPI.getLocalImagePath(fileName);
+                    electronAPI.startDrag(localPath, fileName);
                     return;
                   }
-                  // 非 Electron 回退：HTML5 拖拽
+                  // 旧格式或非 Electron 回退：HTML5 拖拽
                   e.dataTransfer.setData('text/uri-list', card.url);
                   e.dataTransfer.setData('text/plain', card.url);
                   e.dataTransfer.effectAllowed = 'copy';
@@ -668,7 +652,6 @@ export default function ImagePanel() {
                 <img
                   src={card.url}
                   alt={card.prompt}
-                  crossOrigin="anonymous"
                   draggable={false}
                   className="w-full h-full object-cover"
                   loading="lazy"

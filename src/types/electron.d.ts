@@ -17,7 +17,9 @@ export interface ElectronAPI {
     body?: string;
     data?: unknown;
   }>;
-  startDrag: (imageUrl: string, fileName: string) => void;
+  startDrag: (localPath: string, fileName: string) => void;
+  saveImageLocal: (url: string, fileName: string) => Promise<string | null>;
+  getLocalImagePath: (fileName: string) => Promise<string>;
 }
 
 declare global {
