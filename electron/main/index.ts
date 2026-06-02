@@ -1,10 +1,13 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import { join } from 'path';
 import * as settingsStore from './settingsStore';
 
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  // 移除默认菜单栏（File/Edit/View/Help）
+  Menu.setApplicationMenu(null);
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -15,9 +18,14 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    // 无边框窗口可选，暂时用默认
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#1a1a2e',
+    // 隐藏标题栏，保留原生窗口控制按钮（最小化/最大化/关闭）
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#0d0a1a',
+      symbolColor: '#ffffff',
+      height: 36,
+    },
+    backgroundColor: '#0d0a1a',
   });
 
   // 开发模式加载 Vite dev server
