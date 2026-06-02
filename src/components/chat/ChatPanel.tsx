@@ -19,7 +19,6 @@ interface ChatPanelProps {
   stopGeneration: () => void;
   conversationTitle?: string;
   conversation?: Conversation;
-  onInputFocusChange?: (focused: boolean) => void;
   onToggleHistory?: () => void;
   onNewConversation?: () => void;
   selectedModel?: string;
@@ -34,7 +33,6 @@ export default function ChatPanel({
   sendMessage,
   stopGeneration,
   conversation,
-  onInputFocusChange,
   onToggleHistory,
   onNewConversation,
   selectedModel,
@@ -131,7 +129,7 @@ export default function ChatPanel({
       className="flex-1 flex overflow-hidden relative"
     >
       {/* 左侧聊天区 */}
-      <div className={`flex flex-col transition-all duration-300 overflow-hidden ${activeArtifact ? 'w-full md:w-[45%]' : 'w-full'}`}>
+      <div className={`flex flex-col transition-all duration-300 overflow-hidden ${activeArtifact ? 'w-[45%]' : 'w-full'}`}>
         {/* Messages */}
         <div
           ref={messagesContainerRef}
@@ -139,12 +137,12 @@ export default function ChatPanel({
           className="flex-1 overflow-y-auto px-4 py-4"
         >
           {messages.length === 0 && (
-            <div className="pt-2 md:pt-8 pl-4 md:pl-12">
+            <div className="pt-8 pl-12">
               <div className="flex flex-col">
-                <span className="text-3xl md:text-5xl font-extrabold tracking-tight text-white">
+                <span className="text-5xl font-extrabold tracking-tight text-white">
                   你好，
                 </span>
-                <span className="text-2xl md:text-4xl font-bold text-white mt-2">
+                <span className="text-4xl font-bold text-white mt-2">
                   今天我能帮你什么？
                 </span>
               </div>
@@ -174,7 +172,6 @@ export default function ChatPanel({
           onSend={sendMessage}
           isLoading={isLoading}
           onStop={stopGeneration}
-          onFocusChange={onInputFocusChange}
           onToggleHistory={onToggleHistory}
           onNewConversation={onNewConversation}
           models={models}
@@ -183,16 +180,9 @@ export default function ChatPanel({
         />
       </div>
 
-      {/* 右侧 Artifact 面板 - 桌面端 */}
+      {/* Artifact 面板 - 桌面端 */}
       {activeArtifact && (
-        <div className="hidden md:block w-[55%] border-l border-gray-700/50 transition-all duration-300">
-          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} />
-        </div>
-      )}
-
-      {/* 移动端 Artifact 面板 - 全屏覆盖 */}
-      {activeArtifact && (
-        <div className="fixed inset-0 z-50 md:hidden bg-[#0d0a1a]">
+        <div className="w-[55%] border-l border-gray-700/50 transition-all duration-300">
           <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} />
         </div>
       )}

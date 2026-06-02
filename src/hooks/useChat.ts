@@ -303,15 +303,16 @@ export function useChat() {
           };
           return { ...conv, messages: updated, updatedAt: Date.now() };
         });
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
-        setError(err.message || '请求失败');
+      } catch (err: unknown) {
+        const e = err as Error;
+        if (e.name === 'AbortError') return;
+        setError(e.message || '请求失败');
         updateActiveConversation(conv => {
           const updated = [...conv.messages];
           const lastIdx = updated.length - 1;
           updated[lastIdx] = {
             ...updated[lastIdx],
-            content: '⚠️ 请求失败: ' + (err.message || '未知错误'),
+            content: '⚠️ 请求失败: ' + (e.message || '未知错误'),
             isStreaming: false,
           };
           return { ...conv, messages: updated };

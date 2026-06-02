@@ -1,7 +1,6 @@
-// 通过 Vercel Edge Function 代理调用，密钥保存在服务端环境变量
-import { authedFetch } from './accessCode';
+import { settingsService } from './settingsService';
 
-const SEARCH_API_URL = '/api/search';
+const BOCHA_SEARCH_URL = 'https://api.bochaai.com/v1/web-search';
 
 export interface SearchResult {
   name: string;
@@ -19,12 +18,19 @@ interface BochaWebPage {
 
 export async function searchWeb(query: string): Promise<SearchResult[]> {
   try {
-    const response = await authedFetch(SEARCH_API_URL, {
+    const apiKey = await settingsService.getApiKey('bocha');
+    if (!apiKey) {
+      console.warn('Bocha API key not configured');
+      return [];
+    }
+
+    const response = await fetch(BOCHA_SEARCH_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, freshness: 'noLimit', summary: true, count: 10 }),
     });
 
     if (!response.ok) {

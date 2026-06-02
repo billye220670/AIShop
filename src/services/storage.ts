@@ -39,7 +39,7 @@ export function createConversation(modelId: string): Conversation {
 export function saveLastModel(modelId: string): void {
   try {
     localStorage.setItem(MODEL_STORAGE_KEY, modelId);
-  } catch {}
+  } catch { /* ignore */ }
 }
 
 export function loadLastModel(): string | null {
@@ -53,7 +53,7 @@ export function loadLastModel(): string | null {
 export function saveWebSearchEnabled(enabled: boolean): void {
   try {
     localStorage.setItem(WEB_SEARCH_STORAGE_KEY, enabled ? '1' : '0');
-  } catch {}
+  } catch { /* ignore */ }
 }
 
 export function loadWebSearchEnabled(): boolean {

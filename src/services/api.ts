@@ -1,9 +1,7 @@
 import type { Message, MessageContent } from '../types';
 import { getSystemPrompt } from '../config/prompts';
-import { authedFetch } from './accessCode';
-
-// 通过 Vercel Edge Function 代理调用，密钥保存在服务端环境变量
-const CHAT_API_URL = '/api/chat';
+import { settingsService } from './settingsService';
+import { getProviderConfig } from '../config/providers';
 
 interface ChatCompletionMessage {
   role: 'system' | 'user' | 'assistant';
@@ -16,6 +14,14 @@ export async function* streamChat(
   signal?: AbortSignal,
   searchContext?: string
 ): AsyncGenerator<string, void, unknown> {
+  const provider = await settingsService.getProvider('llm');
+  const apiKey = await settingsService.getApiKey(provider);
+  const config = getProviderConfig(provider);
+
+  if (!apiKey) {
+    throw new Error('请先在设置中配置 API Key');
+  }
+
   const apiMessages: ChatCompletionMessage[] = [
     { role: 'system', content: getSystemPrompt() },
   ];
@@ -31,10 +37,11 @@ export async function* streamChat(
     }))
   );
 
-  const response = await authedFetch(CHAT_API_URL, {
+  const response = await fetch(`${config.chatBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model,
@@ -47,7 +54,7 @@ export async function* streamChat(
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`API Error (${response.status}): ${error}`);
+    throw new Error(`API 请求失败 (${response.status}): ${error}`);
   }
 
   const reader = response.body?.getReader();

@@ -5,16 +5,15 @@ import HistoryPanel from './components/chat/HistoryPanel';
 import ImagePanel from './components/image/ImagePanel';
 import VideoPanel from './components/video/VideoPanel';
 import MusicPanel from './components/music/MusicPanel';
-import AccessGate from './components/auth/AccessGate';
+import SettingsPanel from './components/settings/SettingsPanel';
 import { useChat } from './hooks/useChat';
 import { CHAT_MODELS } from './config/models';
 import type { TabMode } from './types';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [inputFocused, setInputFocused] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const chat = useChat();
 
   const activeConversation = chat.conversations.find(
@@ -33,7 +32,6 @@ function App() {
             stopGeneration={chat.stopGeneration}
             conversationTitle={conversationTitle}
             conversation={activeConversation}
-            onInputFocusChange={setInputFocused}
             onToggleHistory={() => setHistoryOpen(v => !v)}
             onNewConversation={chat.newConversation}
             selectedModel={activeConversation?.selectedModel || CHAT_MODELS[0].id}
@@ -54,7 +52,7 @@ function App() {
   };
 
   return (
-    <AccessGate>
+    <>
       <MainLayout
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -65,9 +63,7 @@ function App() {
         onDeleteConversation={chat.deleteConversation}
         onRenameConversation={chat.renameConversation}
         onModelChange={chat.setSelectedModel}
-        mobileDrawerOpen={mobileDrawerOpen}
-        setMobileDrawerOpen={setMobileDrawerOpen}
-        inputFocused={inputFocused}
+        onOpenSettings={() => setSettingsOpen(true)}
       >
         {renderContent()}
       </MainLayout>
@@ -82,7 +78,10 @@ function App() {
         onDelete={chat.deleteConversation}
         onRename={chat.renameConversation}
       />
-    </AccessGate>
+
+      {/* Settings panel */}
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </>
   );
 }
 

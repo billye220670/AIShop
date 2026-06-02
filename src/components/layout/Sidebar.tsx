@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
-import { MessageSquare, Image as ImageIcon, Film, Music, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { MessageSquare, Image as ImageIcon, Film, Music, PanelLeftClose, PanelLeftOpen, Settings } from 'lucide-react';
 import type { TabMode, Conversation } from '../../types';
 
 type TabIcon = ComponentType<{ className?: string }>;
@@ -14,6 +14,7 @@ interface SidebarProps {
   onNewConversation?: () => void;
   onDeleteConversation?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
+  onOpenSettings?: () => void;
 }
 
 const tabs: { id: TabMode; label: string; Icon: TabIcon }[] = [
@@ -58,6 +59,7 @@ function readStoredCollapsed(): boolean {
 export default function Sidebar({
   activeTab,
   onTabChange,
+  onOpenSettings,
 }: SidebarProps) {
 
   const [width, setWidth] = useState<number>(() => readStoredWidth());
@@ -148,7 +150,7 @@ export default function Sidebar({
         </button>
       </div>
 
-      <nav className="space-y-1.5 px-2 overflow-visible">
+      <nav className="flex-1 space-y-1.5 px-2 overflow-visible">
         {tabs.map(tab => {
           const Icon = tab.Icon;
           return (
@@ -184,6 +186,33 @@ export default function Sidebar({
           );
         })}
       </nav>
+
+      {/* 底部设置按钮 */}
+      <div className="px-2 pb-4 mt-auto">
+        <div className="relative group">
+          <button
+            onClick={onOpenSettings}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+              collapsed ? 'justify-center' : ''
+            } text-gray-400 hover:bg-white/5 hover:text-white`}
+          >
+            <Settings className="w-5 h-5 shrink-0" />
+            {!collapsed && !compact && (
+              <span className="text-sm font-medium truncate">设置</span>
+            )}
+          </button>
+
+          {/* 折叠态自定义 Tooltip */}
+          {collapsed && (
+            <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 z-50">
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[5px] border-r-gray-900/95" />
+              <div className="bg-gray-900/95 text-white text-sm rounded-md px-3 py-1.5 shadow-lg whitespace-nowrap">
+                设置
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* 拖动手柄 - 折叠态隐藏 */}
       {!collapsed && (

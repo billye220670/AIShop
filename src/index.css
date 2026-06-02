@@ -11,10 +11,6 @@ body,
   overscroll-behavior: none;
 }
 
-body {
-  -webkit-tap-highlight-color: transparent;
-}
-
 /* 自定义滚动条 */
 ::-webkit-scrollbar {
   width: 6px;

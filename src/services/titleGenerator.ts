@@ -1,7 +1,6 @@
-// 通过 Vercel Edge Function 代理调用，密钥保存在服务端环境变量
-import { authedFetch } from './accessCode';
+import { settingsService } from './settingsService';
+import { getProviderConfig } from '../config/providers';
 
-const CHAT_API_URL = '/api/chat';
 const TITLE_MODEL = 'doubao-1-5-pro-32k-250115';
 
 function fallback(messages: Array<{role: string; content: string | unknown}>): string {
@@ -32,10 +31,19 @@ export async function generateTitle(
       if (summary.length > 500) break;
     }
 
-    const response = await authedFetch(CHAT_API_URL, {
+    const provider = await settingsService.getProvider('llm');
+    const apiKey = await settingsService.getApiKey(provider);
+    const config = getProviderConfig(provider);
+
+    if (!apiKey) {
+      return fallback(messages);
+    }
+
+    const response = await fetch(`${config.chatBaseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: TITLE_MODEL,

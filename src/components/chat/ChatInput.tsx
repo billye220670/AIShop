@@ -1,5 +1,5 @@
 import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
-import { Paperclip, Square, ArrowUp, SendHorizontal, Plus, Clock, X, FileText } from 'lucide-react';
+import { Paperclip, Square, SendHorizontal, Plus, Clock, X, FileText } from 'lucide-react';
 import type { MessageContent, Model, FileAttachment } from '../../types';
 import ModelSelector from '../common/ModelSelector';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
@@ -8,7 +8,6 @@ interface ChatInputProps {
   onSend: (content: string | MessageContent[], attachments?: FileAttachment[]) => void;
   isLoading: boolean;
   onStop: () => void;
-  onFocusChange?: (focused: boolean) => void;
   onToggleHistory?: () => void;
   onNewConversation?: () => void;
   models?: Model[];
@@ -20,7 +19,6 @@ export default function ChatInput({
   onSend,
   isLoading,
   onStop,
-  onFocusChange,
   onToggleHistory,
   onNewConversation,
   models,
@@ -28,7 +26,6 @@ export default function ChatInput({
   onModelChange,
 }: ChatInputProps) {
   const [text, setText] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [files, setFiles] = useState<ParsedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -203,7 +200,7 @@ export default function ChatInput({
 
   return (
     <div
-      className={`bg-transparent p-3 md:p-4 relative transition-all ${isDragging ? 'ring-2 ring-purple-500 bg-purple-500/5 rounded-xl' : ''}`}
+      className={`bg-transparent p-4 relative transition-all ${isDragging ? 'ring-2 ring-purple-500 bg-purple-500/5 rounded-xl' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -227,88 +224,8 @@ export default function ChatInput({
         </div>
       )}
 
-    
-      {/* Mobile input bar */}
-      <div className="md:hidden">
-        <div className={`bg-gray-900 border border-transparent focus-within:border-[rgb(127,96,255)] transition-colors ${
-          (images.length > 0 || files.length > 0) ? 'rounded-2xl' : 'rounded-full'
-        }`}>
-          {/* Mobile: unified preview area */}
-          {(images.length > 0 || files.length > 0) && (
-            <>
-              <div className="flex gap-2 p-3 pb-2 flex-wrap">
-                {images.map((img, idx) => (
-                  <div key={`img-${idx}`} className="relative group">
-                    <img src={img} alt="" className="w-14 h-14 object-cover rounded-lg border border-gray-600" />
-                    <button
-                      onClick={() => removeImage(idx)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-                {files.map((file, idx) => (
-                  <div key={`file-${idx}`} className="relative group min-w-[200px] max-w-[280px]">
-                    <div className="flex items-center gap-3 px-3 py-2.5 bg-[#1e2030] border border-gray-700/50 rounded-lg">
-                      <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-purple-500/15">
-                        <FileText className="w-5 h-5 text-[rgb(127,96,255)]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-gray-200 font-medium truncate">{file.name}</div>
-                        <div className="text-xs text-gray-500">File · {formatFileSize(file.size)}{file.truncated ? ' · 已截断' : ''}</div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeFile(idx)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-gray-700 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-gray-700/60 mx-3" />
-            </>
-          )}
-          {/* Mobile input row */}
-          <div className="relative">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-800 z-10"
-              title="添加媒体"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-            <textarea
-              ref={textareaRef}
-              value={text}
-              onChange={handleTextChange}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              onFocus={() => { setIsFocused(true); onFocusChange?.(true); }}
-              onBlur={() => { setIsFocused(false); onFocusChange?.(false); }}
-              placeholder="询问任何问题..."
-              className="w-full bg-transparent text-white pl-12 pr-12 py-3.5 resize-none placeholder-gray-500 focus:outline-none max-h-[200px] min-h-[52px]"
-              rows={1}
-            />
-            {(isFocused || text.trim()) && (
-              <button
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={handleSubmit}
-                disabled={!text.trim() && images.length === 0 && files.length === 0}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 bg-[rgb(127,96,255)] disabled:bg-gray-700 disabled:text-gray-500 hover:bg-[rgb(107,76,235)] text-white transition-colors rounded-full z-10"
-                title="发送"
-              >
-                <ArrowUp className="w-5 h-5" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-  
       {/* Desktop input area - two row layout */}
-      <div className="hidden md:block">
+      <div>
         {/* Row 1: Toolbar */}
         <div className="flex items-center justify-between mb-3">
           {/* Left: ModelSelector + Upload */}
