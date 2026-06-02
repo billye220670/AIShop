@@ -180,9 +180,9 @@ export async function generateImage(
     model, prompt, images, isEdit, size, quality, outputFormat, n, aspectRatio
   );
 
-  // 120s 超时控制（GPT Image 2 生成较慢，需要更长时间）
+  // 180s 超时控制（GPT Image 2 生成可能需要 60-120s）
   const fetchController = new AbortController();
-  const fetchTimeout = setTimeout(() => fetchController.abort(), 120000);
+  const fetchTimeout = setTimeout(() => fetchController.abort(), 180000);
 
   // 合并外部 signal 与超时 signal
   const combinedSignal = signal
