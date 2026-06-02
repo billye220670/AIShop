@@ -63,7 +63,7 @@ const PROVIDER_ICON_MAP: Record<string, string> = {
 
 function getProviderIcon(provider: string): string {
   const icon = PROVIDER_ICON_MAP[provider];
-  return icon ? `/providers/${icon}` : '/providers/openai.svg';
+  return icon ? `providers/${icon}` : 'providers/openai.svg';
 }
 
 
@@ -181,7 +181,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
         {/* 模型图标 + 名称 */}
         <div className="flex items-center gap-2 mb-4">
           <img
-            src={modelProvider ? getProviderIcon(modelProvider) : '/providers/openai.svg'}
+            src={modelProvider ? getProviderIcon(modelProvider) : 'providers/openai.svg'}
             alt={modelProvider || 'AI'}
             className="w-5 h-5"
           />

@@ -46,7 +46,7 @@ const DARK_ICON_PROVIDERS = ['OpenAI', 'xAI', 'Xiaomi'];
 
 function getProviderIcon(provider: string): string | null {
   const file = PROVIDER_ICON_MAP[provider];
-  return file ? `/providers/${file}` : null;
+  return file ? `providers/${file}` : null;
 }
 
 const MENU_GAP = 4;

@@ -28,6 +28,7 @@ export default defineConfig({
   renderer: {
     plugins: [react(), tailwindcss()],
     root: '.',
+    base: './',
     build: {
       outDir: 'dist-electron/renderer',
       rollupOptions: {
