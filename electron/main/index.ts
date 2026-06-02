@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, globalShortcut, session } from 'electron';
 import { join } from 'path';
+import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
 import * as settingsStore from './settingsStore';
 
 let mainWindow: BrowserWindow | null = null;
@@ -94,6 +96,38 @@ function registerSettingsHandlers() {
 
     const data = await response.json();
     return { error: false, data };
+  });
+
+  // 图片拖拽到桌面：下载图片到临时文件后启动原生拖拽
+  const dragCacheDir = join(tmpdir(), 'aishop-drag-cache');
+  if (!existsSync(dragCacheDir)) mkdirSync(dragCacheDir, { recursive: true });
+
+  ipcMain.on('image:native-drag', async (event, imageUrl: string, fileName: string) => {
+    try {
+      let buffer: Buffer;
+
+      if (imageUrl.startsWith('data:')) {
+        // data URI → 解码 base64
+        const base64Data = imageUrl.split(',')[1] || '';
+        buffer = Buffer.from(base64Data, 'base64');
+      } else {
+        // 远程 URL → 下载
+        const resp = await fetch(imageUrl);
+        if (!resp.ok) return;
+        const arrayBuf = await resp.arrayBuffer();
+        buffer = Buffer.from(arrayBuf);
+      }
+
+      const tempPath = join(dragCacheDir, fileName);
+      writeFileSync(tempPath, buffer);
+
+      event.sender.startDrag({
+        file: tempPath,
+        icon: tempPath,
+      });
+    } catch (err) {
+      console.error('Native drag failed:', err);
+    }
   });
 }
 

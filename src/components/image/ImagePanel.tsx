@@ -634,6 +634,16 @@ export default function ImagePanel() {
                 key={`${card.id}-${card.index}`}
                 draggable={true}
                 onDragStart={(e) => {
+                  // Electron 环境：启动原生拖拽（可拖到桌面）
+                  const electronAPI = (window as unknown as { electronAPI?: { startDrag?: (url: string, name: string) => void } }).electronAPI;
+                  if (electronAPI?.startDrag) {
+                    e.preventDefault();
+                    const safeName = card.prompt.replace(/[\\/:*?"<>|]/g, '_').slice(0, 30) || 'image';
+                    const fileName = `${safeName}_${card.timestamp}.png`;
+                    electronAPI.startDrag(card.url, fileName);
+                    return;
+                  }
+                  // 非 Electron 回退：HTML5 拖拽（内部拖拽作为参考图）
                   e.dataTransfer.setData('text/uri-list', card.url);
                   e.dataTransfer.setData('text/plain', card.url);
                   e.dataTransfer.effectAllowed = 'copy';

@@ -11,4 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 图片生成通过主进程发起，绕过 CORS 和浏览器网络限制
   imageGenerate: (url: string, body: string, apiKey: string) =>
     ipcRenderer.invoke('image:generate', url, body, apiKey),
+  // 启动原生拖拽：将图片拖拽到桌面等外部位置
+  startDrag: (imageUrl: string, fileName: string) =>
+    ipcRenderer.send('image:native-drag', imageUrl, fileName),
 });

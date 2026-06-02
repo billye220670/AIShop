@@ -17,6 +17,7 @@ export interface ElectronAPI {
     body?: string;
     data?: unknown;
   }>;
+  startDrag: (imageUrl: string, fileName: string) => void;
 }
 
 declare global {
