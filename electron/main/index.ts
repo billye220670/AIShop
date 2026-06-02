@@ -75,6 +75,26 @@ function registerSettingsHandlers() {
   ipcMain.handle('settings:getAll', () => {
     return settingsStore.getAllSettings();
   });
+
+  // 图片生成：通过主进程 Node.js fetch 发起，绕过 CORS 和浏览器网络限制
+  ipcMain.handle('image:generate', async (_event, url: string, body: string, apiKey: string) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return { error: true, status: response.status, body: text };
+    }
+
+    const data = await response.json();
+    return { error: false, data };
+  });
 }
 
 app.whenReady().then(() => {

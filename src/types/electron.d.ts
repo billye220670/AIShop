@@ -11,6 +11,12 @@ export interface ElectronSettingsAPI {
 
 export interface ElectronAPI {
   settings: ElectronSettingsAPI;
+  imageGenerate: (url: string, body: string, apiKey: string) => Promise<{
+    error: boolean;
+    status?: number;
+    body?: string;
+    data?: unknown;
+  }>;
 }
 
 declare global {
