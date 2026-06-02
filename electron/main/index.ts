@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, globalShortcut, session } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, globalShortcut, session, nativeImage } from 'electron';
 import { join } from 'path';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
@@ -102,28 +102,22 @@ function registerSettingsHandlers() {
   const dragCacheDir = join(tmpdir(), 'aishop-drag-cache');
   if (!existsSync(dragCacheDir)) mkdirSync(dragCacheDir, { recursive: true });
 
-  ipcMain.on('image:native-drag', async (event, imageUrl: string, fileName: string) => {
+  ipcMain.on('image:native-drag', async (event, imageDataUrl: string, fileName: string) => {
     try {
-      let buffer: Buffer;
+      // 解码 data URI → Buffer
+      const base64Data = imageDataUrl.split(',')[1] || '';
+      const buffer = Buffer.from(base64Data, 'base64');
 
-      if (imageUrl.startsWith('data:')) {
-        // data URI → 解码 base64
-        const base64Data = imageUrl.split(',')[1] || '';
-        buffer = Buffer.from(base64Data, 'base64');
-      } else {
-        // 远程 URL → 下载
-        const resp = await fetch(imageUrl);
-        if (!resp.ok) return;
-        const arrayBuf = await resp.arrayBuffer();
-        buffer = Buffer.from(arrayBuf);
-      }
-
+      // 保存完整文件
       const tempPath = join(dragCacheDir, fileName);
       writeFileSync(tempPath, buffer);
 
+      // 创建拖拽缩略图 icon（128x128）
+      const icon = nativeImage.createFromBuffer(buffer).resize({ width: 128, height: 128 });
+
       event.sender.startDrag({
         file: tempPath,
-        icon: tempPath,
+        icon,
       });
     } catch (err) {
       console.error('Native drag failed:', err);

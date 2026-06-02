@@ -634,16 +634,31 @@ export default function ImagePanel() {
                 key={`${card.id}-${card.index}`}
                 draggable={true}
                 onDragStart={(e) => {
-                  // Electron 环境：启动原生拖拽（可拖到桌面）
-                  const electronAPI = (window as unknown as { electronAPI?: { startDrag?: (url: string, name: string) => void } }).electronAPI;
+                  // Electron 环境：通过 canvas 同步提取已加载图片像素，然后启动原生拖拽
+                  const electronAPI = (window as unknown as { electronAPI?: { startDrag?: (dataUrl: string, name: string) => void } }).electronAPI;
                   if (electronAPI?.startDrag) {
                     e.preventDefault();
-                    const safeName = card.prompt.replace(/[\\/:*?"<>|]/g, '_').slice(0, 30) || 'image';
-                    const fileName = `${safeName}_${card.timestamp}.png`;
-                    electronAPI.startDrag(card.url, fileName);
+                    const imgEl = e.currentTarget.querySelector('img');
+                    if (!imgEl) return;
+                    try {
+                      const canvas = document.createElement('canvas');
+                      canvas.width = imgEl.naturalWidth;
+                      canvas.height = imgEl.naturalHeight;
+                      const ctx = canvas.getContext('2d');
+                      if (!ctx) return;
+                      ctx.drawImage(imgEl, 0, 0);
+                      const dataUrl = canvas.toDataURL('image/png');
+                      const safeName = card.prompt.replace(/[\\/:*?"<>|]/g, '_').slice(0, 30) || 'image';
+                      const fileName = `${safeName}_${card.timestamp}.png`;
+                      electronAPI.startDrag(dataUrl, fileName);
+                    } catch {
+                      // canvas tainted 回退：HTML5 拖拽
+                      e.dataTransfer.setData('text/uri-list', card.url);
+                      e.dataTransfer.setData('text/plain', card.url);
+                    }
                     return;
                   }
-                  // 非 Electron 回退：HTML5 拖拽（内部拖拽作为参考图）
+                  // 非 Electron 回退：HTML5 拖拽
                   e.dataTransfer.setData('text/uri-list', card.url);
                   e.dataTransfer.setData('text/plain', card.url);
                   e.dataTransfer.effectAllowed = 'copy';
@@ -653,6 +668,7 @@ export default function ImagePanel() {
                 <img
                   src={card.url}
                   alt={card.prompt}
+                  crossOrigin="anonymous"
                   draggable={false}
                   className="w-full h-full object-cover"
                   loading="lazy"
