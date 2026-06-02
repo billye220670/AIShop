@@ -255,6 +255,9 @@ export default async function handler(
 
   // 5. 发起上游请求
   let upstream: Response;
+  const fetchController = new AbortController();
+  const fetchTimeout = setTimeout(() => fetchController.abort(), 50000);
+
   try {
     upstream = await fetch(upstreamUrl, {
       method: 'POST',
@@ -263,11 +266,19 @@ export default async function handler(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(upstreamBody),
+      signal: fetchController.signal,
     });
-  } catch (err) {
+    clearTimeout(fetchTimeout);
+  } catch (fetchErr: unknown) {
+    clearTimeout(fetchTimeout);
+    if (fetchErr instanceof Error && fetchErr.name === 'AbortError') {
+      return res.status(504).json({
+        error: '上游服务响应超时，请稍后重试',
+      });
+    }
     return res.status(502).json({
-      error: 'Upstream request failed',
-      detail: (err as Error).message,
+      error: '上游服务请求失败',
+      detail: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
     });
   }
 
