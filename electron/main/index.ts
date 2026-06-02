@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, globalShortcut, session } from 'electron';
 import { join } from 'path';
 import * as settingsStore from './settingsStore';
 
@@ -78,6 +78,15 @@ function registerSettingsHandlers() {
 }
 
 app.whenReady().then(() => {
+  // 绕过 CORS 限制：拦截 API 请求的响应头，添加跨域许可
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = { ...details.responseHeaders };
+    headers['access-control-allow-origin'] = ['*'];
+    headers['access-control-allow-headers'] = ['*'];
+    headers['access-control-allow-methods'] = ['GET, POST, PUT, DELETE, OPTIONS'];
+    callback({ responseHeaders: headers });
+  });
+
   registerSettingsHandlers();
   createWindow();
 
