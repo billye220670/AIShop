@@ -239,14 +239,12 @@ export function useImage() {
     // 添加到队列（追加到末尾，避免把已有内容挤开）
     setPendingTasks(prev => [...prev, task]);
 
-    // 独立的 AbortController + 55s 超时
+    // 独立的 AbortController（超时由 imageApi 内部控制，这里仅用于用户手动取消）
     const controller = new AbortController();
     controllersRef.current.set(taskId, controller);
-    const timeoutId = setTimeout(() => controller.abort(), 55000);
 
     try {
       const urls = await apiGenerateImage(params, controller.signal);
-      clearTimeout(timeoutId);
       // 成功：从队列移除，加入历史
       setPendingTasks(prev => prev.filter(t => t.id !== taskId));
       const historyItem: ImageHistoryItem = {
@@ -263,7 +261,6 @@ export function useImage() {
       // 追加到末尾：保持与 loading 卡片在原位置一致，避免完成后图片跳到最前
       setHistory(prev => [...prev, historyItem]);
     } catch (err) {
-      clearTimeout(timeoutId);
       if (err instanceof Error && err.name === 'AbortError') {
         // 检查是用户手动取消还是超时
         if (!controllersRef.current.has(taskId)) {
