@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, globalShortcut } from 'electron';
 import { join } from 'path';
 import * as settingsStore from './settingsStore';
 
@@ -36,6 +36,16 @@ function createWindow() {
     // 生产模式加载打包后的文件
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
+
+  // 注册 F12 / Ctrl+Shift+I 打开 DevTools
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (
+      input.key === 'F12' ||
+      (input.control && input.shift && input.key.toLowerCase() === 'i')
+    ) {
+      mainWindow?.webContents.toggleDevTools();
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
