@@ -1,6 +1,50 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+[data-theme="purple"], :root {
+  --color-bg-base: #0d0a1a;
+  --color-bg-primary: #1a1a2e;
+  --color-bg-secondary: #1e1e36;
+  --color-bg-hover: #252540;
+  --color-bg-elevated: rgb(46, 47, 60);
+  --color-bg-button: #2a2a4a;
+  --color-accent: rgb(127, 96, 255);
+  --color-accent-hover: rgb(107, 76, 235);
+  --color-accent-soft: rgba(127, 96, 255, 0.15);
+  --color-accent-foreground: #ffffff;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  --color-text-tertiary: rgb(114, 115, 138);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-subtle: rgba(70, 61, 123, 0.5);
+  --color-scrollbar-thumb: #4b5563;
+  --color-scrollbar-hover: #6b7280;
+  --color-code-bg: #161b22;
+}
+
+[data-theme="green"] {
+  --color-bg-base: rgb(18, 18, 17);
+  --color-bg-primary: rgb(23, 23, 22);
+  --color-bg-secondary: rgb(32, 32, 30);
+  --color-bg-hover: rgb(42, 42, 39);
+  --color-bg-elevated: rgb(38, 38, 36);
+  --color-bg-button: rgb(30, 30, 28);
+  --color-accent: rgb(42, 219, 92);
+  --color-accent-hover: rgb(32, 189, 72);
+  --color-accent-soft: rgba(42, 219, 92, 0.15);
+  --color-accent-foreground: #000000;
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  --color-text-tertiary: rgb(120, 120, 115);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(42, 219, 92, 0.2);
+  --color-scrollbar-thumb: #3a3a38;
+  --color-scrollbar-hover: #4a4a47;
+  --color-code-bg: rgb(18, 18, 17);
+}
+
 /* 全局：禁止页面级滚动与下拉刷新/橡皮筋效果 */
 html,
 body,
@@ -21,12 +65,12 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--color-scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: var(--color-scrollbar-hover);
 }
 
 /* 代码高亮基础样式 */
@@ -35,12 +79,12 @@ pre code {
   padding: 1rem;
   overflow-x: auto;
   border-radius: 0.5rem;
-  background: #161b22;
+  background: var(--color-code-bg);
   font-size: 0.875rem;
 }
 
 code {
-  background: #374151;
+  background: var(--color-bg-hover);
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   font-size: 0.875rem;
@@ -49,6 +93,25 @@ code {
 pre code code {
   background: none;
   padding: 0;
+}
+
+/* 所有 button 元素默认 pointer 光标 */
+button {
+  cursor: pointer;
+}
+
+/* 流式光标脉动动画 */
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 8px var(--color-accent);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.75);
+    box-shadow: 0 0 2px var(--color-accent);
+  }
 }
 
 /* highlight.js 主题覆盖 - 确保代码块背景一致 */

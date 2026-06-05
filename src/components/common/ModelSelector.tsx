@@ -195,8 +195,8 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
           }}
           className={`w-full flex items-center gap-2.5 px-4 py-2 text-sm text-left transition-colors ${
             active
-              ? 'bg-[rgb(70,61,123)] text-white rounded-lg mx-2 !w-[calc(100%-1rem)]'
-              : 'text-gray-300 hover:bg-white/5'
+              ? 'bg-[var(--color-accent-soft)] text-white rounded-lg mx-2 !w-[calc(100%-1rem)] border border-[var(--color-accent)]'
+              : 'text-gray-300 hover:bg-[var(--color-bg-hover)]'
           }`}
         >
           {icon ? (
@@ -260,7 +260,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
               minWidth: pos.width,
               maxHeight: pos.maxHeight,
             }}
-            className={`z-[1000] overflow-hidden bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl
+            className={`z-[1000] overflow-hidden bg-[var(--color-bg-elevated)] border border-white/5 rounded-xl shadow-2xl
               transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
               ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
           >
@@ -271,7 +271,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
             {hasGroups ? (
               sortedGroups.map((group) => (
                 <li key={group}>
-                  <div className="px-4 pt-4 pb-1.5 text-sm font-bold text-[rgb(114,115,138)]">
+                  <div className="px-4 pt-4 pb-1.5 text-sm font-bold text-[var(--color-text-tertiary)]">
                     {group}
                   </div>
                   <ul>

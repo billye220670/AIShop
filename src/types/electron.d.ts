@@ -17,9 +17,22 @@ export interface ElectronAPI {
     body?: string;
     data?: unknown;
   }>;
-  startDrag: (localPath: string, fileName: string) => void;
+  startDrag: (imageUrl: string) => void;
   saveImageLocal: (url: string, fileName: string) => Promise<string | null>;
   getLocalImagePath: (fileName: string) => Promise<string>;
+  saveMarkdown: (content: string, defaultName: string) => Promise<{
+    success: boolean;
+    canceled?: boolean;
+    filePath?: string;
+    error?: string;
+  }>;
+  openExternal: (url: string) => Promise<void>;
+  updateTitleBarColor: (bgColor: string, symbolColor: string) => Promise<void>;
+  // 自动更新
+  checkForUpdate: () => Promise<void>;
+  installUpdate: () => Promise<void>;
+  onUpdateAvailable: (callback: (...args: unknown[]) => void) => void;
+  onUpdateDownloaded: (callback: (...args: unknown[]) => void) => void;
 }
 
 declare global {

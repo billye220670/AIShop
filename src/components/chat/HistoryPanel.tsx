@@ -51,12 +51,14 @@ export default function HistoryPanel({
     }
   }, [editingId]);
 
-  // Filtered conversations
+  // Filtered conversations (排除空会话/无消息的会话)
   const filteredConversations = useMemo(() => {
     if (!conversations) return [];
+    // 过滤掉没有消息的空会话（无论标题是什么）
+    const nonEmpty = conversations.filter(conv => conv.messages && conv.messages.length > 0);
     const keyword = historySearch.trim();
-    if (!keyword) return conversations;
-    return conversations.filter(conv => {
+    if (!keyword) return nonEmpty;
+    return nonEmpty.filter(conv => {
       if (conv.title.toLowerCase().includes(keyword.toLowerCase())) return true;
       const match = PinyinMatch.match(conv.title, keyword);
       return match !== false;
@@ -101,7 +103,7 @@ export default function HistoryPanel({
   // 导出会话为 JSON
   const exportConversation = (conv: Conversation) => {
     const data = {
-      app: 'AIShop',
+      app: 'PortAI',
       version: 1,
       conversation: conv,
     };
@@ -109,7 +111,7 @@ export default function HistoryPanel({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${conv.title}.aishop.json`;
+    a.download = `${conv.title}.portai.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -150,12 +152,12 @@ export default function HistoryPanel({
       {/* Desktop history sliding panel */}
       <div
         ref={historyPanelRef}
-        className={`hidden md:flex flex-col fixed top-0 right-0 bottom-0 w-[380px] z-[100] bg-[#1a1a2e] border-l border-gray-700/50 shadow-2xl transition-transform duration-300 ease-in-out ${
+        className={`hidden md:flex flex-col fixed top-[44px] right-0 bottom-0 w-[380px] z-[100] bg-[var(--color-bg-primary)] border-l border-gray-700/50 shadow-2xl transform transition-transform duration-300 ease-in-out ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        {/* 顶部标题栏 */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+        {/* 顶部标题栏 - 增加 pt-4 以避免与 Electron 窗口拖拽区域冲突 */}
+        <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <h2 className="text-lg font-bold text-white">聊天历史</h2>
           <button
             onClick={onClose}
@@ -167,7 +169,7 @@ export default function HistoryPanel({
 
         {/* "所有" tab */}
         <div className="px-5 pb-3">
-          <span className="text-sm text-white border-b-2 border-[rgb(127,96,255)] pb-1">所有</span>
+          <span className="text-sm text-white border-b-2 border-[var(--color-accent)] pb-1">所有</span>
         </div>
 
         {/* 搜索框 */}
@@ -179,7 +181,7 @@ export default function HistoryPanel({
               value={historySearch}
               onChange={e => setHistorySearch(e.target.value)}
               placeholder="搜索"
-              className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[rgb(127,96,255)]"
+              className="w-full bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[var(--color-accent)]"
             />
           </div>
         </div>
@@ -201,7 +203,7 @@ export default function HistoryPanel({
                     key={conv.id}
                     className={`group relative w-full text-left px-3 py-3 rounded-lg mb-1 transition-colors cursor-pointer ${
                       isActive
-                        ? 'bg-[rgb(127,96,255)]/20'
+                        ? 'bg-[var(--color-accent-soft)]'
                         : 'hover:bg-white/5'
                     }`}
                     onClick={() => {
@@ -230,7 +232,7 @@ export default function HistoryPanel({
                             }
                           }}
                           maxLength={50}
-                          className="flex-1 min-w-0 bg-gray-800 text-white text-sm px-2 py-0.5 rounded border border-[rgb(127,96,255)] outline-none"
+                          className="flex-1 min-w-0 bg-gray-800 text-white text-sm px-2 py-0.5 rounded border border-[var(--color-accent)] outline-none"
                         />
                       ) : (
                         <div className="flex-1 min-w-0 text-sm font-bold text-white truncate">
@@ -266,7 +268,7 @@ export default function HistoryPanel({
                     {/* 浮动菜单 */}
                     {isMenuOpen && (
                       <div
-                        className="absolute right-2 top-10 z-[200] w-40 bg-[#1e1e36] border border-gray-700/60 rounded-lg shadow-xl py-1"
+                        className="absolute right-2 top-10 z-[200] w-40 bg-[var(--color-bg-secondary)] border border-gray-700/60 rounded-lg shadow-xl py-1"
                         onClick={e => e.stopPropagation()}
                       >
                         {/* 导出 */}

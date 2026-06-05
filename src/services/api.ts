@@ -12,7 +12,8 @@ export async function* streamChat(
   messages: Message[],
   model: string,
   signal?: AbortSignal,
-  searchContext?: string
+  searchContext?: string,
+  systemPrompt?: string
 ): AsyncGenerator<string, void, unknown> {
   const provider = await settingsService.getProvider('llm');
   const apiKey = await settingsService.getApiKey(provider);
@@ -23,7 +24,7 @@ export async function* streamChat(
   }
 
   const apiMessages: ChatCompletionMessage[] = [
-    { role: 'system', content: getSystemPrompt() },
+    { role: 'system', content: systemPrompt || getSystemPrompt() },
   ];
 
   if (searchContext) {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { Conversation, Message, Model, FileAttachment } from '../../types';
+import type { Conversation, Message, Model, FileAttachment, ChatFeatureSettings } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
 import { useArtifact, parseArtifactFromContent } from '../../hooks/useArtifact';
 import MessageBubble from './MessageBubble';
@@ -25,6 +25,15 @@ interface ChatPanelProps {
   onModelChange?: (modelId: string) => void;
   models?: Model[];
   streamingArtifact?: { title: string; code: string } | null;
+  regenerateMessage?: (messageId: string) => void;
+  featureSettings: ChatFeatureSettings;
+  onFeatureSettingsChange: (settings: ChatFeatureSettings) => void;
+  compareWithModel?: (messageId: string, modelId: string) => void;
+  switchVersion?: (messageId: string, index: number) => void;
+  webSearchEnabled?: boolean;
+  onWebSearchEnabledChange?: (enabled: boolean) => void;
+  isFavorite?: boolean;
+  onToggleFavorite?: (thumbnail?: string) => void;
 }
 
 export default function ChatPanel({
@@ -39,6 +48,15 @@ export default function ChatPanel({
   onModelChange,
   models,
   streamingArtifact,
+  regenerateMessage,
+  featureSettings,
+  onFeatureSettingsChange,
+  compareWithModel,
+  switchVersion,
+  webSearchEnabled = false,
+  onWebSearchEnabledChange,
+  isFavorite = false,
+  onToggleFavorite,
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -47,6 +65,7 @@ export default function ChatPanel({
   const artifactStreamStartedRef = useRef(false);
   const { activeArtifact, isArtifactGenerating, openArtifact, closeArtifact, startStreamingArtifact, updateStreamingCode, finishStreamingArtifact } = useArtifact();
   const [autoPreviewSignal, setAutoPreviewSignal] = useState(0);
+  const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   // 会话切换时关闭 Artifact 面板
   useEffect(() => {
     closeArtifact();
@@ -151,7 +170,14 @@ export default function ChatPanel({
           {messages.map((msg, index) => {
             const isLastAssistant =
               msg.role === 'assistant' && index === messages.length - 1;
-            const currentModel = CHAT_MODELS.find(m => m.id === conversation?.selectedModel);
+            // 版本感知的模型 ID 获取
+            const activeVersion = msg.versions?.[msg.activeVersionIndex ?? 0];
+            const modelId = activeVersion
+              ? activeVersion.model
+              : (msg.role === 'assistant' && msg.model)
+                ? msg.model
+                : conversation?.selectedModel;
+            const currentModel = CHAT_MODELS.find(m => m.id === modelId);
             return (
               <MessageBubble
                 key={msg.id}
@@ -161,6 +187,11 @@ export default function ChatPanel({
                 modelName={currentModel?.name}
                 modelProvider={currentModel?.provider}
                 onOpenArtifact={openArtifact}
+                onRegenerate={msg.role === 'assistant' ? regenerateMessage : undefined}
+                onQuote={msg.role === 'assistant' ? (m) => setQuotedMessage(m) : undefined}
+                isStreaming={isLoading}
+                onCompareWithModel={msg.role === 'assistant' ? compareWithModel : undefined}
+                onSwitchVersion={msg.role === 'assistant' ? switchVersion : undefined}
               />
             );
           })}
@@ -177,13 +208,19 @@ export default function ChatPanel({
           models={models}
           selectedModel={selectedModel}
           onModelChange={onModelChange}
+          quotedMessage={quotedMessage}
+          onRemoveQuote={() => setQuotedMessage(null)}
+          featureSettings={featureSettings}
+          onFeatureSettingsChange={onFeatureSettingsChange}
+          webSearchEnabled={webSearchEnabled}
+          onWebSearchEnabledChange={onWebSearchEnabledChange}
         />
       </div>
 
       {/* Artifact 面板 - 桌面端 */}
       {activeArtifact && (
         <div className="w-[55%] border-l border-gray-700/50 transition-all duration-300">
-          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} />
+          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} isFavorite={isFavorite} onToggleFavorite={onToggleFavorite} />
         </div>
       )}
     </div>

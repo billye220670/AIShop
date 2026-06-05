@@ -1,5 +1,9 @@
 export type MessageRole = 'user' | 'assistant' | 'system';
 
+export interface ChatFeatureSettings {
+  artifactEnabled: boolean;
+}
+
 export interface ArtifactBlock {
   id: string;
   type: 'html';
@@ -23,6 +27,21 @@ export interface FileAttachment {
   truncated: boolean;
 }
 
+// 多模型比较 - 消息版本接口
+export interface MessageVersion {
+  id: string;
+  model: string;
+  content: string | MessageContent[];
+  timestamp: number;
+  isStreaming?: boolean;
+  suggestions?: string[];
+  webSearching?: boolean;
+  webSearched?: boolean;
+  webSearchFailed?: boolean;
+  searchResults?: Array<{ name: string; url: string; siteName: string }>;
+  artifact?: ArtifactBlock;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -30,6 +49,7 @@ export interface Message {
   timestamp: number;
   isStreaming?: boolean;
   suggestions?: string[];
+  webSearching?: boolean;
   webSearched?: boolean;
   webSearchFailed?: boolean;  // 联网搜索是否失败
   searchResults?: Array<{
@@ -39,6 +59,9 @@ export interface Message {
   }>;
   attachments?: FileAttachment[];
   artifact?: ArtifactBlock;  // 关联的 artifact 数据
+  model?: string;  // 生成该消息时使用的模型 ID
+  versions?: MessageVersion[];       // 多模型回答版本列表
+  activeVersionIndex?: number;       // 当前展示的版本索引
 }
 
 export interface Model {
@@ -57,7 +80,7 @@ export interface Model {
   };
 }
 
-export type TabMode = 'chat' | 'image' | 'video' | 'music';
+export type TabMode = 'chat' | 'image' | 'video' | 'music' | 'favorites';
 
 export interface ChatState {
   messages: Message[];
@@ -120,3 +143,5 @@ export interface PendingImageTask {
   error?: string;                   // 错误信息
   createdAt: number;
 }
+
+export type ThemeId = 'purple' | 'green';

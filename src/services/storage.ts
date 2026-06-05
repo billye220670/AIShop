@@ -1,4 +1,4 @@
-import type { Conversation } from '../types';
+import type { Conversation, ArtifactBlock } from '../types';
 
 const STORAGE_KEY = 'aishop_conversations';
 const MODEL_STORAGE_KEY = 'aishop_last_model';
@@ -61,5 +61,38 @@ export function loadWebSearchEnabled(): boolean {
     return localStorage.getItem(WEB_SEARCH_STORAGE_KEY) === '1';
   } catch {
     return false;
+  }
+}
+
+export function loadTheme(): string {
+  return localStorage.getItem('aishop_theme') || 'purple';
+}
+
+export function saveTheme(themeId: string): void {
+  localStorage.setItem('aishop_theme', themeId);
+}
+
+const FAVORITE_ARTIFACTS_KEY = 'aishop_favorite_artifacts';
+
+export interface FavoriteArtifactData {
+  artifact: ArtifactBlock;
+  thumbnail: string; // base64 data URL (1:1 正方形 JPEG)
+  favoritedAt: number;
+}
+
+export function loadFavoriteArtifacts(): FavoriteArtifactData[] {
+  try {
+    const data = localStorage.getItem(FAVORITE_ARTIFACTS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveFavoriteArtifacts(artifacts: FavoriteArtifactData[]): void {
+  try {
+    localStorage.setItem(FAVORITE_ARTIFACTS_KEY, JSON.stringify(artifacts));
+  } catch (e) {
+    console.error('Failed to save favorite artifacts:', e);
   }
 }

@@ -81,13 +81,13 @@ export default function ConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-[500] flex items-center justify-center bg-[var(--color-bg-base)]/60 backdrop-blur-sm"
       style={overlayStyle}
       onClick={onCancel}
       role="presentation"
     >
       <div
-        className="max-w-sm w-full mx-4 bg-gray-800 rounded-xl shadow-2xl border border-gray-700/60 p-6"
+        className="max-w-sm w-full mx-4 bg-[var(--color-bg-elevated)] rounded-xl shadow-2xl border border-[var(--color-border)] p-6"
         style={panelStyle}
         onClick={e => e.stopPropagation()}
         role="dialog"
@@ -97,13 +97,13 @@ export default function ConfirmModal({
       >
         <h3
           id="confirm-modal-title"
-          className="text-white text-lg font-semibold"
+          className="text-[var(--color-text-primary)] text-lg font-semibold"
         >
           {title}
         </h3>
         <p
           id="confirm-modal-message"
-          className="mt-2 text-gray-400 text-sm leading-relaxed"
+          className="mt-2 text-[var(--color-text-secondary)] text-sm leading-relaxed"
         >
           {message}
         </p>
@@ -111,7 +111,7 @@ export default function ConfirmModal({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500/50"
+            className="px-4 py-2 rounded-lg text-sm bg-[var(--color-bg-button)] hover:bg-[var(--color-bg-hover)] text-[var(--color-text-secondary)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--color-border-subtle)]"
           >
             {cancelText}
           </button>

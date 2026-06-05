@@ -185,7 +185,7 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
             minWidth: pos.minWidth,
             width: pos.width,
           }}
-          className={`z-[1000] overflow-hidden bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl
+          className={`z-[1000] overflow-hidden bg-[var(--color-bg-elevated)] border border-white/5 rounded-xl shadow-2xl
             transition-all duration-200 ease-out ${pos.placement === 'bottom' ? 'origin-top' : 'origin-bottom'}
             ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
         >
@@ -314,7 +314,7 @@ function AspectRatioGrid({ options, value, onChange, disabled }: AspectRatioGrid
 
       {mounted && (
         <div
-          className={`absolute bottom-full mb-2 right-0 z-[1000] w-max bg-[rgb(46,47,60)] border border-white/5 rounded-xl shadow-2xl p-4 grid grid-cols-3 gap-3 transition-all duration-200 ease-out origin-bottom
+          className={`absolute bottom-full mb-2 right-0 z-[1000] w-max bg-[var(--color-bg-elevated)] border border-white/5 rounded-xl shadow-2xl p-4 grid grid-cols-3 gap-3 transition-all duration-200 ease-out origin-bottom
             ${animVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'}`}
         >
           {options.map(opt => (
@@ -372,6 +372,7 @@ export default function ImagePanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragCounter = useRef(0);
+  const lastSubmitRef = useRef(0);
 
   const flatCards = useMemo(() => flattenHistory(history), [history]);
 
@@ -572,6 +573,10 @@ export default function ImagePanel() {
   const handleSubmit = () => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
+    // 防止 500ms 内重复提交（Enter + Button 同帧双触发）
+    const now = Date.now();
+    if (now - lastSubmitRef.current < 500) return;
+    lastSubmitRef.current = now;
     generate(trimmed);
     setPrompt('');
     if (textareaRef.current) {
@@ -633,16 +638,16 @@ export default function ImagePanel() {
               <div
                 key={`${card.id}-${card.index}`}
                 draggable={true}
-                onDragStart={async (e) => {
-                  const electronAPI = (window as unknown as { electronAPI?: { getLocalImagePath?: (name: string) => Promise<string>; startDrag?: (path: string, name: string) => void } }).electronAPI;
-                  if (electronAPI?.startDrag && electronAPI?.getLocalImagePath && card.url.startsWith('local-image://')) {
-                    e.preventDefault();
-                    const fileName = card.url.replace('local-image://', '');
-                    const localPath = await electronAPI.getLocalImagePath(fileName);
-                    electronAPI.startDrag(localPath, fileName);
+                onDragStart={(e) => {
+                  const electronAPI = (window as unknown as { electronAPI?: { startDrag?: (url: string) => void } }).electronAPI;
+                  if (electronAPI?.startDrag) {
+                    // Electron 环境：不调用 preventDefault()，让浏览器保持活跃的拖拽上下文
+                    // startDrag 会接管浏览器拖拽，将其转为 OS 文件拖拽
+                    electronAPI.startDrag(card.url);
+                    console.log('[Drag] startDrag called, url:', card.url.slice(0, 80));
                     return;
                   }
-                  // 旧格式或非 Electron 回退：HTML5 拖拽
+                  // 非 Electron 回退：HTML5 拖拽
                   e.dataTransfer.setData('text/uri-list', card.url);
                   e.dataTransfer.setData('text/plain', card.url);
                   e.dataTransfer.effectAllowed = 'copy';
@@ -653,6 +658,7 @@ export default function ImagePanel() {
                   src={card.url}
                   alt={card.prompt}
                   draggable={false}
+                  onDragStart={(e) => e.preventDefault()}
                   className="w-full h-full object-cover"
                   loading="lazy"
                 />
@@ -740,9 +746,9 @@ export default function ImagePanel() {
       >
         {/* Drag overlay - only covers input area */}
         {isDragging && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm border-2 border-dashed border-[rgb(127,96,255)] rounded-xl pointer-events-none">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm border-2 border-dashed border-[var(--color-accent)] rounded-xl pointer-events-none">
             <div className="flex flex-col items-center gap-2 text-white">
-              <Images className="w-10 h-10 text-[rgb(127,96,255)]" />
+              <Images className="w-10 h-10 text-[var(--color-accent)]" />
               <span className="text-base font-medium">拖拽图片到此处作为参考图</span>
               <span className="text-xs text-gray-300">支持拖入外部图片或照片墙中的已生成图片</span>
             </div>
@@ -816,7 +822,7 @@ export default function ImagePanel() {
         {/* Row 2: Unified input container with embedded thumbnails */}
         <div className={`relative rounded-xl transition-colors ${
           uploadedImages.length > 0
-            ? 'border border-white/10 focus-within:border-[rgb(127,96,255)]'
+            ? 'border border-white/10 focus-within:border-[var(--color-accent)]'
             : ''
         }`}>
           {/* Thumbnails area inside input container */}
@@ -870,7 +876,7 @@ export default function ImagePanel() {
               className={`w-full bg-transparent text-white px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[160px] min-h-[80px] focus:outline-none ${
                 uploadedImages.length > 0
                   ? 'border-none rounded-b-xl'
-                  : 'rounded-xl border border-white/10 focus:border-[rgb(127,96,255)]'
+                  : 'rounded-xl border border-white/10 focus:border-[var(--color-accent)]'
               }`}
               rows={3}
             />
@@ -880,7 +886,7 @@ export default function ImagePanel() {
               <button
                 onClick={handleSubmit}
                 disabled={!canGenerate}
-                className="p-2 text-[rgb(127,96,255)] hover:text-[rgb(107,76,235)] disabled:text-gray-500 transition-colors"
+                className="p-2 text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] disabled:text-gray-500 transition-colors"
                 title="生成"
               >
                 <SendHorizontal className="w-4 h-4" />

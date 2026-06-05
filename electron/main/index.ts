@@ -1,10 +1,20 @@
-import { app, BrowserWindow, ipcMain, Menu, globalShortcut, session, nativeImage, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, session, nativeImage, protocol, net, dialog, shell } from 'electron';
 import { join } from 'path';
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, writeFile } from 'fs';
+import { autoUpdater } from 'electron-updater';
 import * as settingsStore from './settingsStore';
 
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let isQuitting = false;
 let imagesDir = '';
+
+function getIconPath(fileName: string): string {
+  if (app.isPackaged) {
+    return join(process.resourcesPath, 'Icon', fileName);
+  }
+  return join(app.getAppPath(), 'Icon', fileName);
+}
 
 function createWindow() {
   // 移除默认菜单栏（File/Edit/View/Help）
@@ -28,6 +38,7 @@ function createWindow() {
       height: 36,
     },
     backgroundColor: '#0d0a1a',
+    icon: getIconPath('icon-256.png'),
   });
 
   // 开发模式加载 Vite dev server
@@ -46,6 +57,14 @@ function createWindow() {
       (input.control && input.shift && input.key.toLowerCase() === 'i')
     ) {
       mainWindow?.webContents.toggleDevTools();
+    }
+  });
+
+  // 拦截关闭事件：最小化到托盘而非退出
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
     }
   });
 
@@ -75,27 +94,92 @@ function registerSettingsHandlers() {
   });
 
   ipcMain.handle('settings:getAll', () => {
-    return settingsStore.getAllSettings();
+    const settings = settingsStore.getAllSettings();
+    return settings;
   });
 
-  // 图片生成：通过主进程 Node.js fetch 发起，绕过 CORS 和浏览器网络限制
+  // 图片生成：通过主进程 Node.js net.fetch 发起，绕过 CORS 和浏览器网络限制
+  // GPT Image 2 生成通常需要 60-90 秒，超时设为 120 秒留足余量
+  // 504 网关超时自动重试：最多 3 次请求（2 次重试），间隔 1s
   ipcMain.handle('image:generate', async (_event, url: string, body: string, apiKey: string) => {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body,
-    });
+    const MAX_ATTEMPTS = 3;
 
-    if (!response.ok) {
-      const text = await response.text();
-      return { error: true, status: response.status, body: text };
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120000);
+
+      try {
+        const response = await net.fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body,
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        // 504 网关超时：可重试
+        if (response.status === 504 && attempt < MAX_ATTEMPTS) {
+          await new Promise(r => setTimeout(r, 1000));
+          continue;
+        }
+
+        if (!response.ok) {
+          const text = await response.text();
+          return { error: true, status: response.status, body: text };
+        }
+
+        const data = await response.json();
+        return { error: false, data };
+      } catch (err: unknown) {
+        clearTimeout(timeout);
+
+        if (err instanceof Error && err.name === 'AbortError') {
+          // 客户端超时也可重试
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise(r => setTimeout(r, 1000));
+            continue;
+          }
+          return { error: true, status: 408, body: JSON.stringify({ detail: '主进程请求超时(120s)，已重试仍失败，请稍后再试' }) };
+        }
+
+        // 非超时错误不重试，直接抛出
+        throw err;
+      }
     }
+  });
 
-    const data = await response.json();
-    return { error: false, data };
+  // 保存 Markdown 文件到本地（通过系统对话框选择路径）
+  ipcMain.handle('file:save-markdown', async (_event, content: string, defaultName: string) => {
+    if (!mainWindow) return { success: false, error: 'No active window' };
+    try {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: '保存 Markdown 文件',
+        defaultPath: defaultName,
+        filters: [
+          { name: 'Markdown', extensions: ['md'] },
+          { name: '所有文件', extensions: ['*'] },
+        ],
+      });
+      if (result.canceled || !result.filePath) {
+        return { success: false, canceled: true };
+      }
+      return new Promise((resolve) => {
+        writeFile(result.filePath!, content, 'utf-8', (err) => {
+          if (err) {
+            resolve({ success: false, error: err.message });
+          } else {
+            resolve({ success: true, filePath: result.filePath });
+          }
+        });
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
   });
 
   // 保存图片到本地
@@ -106,7 +190,7 @@ function registerSettingsHandlers() {
         const base64Data = imageUrl.split(',')[1] || '';
         buffer = Buffer.from(base64Data, 'base64');
       } else {
-        const resp = await fetch(imageUrl);
+        const resp = await net.fetch(imageUrl);
         if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
         buffer = Buffer.from(await resp.arrayBuffer());
       }
@@ -124,15 +208,123 @@ function registerSettingsHandlers() {
     return join(imagesDir, fileName);
   });
 
-  // 图片原生拖拽到桌面
-  ipcMain.on('image:native-drag', (event, localPath: string, fileName: string) => {
+  // 使用系统默认浏览器打开外部链接
+  ipcMain.handle('open-external', async (_event, url: string) => {
+    await shell.openExternal(url);
+  });
+
+  // 更新标题栏颜色（主题切换时由渲染进程通知）
+  ipcMain.handle('update-titlebar-color', (_event, bgColor: string, symbolColor: string) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      win.setTitleBarOverlay({
+        color: bgColor,
+        symbolColor: symbolColor,
+      });
+    }
+  });
+
+  // 图片原生拖拽到桌面：使用 sendSync / ipcMain.on 组合，在 dragstart 事件上下文
+  // 仍然有效期间同步调用 event.sender.startDrag()。
+  // 注意：sendSync 要求每条代码路径都必须设置 event.returnValue，否则渲染进程永久阻塞。
+
+  // 拖拽缩略图缓存目录
+  const dragThumbDir = join(imagesDir, '_drag_thumbs');
+  if (!existsSync(dragThumbDir)) mkdirSync(dragThumbDir, { recursive: true });
+
+  ipcMain.on('image:native-drag', (event, imageUrl: string) => {
     try {
-      if (!existsSync(localPath)) return;
-      const buffer = readFileSync(localPath);
-      const icon = nativeImage.createFromBuffer(buffer).resize({ width: 128, height: 128 });
-      event.sender.startDrag({ file: localPath, icon });
+      let filePath: string;
+
+      if (imageUrl.startsWith('local-image://')) {
+        const fileName = decodeURIComponent(imageUrl.replace('local-image://', ''));
+        filePath = join(imagesDir, fileName);
+      } else if (imageUrl.startsWith('data:')) {
+        const base64Data = imageUrl.split(',')[1] || '';
+        const buffer = Buffer.from(base64Data, 'base64');
+        const tempName = `drag_${Date.now()}.png`;
+        filePath = join(imagesDir, tempName);
+        writeFileSync(filePath, buffer);
+      } else {
+        console.warn('[Drag] Cannot drag HTTP URL synchronously:', imageUrl.slice(0, 80));
+        event.returnValue = null;
+        return;
+      }
+
+      if (!existsSync(filePath)) {
+        console.warn('[Drag] File not found:', filePath);
+        event.returnValue = null;
+        return;
+      }
+
+      // 生成拖拽缩略图：用实际图片缩放到 200px 作为 drag visual
+      const baseName = require('path').basename(filePath);
+      const thumbPath = join(dragThumbDir, baseName);
+      if (!existsSync(thumbPath)) {
+        const fullImage = nativeImage.createFromPath(filePath);
+        const thumb = fullImage.resize({ width: 200, quality: 'good' });
+        writeFileSync(thumbPath, thumb.toPNG());
+      }
+
+      event.sender.startDrag({ file: filePath, icon: thumbPath });
     } catch (err) {
-      console.error('Native drag failed:', err);
+      console.error('[Drag] Native drag failed:', err);
+    }
+    event.returnValue = null;
+  });
+}
+
+function createTrayIcon(): Electron.NativeImage {
+  const iconPath = getIconPath('icon-32.png');
+  if (existsSync(iconPath)) {
+    return nativeImage.createFromPath(iconPath);
+  }
+  // Fallback: 尝试 16px 图标
+  const fallbackPath = getIconPath('icon-16.png');
+  if (existsSync(fallbackPath)) {
+    return nativeImage.createFromPath(fallbackPath);
+  }
+  // 最终 fallback: 内嵌紫色 PNG
+  const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAM0lEQVQ4T2P8////fwYKACMDFcCoAQzDxgWMjIz/GUYDkfhAxJFMRHIBIyMeF4wGIvEuAAC5Nw4R2GPOIAAAAABJRU5ErkJggg==';
+  return nativeImage.createFromDataURL(`data:image/png;base64,${pngBase64}`);
+}
+
+function createTray() {
+  const icon = createTrayIcon();
+  tray = new Tray(icon);
+  tray.setToolTip('PortAI');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '显示主窗口',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  // 点击托盘图标显示/聚焦窗口
+  tray.on('click', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.focus();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
     }
   });
 }
@@ -160,12 +352,58 @@ app.whenReady().then(() => {
 
   registerSettingsHandlers();
   createWindow();
+  createTray();
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+});
+
+// ============ 自动更新 ============
+function setupAutoUpdater() {
+  autoUpdater.logger = console;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Checking for update...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[AutoUpdater] Update available:', info.version);
+    mainWindow?.webContents.send('update-available', info);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AutoUpdater] Update downloaded:', info.version);
+    mainWindow?.webContents.send('update-downloaded', info);
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater] Error:', err);
+  });
+
+  // 启动后延迟 3 秒检查更新，避免影响窗口加载
+  setTimeout(() => {
+    autoUpdater.checkForUpdatesAndNotify();
+  }, 3000);
+}
+
+// IPC: 渲染进程触发安装更新
+ipcMain.handle('app:install-update', () => {
+  autoUpdater.quitAndInstall();
+});
+
+// IPC: 渲染进程手动检查更新
+ipcMain.handle('app:check-update', () => {
+  return autoUpdater.checkForUpdatesAndNotify();
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
 });
 
 app.on('window-all-closed', () => {

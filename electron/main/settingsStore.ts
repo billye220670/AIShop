@@ -5,6 +5,7 @@ export interface ProviderConfig {
   llm: string;      // 'fastapi' | 其他（预留扩展）
   image: string;    // 'fastapi' | 其他
   video: string;    // 'fastapi' | 其他
+  search: string;   // 'bocha' | 其他
 }
 
 export interface StoredSettings {
@@ -17,6 +18,7 @@ const DEFAULT_SETTINGS: StoredSettings = {
     llm: 'fastapi',
     image: 'fastapi',
     video: 'fastapi',
+    search: 'bocha',
   },
   apiKeys: {},
 };

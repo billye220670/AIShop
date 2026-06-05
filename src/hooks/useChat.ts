@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Message, Conversation, FileAttachment, MessageContent } from '../types';
+import type { Message, MessageVersion, Conversation, FileAttachment, MessageContent, ChatFeatureSettings } from '../types';
 import { streamChat } from '../services/api';
 import { CHAT_MODELS } from '../config/models';
+import { BASE_SYSTEM_PROMPT, ARTIFACT_PROMPT } from '../config/prompts';
 import {
   parseArtifactFromContent,
   getDisplayContentWithoutArtifact,
@@ -101,6 +102,10 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null);
   const [webSearchEnabled, setWebSearchEnabledState] = useState<boolean>(() => loadWebSearchEnabled());
   const [streamingArtifact, setStreamingArtifact] = useState<{ title: string; code: string } | null>(null);
+  const [featureSettings, setFeatureSettings] = useState<ChatFeatureSettings>(() => {
+    const saved = localStorage.getItem('chat-feature-settings');
+    return saved ? JSON.parse(saved) : { artifactEnabled: true };
+  });
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const activeConversation = conversations.find(c => c.id === activeId) || conversations[0];
@@ -111,6 +116,11 @@ export function useChat() {
   useEffect(() => {
     saveConversations(conversations);
   }, [conversations]);
+
+  // 持久化 featureSettings
+  useEffect(() => {
+    localStorage.setItem('chat-feature-settings', JSON.stringify(featureSettings));
+  }, [featureSettings]);
 
   const updateActiveConversation = useCallback(
     (updater: (conv: Conversation) => Conversation) => {
@@ -173,6 +183,7 @@ export function useChat() {
         content: '',
         timestamp: Date.now(),
         isStreaming: true,
+        model: selectedModel,
       };
 
       // 追加用户与占位的 assistant 消息
@@ -227,6 +238,14 @@ export function useChat() {
               ? content
               : content.find((p) => p.type === 'text')?.text || '';
           if (userText) {
+            // 立即显示"正在搜索..."
+            updateActiveConversation(conv => {
+              const updated = [...conv.messages];
+              const lastIdx = updated.length - 1;
+              updated[lastIdx] = { ...updated[lastIdx], webSearching: true };
+              return { ...conv, messages: updated };
+            });
+
             try {
               const results = await searchWeb(userText);
               if (results.length > 0) {
@@ -243,16 +262,34 @@ export function useChat() {
             } catch {
               searchFailed = true;
             }
+
+            // 搜索完成后立即更新状态（不等流式结束）
+            updateActiveConversation(conv => {
+              const updated = [...conv.messages];
+              const lastIdx = updated.length - 1;
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                webSearching: false,
+                webSearched: searchSources.length > 0,
+                searchResults: searchSources.length > 0 ? searchSources : undefined,
+                webSearchFailed: searchFailed,
+              };
+              return { ...conv, messages: updated };
+            });
           }
         }
 
         let fullContent = '';
         let artifactStreamStarted = false;
+        const systemPrompt = featureSettings.artifactEnabled
+          ? BASE_SYSTEM_PROMPT + '\n\n' + ARTIFACT_PROMPT
+          : BASE_SYSTEM_PROMPT;
         for await (const chunk of streamChat(
           allMessages,
           selectedModel,
           abortControllerRef.current.signal,
-          searchContext || undefined
+          searchContext || undefined,
+          systemPrompt
         )) {
           fullContent += chunk;
           const displayContent = getDisplayContent(fullContent);
@@ -263,8 +300,8 @@ export function useChat() {
             return { ...conv, messages: updated };
           });
 
-          // 流式 artifact 检测
-          if (isArtifactStreaming(fullContent)) {
+          // 流式 artifact 检测（仅在 artifact 功能开启时）
+          if (featureSettings.artifactEnabled && isArtifactStreaming(fullContent)) {
             const streaming = extractStreamingArtifact(fullContent);
             if (streaming) {
               if (!artifactStreamStarted) {
@@ -322,7 +359,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [messages, selectedModel, updateActiveConversation, webSearchEnabled]
+    [messages, selectedModel, updateActiveConversation, webSearchEnabled, featureSettings]
   );
 
   const stopGeneration = useCallback(() => {
@@ -398,7 +435,152 @@ export function useChat() {
     [activeId]
   );
 
-  // 导入会话（来自 .aishop.json 文件）
+  // 导入会话（来自 .portai.json 文件）
+  const regenerateMessage = useCallback(
+    async (messageId: string) => {
+      if (isLoading) return;
+      const conv = conversations.find(c => c.id === activeId);
+      if (!conv) return;
+
+      // 找到目标 assistant 消息的索引
+      const msgIndex = conv.messages.findIndex(m => m.id === messageId);
+      if (msgIndex < 0) return;
+
+      // 找到前一条 user 消息
+      let userMsgIndex = -1;
+      for (let i = msgIndex - 1; i >= 0; i--) {
+        if (conv.messages[i].role === 'user') {
+          userMsgIndex = i;
+          break;
+        }
+      }
+      if (userMsgIndex < 0) return;
+
+      const contextMessages = conv.messages.slice(0, msgIndex);
+
+      // 如果该消息已有 versions，初始化第一个版本
+      let existingVersions: MessageVersion[] = conv.messages[msgIndex].versions || [];
+      if (existingVersions.length === 0) {
+        existingVersions = [{
+          id: conv.messages[msgIndex].id + '-v0',
+          model: conv.messages[msgIndex].model || selectedModel,
+          content: conv.messages[msgIndex].content || '',
+          timestamp: conv.messages[msgIndex].timestamp,
+          suggestions: conv.messages[msgIndex].suggestions,
+          webSearched: conv.messages[msgIndex].webSearched,
+          webSearchFailed: conv.messages[msgIndex].webSearchFailed,
+          searchResults: conv.messages[msgIndex].searchResults,
+          artifact: conv.messages[msgIndex].artifact,
+        }];
+      }
+
+      // 检查当前模型是否已存在于 versions 中
+      const currentModelIndex = existingVersions.findIndex(v => v.model === (conv.messages[msgIndex].model || selectedModel));
+      if (currentModelIndex >= 0 && currentModelIndex === existingVersions.length - 1) {
+        return; // 已经是最新版本，无需重新生成
+      }
+
+      // 创建新 version
+      const newVersionId = Date.now().toString() + '-v' + existingVersions.length;
+      const newVersion: MessageVersion = {
+        id: newVersionId,
+        model: conv.messages[msgIndex].model || selectedModel,
+        content: '',
+        timestamp: Date.now(),
+        isStreaming: true,
+      };
+      const newVersions = [...existingVersions, newVersion];
+      const newActiveIndex = newVersions.length - 1;
+
+      // 更新消息状态：追加 versions，切换到新版本
+      updateActiveConversation(conv => {
+        const updated = [...conv.messages];
+        updated[msgIndex] = {
+          ...updated[msgIndex],
+          versions: newVersions,
+          activeVersionIndex: newActiveIndex,
+        };
+        return { ...conv, messages: updated, updatedAt: Date.now() };
+      });
+
+      // 调用流式 API
+      setIsLoading(true);
+      abortControllerRef.current = new AbortController();
+
+      let fullContent = '';
+      try {
+        const systemPrompt = featureSettings.artifactEnabled
+          ? BASE_SYSTEM_PROMPT + '\n\n' + ARTIFACT_PROMPT
+          : BASE_SYSTEM_PROMPT;
+
+        for await (const chunk of streamChat(
+          contextMessages,
+          conv.messages[msgIndex].model || selectedModel,
+          abortControllerRef.current.signal,
+          undefined,
+          systemPrompt
+        )) {
+          fullContent += chunk;
+          const displayContent = getDisplayContent(fullContent);
+
+          // 实时更新 version 内容
+          updateActiveConversation(conv => {
+            const updated = [...conv.messages];
+            const msg = updated[msgIndex];
+            const versions = [...(msg.versions || [])];
+            versions[newActiveIndex] = {
+              ...versions[newActiveIndex],
+              content: displayContent,
+            };
+            updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex };
+            return { ...conv, messages: updated };
+          });
+        }
+
+        // 流式完成：解析 suggestions/artifact
+        const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
+        const { text, suggestions } = parseSuggestions(contentWithoutArtifact);
+        const artifact = parseArtifactFromContent(fullContent);
+
+        updateActiveConversation(conv => {
+          const updated = [...conv.messages];
+          const msg = updated[msgIndex];
+          const versions = [...(msg.versions || [])];
+          versions[newActiveIndex] = {
+            ...versions[newActiveIndex],
+            content: text,
+            isStreaming: false,
+            suggestions: suggestions.length > 0 ? suggestions : undefined,
+            artifact: artifact || undefined,
+          };
+          updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex };
+          return { ...conv, messages: updated, updatedAt: Date.now() };
+        });
+      } catch (error: unknown) {
+        const e = error as Error;
+        if (e.name !== 'AbortError') {
+          // 错误处理：标记 version 为完成状态，内容为错误信息
+          updateActiveConversation(conv => {
+            const updated = [...conv.messages];
+            const msg = updated[msgIndex];
+            const versions = [...(msg.versions || [])];
+            versions[newActiveIndex] = {
+              ...versions[newActiveIndex],
+              content: fullContent || '生成失败，请重试。',
+              isStreaming: false,
+            };
+            updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex };
+            return { ...conv, messages: updated, updatedAt: Date.now() };
+          });
+        }
+      } finally {
+        setIsLoading(false);
+        abortControllerRef.current = null;
+      }
+    },
+    [isLoading, conversations, activeId, selectedModel, updateActiveConversation, featureSettings]
+  );
+
   const importConversation = useCallback((convData: Partial<Conversation>) => {
     const rawMessages = Array.isArray(convData.messages) ? convData.messages : [];
     // 清理流式状态，避免导入后显示异常
@@ -422,6 +604,158 @@ export function useChat() {
     setError(null);
   }, []);
 
+  // 多模型比较：用另一个模型重新回答同一问题
+  const compareWithModel = useCallback(
+    async (messageId: string, targetModelId: string) => {
+      if (isLoading) return;
+      const conv = conversations.find(c => c.id === activeId);
+      if (!conv) return;
+
+      // 1. 找到目标 assistant 消息
+      const msgIndex = conv.messages.findIndex(m => m.id === messageId);
+      if (msgIndex < 0) return;
+      const targetMsg = conv.messages[msgIndex];
+      if (targetMsg.role !== 'assistant') return;
+
+      // 2. 如果 versions 为空，将当前内容初始化为 versions[0]
+      let existingVersions: MessageVersion[] = targetMsg.versions || [];
+      if (existingVersions.length === 0) {
+        existingVersions = [{
+          id: targetMsg.id + '-v0',
+          model: targetMsg.model || selectedModel,
+          content: targetMsg.content,
+          timestamp: targetMsg.timestamp,
+          suggestions: targetMsg.suggestions,
+          webSearched: targetMsg.webSearched,
+          webSearchFailed: targetMsg.webSearchFailed,
+          searchResults: targetMsg.searchResults,
+          artifact: targetMsg.artifact,
+        }];
+      }
+
+      // 3. 检查 targetModelId 是否已存在于 versions 中
+      if (existingVersions.some(v => v.model === targetModelId)) return;
+
+      // 4. 创建新 version
+      const newVersionId = Date.now().toString() + '-v' + existingVersions.length;
+      const newVersion: MessageVersion = {
+        id: newVersionId,
+        model: targetModelId,
+        content: '',
+        timestamp: Date.now(),
+        isStreaming: true,
+      };
+      const newVersions = [...existingVersions, newVersion];
+      const newActiveIndex = newVersions.length - 1;
+
+      // 5. 更新消息状态：追加 versions，切换 activeVersionIndex
+      updateActiveConversation(conv => {
+        const updated = [...conv.messages];
+        updated[msgIndex] = {
+          ...updated[msgIndex],
+          versions: newVersions,
+          activeVersionIndex: newActiveIndex,
+        };
+        return { ...conv, messages: updated, updatedAt: Date.now() };
+      });
+
+      // 6. 准备上下文：取该 assistant 消息之前的所有消息
+      const contextMessages = conv.messages.slice(0, msgIndex);
+
+      // 7. 调用流式 API
+      setIsLoading(true);
+      abortControllerRef.current = new AbortController();
+
+      let fullContent = '';
+      try {
+        const systemPrompt = featureSettings.artifactEnabled
+          ? BASE_SYSTEM_PROMPT + '\n\n' + ARTIFACT_PROMPT
+          : BASE_SYSTEM_PROMPT;
+
+        for await (const chunk of streamChat(
+          contextMessages,
+          targetModelId,
+          abortControllerRef.current.signal,
+          undefined,
+          systemPrompt
+        )) {
+          fullContent += chunk;
+          const displayContent = getDisplayContent(fullContent);
+
+          // 实时更新 version 内容
+          updateActiveConversation(conv => {
+            const updated = [...conv.messages];
+            const msg = updated[msgIndex];
+            const versions = [...(msg.versions || [])];
+            versions[newActiveIndex] = {
+              ...versions[newActiveIndex],
+              content: displayContent,
+            };
+            updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex };
+            return { ...conv, messages: updated };
+          });
+        }
+
+        // 8. 流式完成：解析 suggestions/artifact
+        const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
+        const { text, suggestions } = parseSuggestions(contentWithoutArtifact);
+        const artifact = parseArtifactFromContent(fullContent);
+
+        updateActiveConversation(conv => {
+          const updated = [...conv.messages];
+          const msg = updated[msgIndex];
+          const versions = [...(msg.versions || [])];
+          versions[newActiveIndex] = {
+            ...versions[newActiveIndex],
+            content: text,
+            isStreaming: false,
+            suggestions: suggestions.length > 0 ? suggestions : undefined,
+            artifact: artifact || undefined,
+          };
+          updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex };
+          return { ...conv, messages: updated, updatedAt: Date.now() };
+        });
+      } catch (error: unknown) {
+        const e = error as Error;
+        if (e.name !== 'AbortError') {
+          // 错误处理：标记 version 为完成状态，内容为错误信息
+          updateActiveConversation(conv => {
+            const updated = [...conv.messages];
+            const msg = updated[msgIndex];
+            const versions = [...(msg.versions || [])];
+            versions[newActiveIndex] = {
+              ...versions[newActiveIndex],
+              content: fullContent || '生成失败，请重试。',
+              isStreaming: false,
+            };
+            updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex };
+            return { ...conv, messages: updated, updatedAt: Date.now() };
+          });
+        }
+      } finally {
+        setIsLoading(false);
+        abortControllerRef.current = null;
+      }
+    },
+    [isLoading, conversations, activeId, selectedModel, updateActiveConversation, featureSettings]
+  );
+
+  // 多模型比较：切换版本
+  const switchVersion = useCallback(
+    (messageId: string, versionIndex: number) => {
+      updateActiveConversation(conv => {
+        const updated = [...conv.messages];
+        const msgIndex = updated.findIndex(m => m.id === messageId);
+        if (msgIndex < 0) return conv;
+        const msg = updated[msgIndex];
+        if (!msg.versions || versionIndex < 0 || versionIndex >= msg.versions.length) return conv;
+        updated[msgIndex] = { ...msg, activeVersionIndex: versionIndex };
+        return { ...conv, messages: updated };
+      });
+    },
+    [updateActiveConversation]
+  );
+
   return {
     messages,
     isLoading,
@@ -434,6 +768,9 @@ export function useChat() {
     webSearchEnabled,
     setWebSearchEnabled,
     streamingArtifact,
+    regenerateMessage,
+    featureSettings,
+    setFeatureSettings,
     // 会话管理
     conversations,
     activeConversationId: activeId,
@@ -442,5 +779,7 @@ export function useChat() {
     deleteConversation,
     renameConversation,
     importConversation,
+    compareWithModel,
+    switchVersion,
   };
 }

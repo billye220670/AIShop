@@ -2,9 +2,16 @@
  * 系统提示词统一管理配置
  * 修改此文件即可更改所有 AI 模型的系统行为
  */
-export const SYSTEM_PROMPTS = {
-  default: `网页生成能力：
-当用户明确要求“写网页”、“做页面”、“创建应用”、“可视化”、“小工具”、“交互式演示”、“写个计算器”、“做个游戏”等场景时，你应该生成完整的 HTML 网页代码。使用以下格式输出：
+
+/** 基础系统提示词（不含 Artifact 能力） */
+export const BASE_SYSTEM_PROMPT = `在每次回复的最末尾，请用以下格式提供3-4个用户可能想继续探讨的方向（必须放在回复的最后，每个建议不超过15个字）：
+<<<SUGGESTIONS>>>
+建议1|||建议2|||建议3
+<<<END_SUGGESTIONS>>>`;
+
+/** Artifact 网页生成能力提示词 */
+export const ARTIFACT_PROMPT = `网页生成能力：
+当用户明确要求"写网页"、"做页面"、"创建应用"、"可视化"、"小工具"、"交互式演示"、"写个计算器"、"做个游戏"等场景时，你应该生成完整的 HTML 网页代码。使用以下格式输出：
 
 <<<ARTIFACT_START>>>
 title: "用户友好的标题"
@@ -21,12 +28,10 @@ title: "用户友好的标题"
 - 代码必须响应式设计，适配不同屏幕尺寸
 - 界面要美观、专业，有良好的用户体验
 
-重要：在 artifact 标记之前可以有文字介绍说明，artifact 标记之后可以继续提供跟进建议。
+重要：在 artifact 标记之前可以有文字介绍说明，artifact 标记之后可以继续提供跟进建议。`;
 
-在每次回复的最末尾，请用以下格式提供3-4个用户可能想继续探讨的方向（必须放在回复的最后，每个建议不超过15个字）：
-<<<SUGGESTIONS>>>
-建议1|||建议2|||建议3
-<<<END_SUGGESTIONS>>>`,
+export const SYSTEM_PROMPTS = {
+  default: ARTIFACT_PROMPT + '\n\n' + BASE_SYSTEM_PROMPT,
 };
 
 export function getSystemPrompt(key: keyof typeof SYSTEM_PROMPTS = 'default'): string {

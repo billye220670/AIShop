@@ -28,9 +28,11 @@ export default function ConversationList({
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const filteredConversations = useMemo(() => {
+    // 过滤掉没有消息的空会话（无论标题是什么）
+    const nonEmpty = conversations.filter(conv => conv.messages && conv.messages.length > 0);
     const keyword = searchText.trim();
-    if (!keyword) return conversations;
-    return conversations.filter(conv => {
+    if (!keyword) return nonEmpty;
+    return nonEmpty.filter(conv => {
       if (conv.title.toLowerCase().includes(keyword.toLowerCase())) return true;
       const match = PinyinMatch.match(conv.title, keyword);
       return match !== false;

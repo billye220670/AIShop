@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Code, Eye, RefreshCw, Copy, Download, X, Check, Globe } from 'lucide-react';
+import { Code, Eye, RefreshCw, Copy, Download, X, Check, Globe, Star, Loader2 } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import type { ArtifactBlock } from '../../types';
 
 interface ArtifactPanelProps {
@@ -7,6 +8,8 @@ interface ArtifactPanelProps {
   onClose: () => void;
   isGenerating?: boolean;
   autoPreviewSignal?: number;
+  isFavorite?: boolean;
+  onToggleFavorite?: (thumbnail?: string) => void;
 }
 
 type ViewMode = 'code' | 'preview';
@@ -32,9 +35,38 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export default function ArtifactPanel({ artifact, onClose, isGenerating = false, autoPreviewSignal = 0 }: ArtifactPanelProps) {
+async function captureArtifactThumbnail(iframe: HTMLIFrameElement): Promise<string> {
+  const iframeDoc = iframe.contentDocument;
+  if (!iframeDoc || !iframeDoc.body) throw new Error('Cannot access iframe');
+
+  const canvas = await html2canvas(iframeDoc.body, {
+    width: 800,
+    height: 800,
+    windowWidth: 800,
+    windowHeight: 800,
+    useCORS: true,
+    logging: false,
+  });
+
+  // 裁剪为 1:1 正方形并缩小
+  const size = 400;
+  const resizedCanvas = document.createElement('canvas');
+  resizedCanvas.width = size;
+  resizedCanvas.height = size;
+  const ctx = resizedCanvas.getContext('2d')!;
+  // 取原始 canvas 的中央正方形区域
+  const sourceSize = Math.min(canvas.width, canvas.height);
+  const sx = (canvas.width - sourceSize) / 2;
+  const sy = 0; // 从顶部开始截取
+  ctx.drawImage(canvas, sx, sy, sourceSize, sourceSize, 0, 0, size, size);
+
+  return resizedCanvas.toDataURL('image/jpeg', 0.7);
+}
+
+export default function ArtifactPanel({ artifact, onClose, isGenerating = false, autoPreviewSignal = 0, isFavorite = false, onToggleFavorite }: ArtifactPanelProps) {
   const [mode, setMode] = useState<ViewMode>('preview');
   const [copied, setCopied] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const codeContainerRef = useRef<HTMLPreElement>(null);
   const prevSignalRef = useRef(autoPreviewSignal);
@@ -89,9 +121,9 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
   }, [artifact.code]);
 
   return (
-    <div className="flex flex-col h-full bg-[#0d0a1a] overflow-hidden">
+    <div className="flex flex-col h-full bg-[var(--color-bg-base)] overflow-hidden">
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50 bg-[#1a1a2e]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50 bg-[var(--color-bg-primary)]">
         {/* 左侧：图标 + 标题 + 刷新按钮 */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
@@ -112,12 +144,12 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
         {/* 右侧：模式切换 + 操作按钮 */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {/* 模式切换下拉 */}
-          <div className="flex items-center bg-[#0d0a1a] rounded-lg p-0.5">
+          <div className="flex items-center bg-[var(--color-bg-base)] rounded-lg p-0.5">
             <button
               onClick={() => setMode('code')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 mode === 'code'
-                  ? 'bg-[rgb(127,96,255)] text-white'
+                  ? 'bg-[var(--color-accent)] text-white'
                   : 'text-gray-400 hover:text-gray-200'
               }`}
             >
@@ -128,7 +160,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
               onClick={() => !isGenerating && setMode('preview')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 mode === 'preview'
-                  ? 'bg-[rgb(127,96,255)] text-white'
+                  ? 'bg-[var(--color-accent)] text-white'
                   : isGenerating
                     ? 'text-gray-600 cursor-not-allowed'
                     : 'text-gray-400 hover:text-gray-200'
@@ -139,6 +171,44 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
               预览
             </button>
           </div>
+
+          {/* 收藏按钮 */}
+          <button
+            onClick={async () => {
+              if (!onToggleFavorite) return;
+              if (isFavorite) {
+                onToggleFavorite();
+              } else {
+                // 截图后收藏
+                try {
+                  setCapturing(true);
+                  if (iframeRef.current) {
+                    const thumbnail = await captureArtifactThumbnail(iframeRef.current);
+                    onToggleFavorite(thumbnail);
+                  } else {
+                    // iframe 不可用时降级为无缩略图
+                    onToggleFavorite();
+                  }
+                } catch (e) {
+                  console.error('Failed to capture thumbnail:', e);
+                  onToggleFavorite();
+                } finally {
+                  setCapturing(false);
+                }
+              }
+            }}
+            disabled={capturing}
+            className={`p-1.5 transition-colors rounded-md hover:bg-white/10 ${
+              isFavorite ? 'text-yellow-500' : 'text-gray-400 hover:text-white'
+            } ${capturing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            title={isFavorite ? '取消收藏' : '收藏'}
+          >
+            {capturing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Star className="w-4 h-4" fill={isFavorite ? 'currentColor' : 'none'} />
+            )}
+          </button>
 
           {/* 复制按钮 */}
           <button
@@ -172,7 +242,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
       {/* 内容区域 */}
       <div className="flex-1 overflow-hidden relative">
         {mode === 'code' ? (
-          <pre ref={codeContainerRef} className="h-full overflow-auto bg-[#161b22] text-sm font-mono leading-relaxed p-4">
+          <pre ref={codeContainerRef} className="h-full overflow-auto bg-[var(--color-code-bg)] text-sm font-mono leading-relaxed p-4">
             <code
               className="art-code-highlight"
               dangerouslySetInnerHTML={{
@@ -180,11 +250,11 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
               }}
             />
             {isGenerating && (
-              <span className="inline-block w-2 h-4 bg-purple-400 animate-pulse ml-0.5 align-middle" />
+              <span className="inline-block w-2 h-4 bg-[var(--color-accent)] animate-pulse ml-0.5 align-middle" />
             )}
             <style>{`
               .art-code-highlight { color: #e4e4e7; border-radius: 0; padding: 0; background: transparent; }
-              .art-tag { color: rgb(127, 96, 255); }
+              .art-tag { color: var(--color-accent); }
               .art-attr { color: #93c5fd; }
               .art-val { color: #86efac; }
               .art-comment { color: #6b7280; font-style: italic; }
@@ -194,7 +264,8 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
           <iframe
             ref={iframeRef}
             srcDoc={artifact.code}
-            sandbox="allow-scripts allow-forms allow-same-origin"
+            sandbox="allow-scripts allow-forms allow-same-origin allow-downloads allow-popups allow-modals allow-pointer-lock"
+            allow="camera; microphone; fullscreen; clipboard-write; clipboard-read; autoplay; geolocation; accelerometer; gyroscope"
             className="w-full h-full border-0 bg-white"
             title={artifact.title}
           />
@@ -205,8 +276,8 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
       {isGenerating && (
         <div className="px-4 py-2 border-t border-gray-700/50 text-center">
           <div className="flex items-center justify-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-            <span className="text-xs text-purple-300">正在生成代码...</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] animate-pulse" />
+            <span className="text-xs text-[var(--color-accent)]">正在生成代码...</span>
           </div>
         </div>
       )}

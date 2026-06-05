@@ -1,6 +1,6 @@
-import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
-import { Paperclip, Square, SendHorizontal, Plus, Clock, X, FileText } from 'lucide-react';
-import type { MessageContent, Model, FileAttachment } from '../../types';
+import { useState, useRef, useEffect, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
+import { Paperclip, Square, SendHorizontal, Plus, Clock, X, FileText, MessageSquareQuote, SlidersHorizontal } from 'lucide-react';
+import type { MessageContent, Model, FileAttachment, Message, ChatFeatureSettings } from '../../types';
 import ModelSelector from '../common/ModelSelector';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
 
@@ -13,6 +13,12 @@ interface ChatInputProps {
   models?: Model[];
   selectedModel?: string;
   onModelChange?: (modelId: string) => void;
+  quotedMessage?: Message | null;
+  onRemoveQuote?: () => void;
+  featureSettings: ChatFeatureSettings;
+  onFeatureSettingsChange: (settings: ChatFeatureSettings) => void;
+  webSearchEnabled?: boolean;
+  onWebSearchEnabledChange?: (enabled: boolean) => void;
 }
 
 export default function ChatInput({
@@ -24,16 +30,40 @@ export default function ChatInput({
   models,
   selectedModel,
   onModelChange,
+  quotedMessage,
+  onRemoveQuote,
+  featureSettings,
+  onFeatureSettingsChange,
+  webSearchEnabled = false,
+  onWebSearchEnabledChange,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [files, setFiles] = useState<ParsedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [showFeaturePanel, setShowFeaturePanel] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const featurePanelRef = useRef<HTMLDivElement>(null);
+  const featureButtonRef = useRef<HTMLButtonElement>(null);
 
   const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
   const MAX_TOTAL_FILES = 5;
+
+  // 点击外部关闭 feature panel
+  useEffect(() => {
+    if (!showFeaturePanel) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        featurePanelRef.current && !featurePanelRef.current.contains(e.target as Node) &&
+        featureButtonRef.current && !featureButtonRef.current.contains(e.target as Node)
+      ) {
+        setShowFeaturePanel(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showFeaturePanel]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes}B`;
@@ -54,15 +84,25 @@ export default function ChatInput({
       truncated: f.truncated,
     }));
 
+    // 拼接引用内容
+    let finalText = trimmedText;
+    if (quotedMessage) {
+      const quoteContent = typeof quotedMessage.content === 'string'
+        ? quotedMessage.content
+        : (quotedMessage.content as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('\n');
+      finalText = `> ${quoteContent.slice(0, 200).replace(/\n/g, '\n> ')}\n\n${trimmedText}`;
+      onRemoveQuote?.();
+    }
+
     if (images.length > 0) {
       const content: MessageContent[] = [];
-      content.push({ type: 'text', text: trimmedText || '' });
+      content.push({ type: 'text', text: finalText || '' });
       images.forEach(img => {
         content.push({ type: 'image_url', image_url: { url: img } });
       });
       onSend(content, attachments.length > 0 ? attachments : undefined);
     } else {
-      onSend(trimmedText, attachments.length > 0 ? attachments : undefined);
+      onSend(finalText, attachments.length > 0 ? attachments : undefined);
     }
 
     setText('');
@@ -200,7 +240,7 @@ export default function ChatInput({
 
   return (
     <div
-      className={`bg-transparent p-4 relative transition-all ${isDragging ? 'ring-2 ring-purple-500 bg-purple-500/5 rounded-xl' : ''}`}
+      className={`bg-transparent p-4 relative transition-all ${isDragging ? 'ring-2 ring-[var(--color-accent)] bg-[var(--color-accent)]/5 rounded-xl' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -217,8 +257,8 @@ export default function ChatInput({
 
       {/* 拖拽遮罩提示 */}
       {isDragging && (
-        <div className="absolute inset-0 bg-purple-600/10 border-2 border-dashed border-purple-400 rounded-xl flex items-center justify-center z-40 pointer-events-none">
-          <div className="text-purple-200 text-sm font-medium px-4 py-2 bg-gray-900/80 rounded-lg shadow-lg">
+        <div className="absolute inset-0 bg-[var(--color-accent)]/10 border-2 border-dashed border-[var(--color-accent)] rounded-xl flex items-center justify-center z-40 pointer-events-none">
+          <div className="text-[var(--color-accent)] text-sm font-medium px-4 py-2 bg-gray-900/80 rounded-lg shadow-lg">
             拖放文件到此处上传
           </div>
         </div>
@@ -251,6 +291,65 @@ export default function ChatInput({
 
           {/* Right: action buttons */}
           <div className="flex items-center gap-2">
+            {/* Feature settings */}
+            <div className="relative">
+              <button
+                ref={featureButtonRef}
+                onClick={() => setShowFeaturePanel(prev => !prev)}
+                className={`p-2 transition-colors rounded-lg hover:bg-gray-700 ${
+                  showFeaturePanel ? 'text-[var(--color-accent)]' : 'text-gray-400 hover:text-white'
+                }`}
+                title="聊天控件"
+              >
+                <SlidersHorizontal className="w-5 h-5" />
+              </button>
+
+              {/* Feature Panel Popover */}
+              {showFeaturePanel && (
+                <div
+                  ref={featurePanelRef}
+                  className="absolute bottom-full right-0 mb-2 w-64 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl p-4 shadow-2xl z-50"
+                >
+                  <div className="text-white font-medium text-sm mb-3">聊天控件</div>
+                  <div className="text-gray-500 text-xs mb-2">功能</div>
+                  {/* Artifact Toggle */}
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-gray-200 text-sm">Artifacts</span>
+                    <button
+                      onClick={() => onFeatureSettingsChange({ ...featureSettings, artifactEnabled: !featureSettings.artifactEnabled })}
+                      className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
+                        featureSettings.artifactEnabled ? 'bg-[var(--color-accent)]' : 'bg-gray-600'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${
+                          featureSettings.artifactEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  {/* Web Search Toggle */}
+                  <div className="flex items-center justify-between py-1.5 mt-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-200 text-sm">联网搜索</span>
+                    </div>
+                    <button
+                      onClick={() => onWebSearchEnabledChange?.(!webSearchEnabled)}
+                      className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
+                        webSearchEnabled ? 'bg-[var(--color-accent)]' : 'bg-gray-600'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${
+                          webSearchEnabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* History toggle */}
             <button
               onClick={() => onToggleHistory?.()}
@@ -263,7 +362,7 @@ export default function ChatInput({
             {/* New conversation */}
             <button
               onClick={() => onNewConversation?.()}
-              className="w-7 h-7 bg-[rgb(127,96,255)] hover:bg-[rgb(107,76,235)] text-white rounded-full flex items-center justify-center transition-colors"
+              className="w-7 h-7 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-[var(--color-accent-foreground)] rounded-full flex items-center justify-center transition-colors"
               title="新建会话"
             >
               <Plus className="w-4 h-4" />
@@ -272,7 +371,29 @@ export default function ChatInput({
         </div>
 
         {/* Row 2: Input container with preview + textarea */}
-        <div className="rounded-xl border border-white/10 focus-within:border-[rgb(127,96,255)] transition-colors overflow-hidden">
+        <div className="rounded-xl border border-[var(--color-border)] focus-within:border-[var(--color-accent)] transition-colors overflow-hidden">
+          {/* 引用消息缩略图 */}
+          {quotedMessage && (
+            <div className="p-3 pb-2">
+              <div className="flex items-center gap-2 bg-[var(--color-bg-primary)] border border-gray-700 rounded-lg px-3 py-2">
+                <div className="w-8 h-8 rounded-md bg-[var(--color-accent-soft)] flex items-center justify-center flex-shrink-0">
+                  <MessageSquareQuote className="w-4 h-4 text-[var(--color-accent)]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-gray-200 truncate">引用消息</div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {typeof quotedMessage.content === 'string'
+                      ? quotedMessage.content.slice(0, 30)
+                      : (quotedMessage.content as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('').slice(0, 30)
+                    }
+                  </div>
+                </div>
+                <button onClick={() => onRemoveQuote?.()} className="text-gray-500 hover:text-gray-300 flex-shrink-0">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
           {/* Desktop: unified preview area */}
           {(images.length > 0 || files.length > 0) && (
             <>
@@ -290,9 +411,9 @@ export default function ChatInput({
                 ))}
                 {files.map((file, idx) => (
                   <div key={`file-${idx}`} className="relative group min-w-[200px] max-w-[280px]">
-                    <div className="flex items-center gap-3 px-3 py-2.5 bg-[#1e2030] border border-gray-700/50 rounded-lg">
-                      <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-purple-500/15">
-                        <FileText className="w-5 h-5 text-[rgb(127,96,255)]" />
+                    <div className="flex items-center gap-3 px-3 py-2.5 bg-[var(--color-bg-secondary)] border border-gray-700/50 rounded-lg">
+                      <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-[var(--color-accent-soft)]">
+                        <FileText className="w-5 h-5 text-[var(--color-accent)]" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-gray-200 font-medium truncate">{file.name}</div>
@@ -338,7 +459,7 @@ export default function ChatInput({
                 <button
                   onClick={handleSubmit}
                   disabled={!text.trim() && images.length === 0 && files.length === 0}
-                  className="p-2 text-[rgb(127,96,255)] hover:text-[rgb(107,76,235)] disabled:text-gray-500 transition-colors"
+                  className="p-2 text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] disabled:text-gray-500 transition-colors"
                   title="发送"
                 >
                   <SendHorizontal className="w-4 h-4" />

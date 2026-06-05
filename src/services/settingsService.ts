@@ -8,6 +8,7 @@ export interface ProviderConfig {
   llm: string;
   image: string;
   video: string;
+  search: string;
 }
 
 export interface AppSettings {
@@ -25,7 +26,7 @@ function getLocalSettings(): AppSettings {
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
   return {
-    providers: { llm: 'fastapi', image: 'fastapi', video: 'fastapi' },
+    providers: { llm: 'fastapi', image: 'fastapi', video: 'fastapi', search: 'bocha' },
     apiKeys: {},
   };
 }
@@ -40,7 +41,16 @@ export const settingsService = {
     if (isElectron) {
       return window.electronAPI!.settings.getProvider(category);
     }
-    return getLocalSettings().providers[category] || 'fastapi';
+    const settings = getLocalSettings();
+    // 确保所有必填字段都存在
+    const allProviders = {
+      llm: 'fastapi',
+      image: 'fastapi',
+      video: 'fastapi',
+      search: 'bocha',
+      ...settings.providers,
+    };
+    return allProviders[category] || 'fastapi';
   },
 
   async setProvider(category: keyof ProviderConfig, provider: string): Promise<void> {
@@ -55,14 +65,19 @@ export const settingsService = {
 
   async getApiKey(provider: string): Promise<string> {
     if (isElectron) {
-      return window.electronAPI!.settings.getApiKey(provider);
+      const key = await window.electronAPI!.settings.getApiKey(provider);
+      console.log(`[getApiKey] provider=${provider}, key=${key ? '存在' : '不存在'}`);
+      return key;
     }
-    return getLocalSettings().apiKeys[provider] || '';
+    const key = getLocalSettings().apiKeys[provider] || '';
+    console.log(`[getApiKey] 浏览器模式 provider=${provider}, key=${key ? '存在' : '不存在'}`);
+    return key;
   },
 
   async setApiKey(provider: string, key: string): Promise<void> {
     if (isElectron) {
       await window.electronAPI!.settings.setApiKey(provider, key);
+      console.log(`[setApiKey] provider=${provider}, key=${key ? '已设置' : '已删除'}`);
       return;
     }
     const settings = getLocalSettings();
@@ -72,11 +87,28 @@ export const settingsService = {
       delete settings.apiKeys[provider];
     }
     saveLocalSettings(settings);
+    console.log(`[setApiKey] 浏览器模式 provider=${provider}, key=${key ? '已保存' : '已删除'}`);
   },
 
   async getAllSettings(): Promise<AppSettings> {
     if (isElectron) {
-      return window.electronAPI!.settings.getAllSettings();
+      const settings = await window.electronAPI!.settings.getAllSettings();
+      console.log(`[getAllSettings] providers=`, settings.providers);
+      console.log(`[getAllSettings] apiKeys=`, settings.apiKeys);
+      
+      // 补全默认的 search 字段
+      const completeProviders = {
+        llm: 'fastapi',
+        image: 'fastapi',
+        video: 'fastapi',
+        search: 'bocha',
+        ...settings.providers,
+      };
+      
+      return {
+        providers: completeProviders as ProviderConfig,
+        apiKeys: settings.apiKeys,
+      };
     }
     return getLocalSettings();
   },
