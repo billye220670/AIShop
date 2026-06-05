@@ -159,7 +159,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       role="presentation"
     >
       <div
-        className="max-w-[600px] w-full mx-4 bg-[var(--color-bg-primary)] rounded-2xl shadow-2xl border border-[var(--color-border)] flex flex-col max-h-[85vh]"
+        className="w-[600px] max-w-[calc(100vw-2rem)] mx-4 h-[70vh] bg-[var(--color-bg-primary)] rounded-2xl shadow-2xl border border-[var(--color-border)] flex flex-col"
         style={panelStyle}
         onClick={e => e.stopPropagation()}
         role="dialog"
@@ -180,7 +180,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </div>
 
         {/* 左右分栏主体 */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* 左侧 Tab 栏 */}
           <div className="w-[140px] shrink-0 bg-[var(--color-bg-base)] py-4 flex flex-col gap-1">
             {TABS.map(tab => (
@@ -202,7 +202,7 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           </div>
 
           {/* 右侧内容区域 */}
-          <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
             {activeSettingsTab === 'api' && (
               <div className="space-y-6">
                 {CATEGORIES.map(({ key, label, Icon }) => {

@@ -9,4 +9,4 @@ export const THEMES: ThemeConfig[] = [
   { id: 'green', name: '终端绿', previewColor: 'rgb(42, 219, 92)' },
 ];
 
-export const DEFAULT_THEME = 'purple';
+export const DEFAULT_THEME = 'green';

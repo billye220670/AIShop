@@ -65,7 +65,7 @@ export function loadWebSearchEnabled(): boolean {
 }
 
 export function loadTheme(): string {
-  return localStorage.getItem('aishop_theme') || 'purple';
+  return localStorage.getItem('aishop_theme') || 'green';
 }
 
 export function saveTheme(themeId: string): void {

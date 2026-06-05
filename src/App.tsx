@@ -26,7 +26,7 @@ function App() {
     const theme = loadTheme();
     document.documentElement.dataset.theme = theme;
     if (window.electronAPI?.updateTitleBarColor) {
-      const colors = titleBarColors[theme] || titleBarColors.purple;
+      const colors = titleBarColors[theme] || titleBarColors.green;
       window.electronAPI.updateTitleBarColor(colors.bg, colors.symbol);
     }
   }, []);
