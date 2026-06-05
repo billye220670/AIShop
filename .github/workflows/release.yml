@@ -4,8 +4,9 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - electron-desktop
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
