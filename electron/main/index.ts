@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, session, nativeImage, protocol, net, dialog, shell } from 'electron';
 import { join } from 'path';
 import { writeFileSync, mkdirSync, existsSync, writeFile } from 'fs';
-import { autoUpdater } from 'electron-updater';
+import electronUpdater from 'electron-updater';
+const { autoUpdater } = electronUpdater;
 import * as settingsStore from './settingsStore';
 
 let mainWindow: BrowserWindow | null = null;
