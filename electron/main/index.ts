@@ -366,7 +366,7 @@ app.whenReady().then(() => {
 // ============ 自动更新 ============
 function setupAutoUpdater() {
   autoUpdater.logger = console;
-  autoUpdater.autoDownload = true;
+  autoUpdater.autoDownload = false;  // 不自动下载
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
@@ -375,12 +375,16 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-available', (info) => {
     console.log('[AutoUpdater] Update available:', info.version);
-    mainWindow?.webContents.send('update-available', info);
+    // 发送版本号和 releaseNotes 给渲染进程
+    mainWindow?.webContents.send('update-available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes,  // GitHub Release 的 body 内容
+    });
   });
 
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('[AutoUpdater] Update downloaded:', info.version);
-    mainWindow?.webContents.send('update-downloaded', info);
+  autoUpdater.on('update-downloaded', () => {
+    console.log('[AutoUpdater] Update downloaded, installing...');
+    autoUpdater.quitAndInstall();  // 用户已确认，直接安装重启
   });
 
   autoUpdater.on('error', (err) => {
@@ -393,9 +397,9 @@ function setupAutoUpdater() {
   }, 3000);
 }
 
-// IPC: 渲染进程触发安装更新
-ipcMain.handle('app:install-update', () => {
-  autoUpdater.quitAndInstall();
+// IPC: 渲染进程确认更新后开始下载
+ipcMain.handle('app:start-download', async () => {
+  await autoUpdater.downloadUpdate();
 });
 
 // IPC: 渲染进程手动检查更新

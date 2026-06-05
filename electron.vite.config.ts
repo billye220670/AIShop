@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import pkg from './package.json';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +34,9 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react(), tailwindcss()],
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+    },
     root: '.',
     build: {
       outDir: 'dist-electron/renderer',

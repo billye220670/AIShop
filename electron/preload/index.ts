@@ -31,7 +31,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateTitleBarColor: (bgColor: string, symbolColor: string) => ipcRenderer.invoke('update-titlebar-color', bgColor, symbolColor),
   // 自动更新相关 API
   checkForUpdate: () => ipcRenderer.invoke('app:check-update'),
-  installUpdate: () => ipcRenderer.invoke('app:install-update'),
+  startDownload: () => ipcRenderer.invoke('app:start-download'),
   onUpdateAvailable: (callback: (...args: unknown[]) => void) => ipcRenderer.on('update-available', callback),
-  onUpdateDownloaded: (callback: (...args: unknown[]) => void) => ipcRenderer.on('update-downloaded', callback),
 });

@@ -30,9 +30,8 @@ export interface ElectronAPI {
   updateTitleBarColor: (bgColor: string, symbolColor: string) => Promise<void>;
   // 自动更新
   checkForUpdate: () => Promise<void>;
-  installUpdate: () => Promise<void>;
+  startDownload: () => Promise<void>;
   onUpdateAvailable: (callback: (...args: unknown[]) => void) => void;
-  onUpdateDownloaded: (callback: (...args: unknown[]) => void) => void;
 }
 
 declare global {

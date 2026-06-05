@@ -34,13 +34,22 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [updateReady, setUpdateReady] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; releaseNotes: string } | null>(null);
 
-  // 监听自动更新下载完成事件
+  // 监听自动更新可用事件
   useEffect(() => {
-    if (!window.electronAPI?.onUpdateDownloaded) return;
-    window.electronAPI.onUpdateDownloaded(() => {
-      setUpdateReady(true);
+    if (!window.electronAPI?.onUpdateAvailable) return;
+    window.electronAPI.onUpdateAvailable((...args: unknown[]) => {
+      const info = args[1] as { version: string; releaseNotes: string | { version: string; note: string }[] | null } | undefined;
+      if (!info) return;
+      // releaseNotes 可能是字符串、数组或 null，统一处理为字符串
+      let notes = '';
+      if (typeof info.releaseNotes === 'string') {
+        notes = info.releaseNotes;
+      } else if (Array.isArray(info.releaseNotes)) {
+        notes = info.releaseNotes.map(n => n.note).join('\n');
+      }
+      setUpdateInfo({ version: info.version, releaseNotes: notes });
     });
   }, []);
   const chat = useChat();
@@ -122,8 +131,17 @@ function App() {
       {/* Settings panel */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {/* 自动更新通知 */}
-      <UpdateNotification open={updateReady} onClose={() => setUpdateReady(false)} />
+      {/* 自动更新弹窗 */}
+      <UpdateNotification
+        open={!!updateInfo}
+        version={updateInfo?.version || ''}
+        releaseNotes={updateInfo?.releaseNotes || ''}
+        onConfirm={() => {
+          window.electronAPI?.startDownload();
+          setUpdateInfo(null);
+        }}
+        onCancel={() => setUpdateInfo(null)}
+      />
     </>
   );
 }

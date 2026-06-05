@@ -106,6 +106,9 @@ export default function Sidebar({
 
       {/* 底部设置按钮 */}
       <div className="px-2 pb-4 mt-auto">
+        <p className={`text-xs text-gray-500 mb-1 ${collapsed ? 'text-center' : 'px-3'}`}>
+          v{__APP_VERSION__}
+        </p>
         <div className="relative group">
           <button
             onClick={onOpenSettings}
