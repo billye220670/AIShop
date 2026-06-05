@@ -20,7 +20,8 @@
       {
         "provider": "github",
         "owner": "billye220670",
-        "repo": "AIShop"
+        "repo": "AIShop",
+        "releaseType": "release"
       }
     ],
     "extraResources": [
