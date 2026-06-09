@@ -20,6 +20,12 @@ export interface ElectronAPI {
   startDrag: (imageUrl: string) => void;
   saveImageLocal: (url: string, fileName: string) => Promise<string | null>;
   getLocalImagePath: (fileName: string) => Promise<string>;
+  readImageAsBase64: (imageUrl: string) => Promise<string | null>;
+  saveImageToDesktop: (imageUrl: string) => Promise<{
+    success: boolean;
+    path?: string;
+    error?: string;
+  }>;
   saveMarkdown: (content: string, defaultName: string) => Promise<{
     success: boolean;
     canceled?: boolean;

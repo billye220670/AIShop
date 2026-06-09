@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, session, nativeImage, protocol, net, dialog, shell } from 'electron';
 import { join } from 'path';
-import { writeFileSync, mkdirSync, existsSync, writeFile } from 'fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync, writeFile } from 'fs';
 import electronUpdater from 'electron-updater';
 const { autoUpdater } = electronUpdater;
 import * as settingsStore from './settingsStore';
@@ -209,6 +209,66 @@ function registerSettingsHandlers() {
     return join(imagesDir, fileName);
   });
 
+  // 读取本地图片为 base64（供渲染进程拖入参考图使用）
+  ipcMain.handle('image:read-as-base64', (_event, imageUrl: string) => {
+    try {
+      let filePath: string;
+      if (imageUrl.startsWith('local-image://')) {
+        const fileName = decodeURIComponent(imageUrl.replace('local-image://', ''));
+        filePath = join(imagesDir, fileName);
+      } else {
+        return null;
+      }
+      if (!existsSync(filePath)) return null;
+      const buffer = readFileSync(filePath);
+      return buffer.toString('base64');
+    } catch (err) {
+      console.error('[ImageRead] Failed:', err);
+      return null;
+    }
+  });
+  
+  // 保存图片到桌面
+  ipcMain.handle('image:save-to-desktop', async (_event, imageUrl: string) => {
+    try {
+      let filePath: string;
+      let fileName: string;
+  
+      if (imageUrl.startsWith('local-image://')) {
+        fileName = decodeURIComponent(imageUrl.replace('local-image://', ''));
+        filePath = join(imagesDir, fileName);
+      } else if (imageUrl.startsWith('data:')) {
+        const mimeMatch = imageUrl.match(/^data:([^;]+);/);
+        const ext = mimeMatch ? mimeMatch[1].split('/')[1] || 'png' : 'png';
+        fileName = `image_${Date.now()}.${ext}`;
+        const base64Data = imageUrl.split(',')[1] || '';
+        const buffer = Buffer.from(base64Data, 'base64');
+        filePath = join(imagesDir, fileName);
+        writeFileSync(filePath, buffer);
+      } else {
+        return { success: false, error: 'Unsupported URL scheme' };
+      }
+  
+      if (!existsSync(filePath)) {
+        return { success: false, error: 'File not found' };
+      }
+  
+      // 获取桌面路径
+      const desktopPath = app.getPath('desktop');
+      const destPath = join(desktopPath, fileName);
+      const { dialog } = require('electron');
+      
+      // 直接复制到桌面
+      const { copyFileSync } = require('fs');
+      copyFileSync(filePath, destPath);
+  
+      return { success: true, path: destPath };
+    } catch (err) {
+      console.error('[SaveToDesktop] Failed:', err);
+      return { success: false, error: String(err) };
+    }
+  });
+
   // 使用系统默认浏览器打开外部链接
   ipcMain.handle('open-external', async (_event, url: string) => {
     await shell.openExternal(url);
@@ -258,15 +318,21 @@ function registerSettingsHandlers() {
         return;
       }
 
-      // 生成拖拽缩略图：用实际图片缩放到 200px 作为 drag visual
+      // 生成拖拽缩略图：使用透明 PNG 作为 icon 以隐藏文件名文字
       const baseName = require('path').basename(filePath);
-      const thumbPath = join(dragThumbDir, baseName);
-      if (!existsSync(thumbPath)) {
-        const fullImage = nativeImage.createFromPath(filePath);
-        const thumb = fullImage.resize({ width: 200, quality: 'good' });
-        writeFileSync(thumbPath, thumb.toPNG());
-      }
+      const fullImage = nativeImage.createFromPath(filePath);
+      const size = fullImage.getSize();
+      console.log('[Drag] Image size:', size.width, 'x', size.height, 'for', baseName);
+      
+      // 只传 width，让 nativeImage 自动计算 height 保持比例
+      const thumb = fullImage.resize({ width: 48, quality: 'good' });
+      const thumbSize = thumb.getSize();
+      console.log('[Drag] Thumb size:', thumbSize.width, 'x', thumbSize.height);
+      
+      const thumbPath = join(dragThumbDir, `${baseName}_48w.png`);
+      writeFileSync(thumbPath, thumb.toPNG());
 
+      // 使用缩略图作为 icon（Windows 会自动适配尺寸）
       event.sender.startDrag({ file: filePath, icon: thumbPath });
     } catch (err) {
       console.error('[Drag] Native drag failed:', err);

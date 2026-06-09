@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 获取本地图片绝对路径
   getLocalImagePath: (fileName: string) =>
     ipcRenderer.invoke('image:get-local-path', fileName),
+  // 读取本地图片为 base64（供拖入参考图使用）
+  readImageAsBase64: (imageUrl: string) =>
+    ipcRenderer.invoke('image:read-as-base64', imageUrl),
+  // 保存图片到桌面
+  saveImageToDesktop: (imageUrl: string) =>
+    ipcRenderer.invoke('image:save-to-desktop', imageUrl),
   // 保存 Markdown 文件
   saveMarkdown: (content: string, defaultName: string) =>
     ipcRenderer.invoke('file:save-markdown', content, defaultName),
