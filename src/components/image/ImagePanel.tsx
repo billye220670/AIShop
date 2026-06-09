@@ -3,9 +3,6 @@ import { createPortal } from 'react-dom';
 import {
   TriangleAlert,
   Images,
-  Download,
-  Trash2,
-  Loader2,
   Plus,
   Paperclip,
   SendHorizontal,
@@ -15,7 +12,10 @@ import {
 import ModelSelector from '../common/ModelSelector';
 import { IMAGE_MODELS } from '../../config/models';
 import { useImage } from '../../hooks/useImage';
-import type { ImageHistoryItem } from '../../types';
+import type { ImageHistoryItem, PendingImageTask } from '../../types';
+import MasonryPhotoWall from './MasonryPhotoWall';
+import type { PhotoItem } from './MasonryPhotoWall';
+import PhotoCard, { LoadingCard, ErrorCard } from './PhotoCard';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB 宽松上限，防止拖入超大文件卡死浏览器
 
@@ -27,6 +27,8 @@ interface FlatCard {
   prompt: string;
   model: string;
   timestamp: number;
+  width?: number;
+  height?: number;
 }
 
 function flattenHistory(history: ImageHistoryItem[]): FlatCard[] {
@@ -41,6 +43,8 @@ function flattenHistory(history: ImageHistoryItem[]): FlatCard[] {
         prompt: item.prompt,
         model: item.model,
         timestamp: item.timestamp,
+        width: item.width,
+        height: item.height,
       });
     });
   });
@@ -168,7 +172,7 @@ function FloatingSelect({ options, value, onChange, disabled, renderOption, item
         type="button"
         onClick={toggle}
         disabled={disabled}
-        className="flex items-center gap-2 rounded-full bg-transparent text-white text-sm border border-gray-700/50 px-4 py-2 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center gap-2 rounded-full bg-[#2a2a30] text-white text-sm border border-white/5 px-4 py-2 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         <span className="whitespace-nowrap">{currentLabel}</span>
         <ChevronDown className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -305,7 +309,7 @@ function AspectRatioGrid({ options, value, onChange, disabled }: AspectRatioGrid
         type="button"
         onClick={toggle}
         disabled={disabled}
-        className="flex items-center gap-2 rounded-full bg-transparent text-white text-sm border border-gray-700/50 px-4 py-2 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="flex items-center gap-2 rounded-full bg-[#2a2a30] text-white text-sm border border-white/5 px-4 py-2 hover:border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         <AspectRatioIcon ratio={value} />
         <span className="whitespace-nowrap">{value}</span>
@@ -371,6 +375,7 @@ export default function ImagePanel() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputAreaRef = useRef<HTMLDivElement>(null);
   const dragCounter = useRef(0);
   const lastSubmitRef = useRef(0);
 
@@ -385,6 +390,7 @@ export default function ImagePanel() {
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
   }, []);
 
   const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -520,8 +526,21 @@ export default function ImagePanel() {
         }
 
         file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
+      } else if (url.startsWith('local-image://')) {
+        // Electron 自定义协议：通过 IPC 从主进程读取 base64
+        const electronAPI = (window as unknown as { electronAPI?: { readImageAsBase64?: (url: string) => Promise<string | null> } }).electronAPI;
+        const base64 = electronAPI?.readImageAsBase64
+          ? await electronAPI.readImageAsBase64(url)
+          : null;
+        if (!base64) {
+          setUploadError('无法读取本地图片');
+          return;
+        }
+        const resp = await fetch(`data:image/png;base64,${base64}`);
+        const lBlob = await resp.blob();
+        file = new File([lBlob], 'reference.png', { type: lBlob.type || 'image/png' });
       } else {
-        // 其他格式的 URL（不认识的协议），尝试当作 data URI 兜底
+        // 其他格式的 URL（不认识的协议），尝试 fetch 兜底
         try {
           const resp = await fetch(url);
           const blob = await resp.blob();
@@ -602,6 +621,110 @@ export default function ImagePanel() {
     triggerDownload(url, p, ts);
   };
 
+  // 将本地图片 URL 转为 File 并添加为参考图
+  const addReferenceImage = useCallback(async (url: string) => {
+    if (uploadedImages.length >= maxUploadCount) {
+      setUploadError(`已达到最大上传数量 ${maxUploadCount}`);
+      return;
+    }
+    setUploadError(null);
+    try {
+      let file: File;
+      if (url.startsWith('local-image://')) {
+        const electronAPI = (window as unknown as { electronAPI?: { readImageAsBase64?: (url: string) => Promise<string | null> } }).electronAPI;
+        const base64 = electronAPI?.readImageAsBase64
+          ? await electronAPI.readImageAsBase64(url)
+          : null;
+        if (!base64) { setUploadError('无法读取本地图片'); return; }
+        const resp = await fetch(`data:image/png;base64,${base64}`);
+        const blob = await resp.blob();
+        file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
+      } else {
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
+      }
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      await addImages(dt.files);
+    } catch {
+      setUploadError('无法加载该图片作为参考图');
+    }
+  }, [uploadedImages.length, maxUploadCount, addImages]);
+
+  // 将 FlatCard[] 转为 PhotoItem[]
+  const photoItems: PhotoItem[] = useMemo(() =>
+    flatCards.map(card => ({
+      id: `${card.id}-${card.index}`,
+      url: card.url,
+      prompt: card.prompt,
+      model: getModelLabel(card.model),
+      timestamp: card.timestamp,
+      width: card.width,
+      height: card.height,
+      _flatCard: card, // 保留原始数据供回调使用
+    })),
+    [flatCards],
+  );
+
+  // 卡片渲染回调：布局层与卡片层解耦
+  const renderCard = useCallback((item: PhotoItem) => {
+    const card = item._flatCard as FlatCard;
+    return (
+      <PhotoCard
+        item={item}
+        onDownload={() => handleDownload(card.url, card.prompt, card.timestamp)}
+        onDelete={() => deleteHistoryItem(card.id)}
+        onNativeDrag={(url) => {
+          const electronAPI = (window as unknown as { electronAPI?: { startDrag?: (url: string) => void } }).electronAPI;
+          electronAPI?.startDrag?.(url);
+        }}
+        onDragEnd={(_item, clientX, clientY) => {
+          // 检查是否释放在输入区域内
+          const area = inputAreaRef.current;
+          if (!area) return;
+          const rect = area.getBoundingClientRect();
+          if (
+            clientX >= rect.left && clientX <= rect.right &&
+            clientY >= rect.top && clientY <= rect.bottom
+          ) {
+            addReferenceImage(card.url);
+          }
+        }}
+      />
+    );
+  }, [deleteHistoryItem, handleDownload, addReferenceImage]);
+
+  // Pending 任务卡片（loading + error）
+  const pendingPhotoItems: PhotoItem[] = useMemo(() =>
+    pendingTasks.map(task => ({
+      id: task.id,
+      _task: task,
+    })),
+    [pendingTasks],
+  );
+
+  const renderPendingCard = useCallback((item: PhotoItem) => {
+    const task = item._task as PendingImageTask;
+    if (task.status === 'loading') {
+      return (
+        <LoadingCard
+          id={task.id}
+          prompt={task.prompt}
+          onCancel={cancelTask}
+        />
+      );
+    }
+    return (
+      <ErrorCard
+        id={task.id}
+        error={task.error || '生成失败'}
+        onRetry={retryTask}
+        onDismiss={dismissTask}
+      />
+    );
+  }, [cancelTask, retryTask, dismissTask]);
+
   const canGenerate = prompt.trim().length > 0;
   const canAddMore = uploadedImages.length < maxUploadCount;
 
@@ -625,120 +748,39 @@ export default function ImagePanel() {
         </div>
       )}
 
-      {/* Photo wall */}
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* Photo wall - Masonry layout, fills entire panel */}
+      <div className="absolute inset-0 overflow-hidden">
         {flatCards.length === 0 && pendingTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <Images className="w-16 h-16 mb-4 text-gray-600" strokeWidth={1.5} />
             <p className="text-sm">创作的内容将在这里显示</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {flatCards.map(card => (
-              <div
-                key={`${card.id}-${card.index}`}
-                draggable={true}
-                onDragStart={(e) => {
-                  const electronAPI = (window as unknown as { electronAPI?: { startDrag?: (url: string) => void } }).electronAPI;
-                  if (electronAPI?.startDrag) {
-                    // Electron 环境：不调用 preventDefault()，让浏览器保持活跃的拖拽上下文
-                    // startDrag 会接管浏览器拖拽，将其转为 OS 文件拖拽
-                    electronAPI.startDrag(card.url);
-                    console.log('[Drag] startDrag called, url:', card.url.slice(0, 80));
-                    return;
-                  }
-                  // 非 Electron 回退：HTML5 拖拽
-                  e.dataTransfer.setData('text/uri-list', card.url);
-                  e.dataTransfer.setData('text/plain', card.url);
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
-                className="relative group rounded-xl overflow-hidden bg-gray-800 border border-gray-700 aspect-square cursor-grab active:cursor-grabbing select-none"
-              >
-                <img
-                  src={card.url}
-                  alt={card.prompt}
-                  draggable={false}
-                  onDragStart={(e) => e.preventDefault()}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
-                {/* Hover overlay - pointer-events-none 防止阻挡拖拽 */}
-                <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3 pointer-events-none">
-                  <div className="flex justify-end gap-2 pointer-events-auto">
-                    <button
-                      onClick={() => handleDownload(card.url, card.prompt, card.timestamp)}
-                      className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg transition-colors"
-                      title="下载"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => deleteHistoryItem(card.id)}
-                      className="w-8 h-8 flex items-center justify-center bg-red-500/80 hover:bg-red-600 text-white rounded-lg transition-colors"
-                      title="删除"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div>
-                    <p className="text-xs text-white/90 line-clamp-3">{card.prompt}</p>
-                    <p className="text-[10px] text-gray-300 mt-1">
-                      {getModelLabel(card.model)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {/* 进行中和错误的任务卡片：追加到照片墙末尾，不挤开已有内容 */}
-            {pendingTasks.map(task => (
-              <div key={task.id} className={`relative rounded-xl overflow-hidden aspect-square ${
-                task.status === 'loading'
-                  ? 'bg-gray-800 border border-gray-700 animate-pulse'
-                  : 'bg-red-950/40 border border-red-800'
-              }`}>
-                {task.status === 'loading' ? (
-                  <div className="flex flex-col items-center justify-center h-full p-3 text-center">
-                    <Loader2 className="animate-spin h-8 w-8 text-blue-500 mb-2" />
-                    <p className="text-xs text-gray-400 line-clamp-2">{task.prompt}</p>
-                    <button
-                      onClick={() => cancelTask(task.id)}
-                      className="mt-2 text-xs text-red-400 hover:text-red-300 transition-colors"
-                    >
-                      取消
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full p-3 text-center">
-                    <TriangleAlert className="h-8 w-8 text-red-400 mb-2" />
-                    <p className="text-xs text-red-400 line-clamp-2 mb-2">
-                      {task.error}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => retryTask(task.id)}
-                        className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                      >
-                        重试
-                      </button>
-                      <button
-                        onClick={() => dismissTask(task.id)}
-                        className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
-                      >
-                        关闭
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <MasonryPhotoWall
+            items={[...photoItems, ...pendingPhotoItems]}
+            renderCard={(item, _index) => {
+              const task = item._task as PendingImageTask | undefined;
+              if (task) {
+                return renderPendingCard(item);
+              }
+              return renderCard(item);
+            }}
+            gutter={3}
+            scrollPaddingBottom={200}
+            emptyContent={null}
+          />
         )}
       </div>
 
-      {/* Input area - aligned with ChatInput design */}
+      {/* 底部黑渐变遮罩 - 从下到上 */}
+      <div className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none z-10"
+        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.5) 50%, transparent 100%)' }}
+      />
+
+      {/* Input area - overlay on top of photo wall */}
       <div
-        className="bg-transparent p-3 md:p-4 relative"
+        ref={inputAreaRef}
+        className="absolute bottom-0 left-0 right-0 z-20 p-3 md:p-4"
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -767,7 +809,7 @@ export default function ImagePanel() {
             <button
               onClick={handlePickFiles}
               disabled={!canAddMore}
-              className="ml-2 p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="ml-2 p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-[#2a2a30] disabled:opacity-40 disabled:cursor-not-allowed"
               title={canAddMore ? '上传参考图' : `已达到最大数量 ${maxUploadCount}`}
             >
               <Paperclip className="w-5 h-5" />
@@ -820,11 +862,7 @@ export default function ImagePanel() {
         </div>
 
         {/* Row 2: Unified input container with embedded thumbnails */}
-        <div className={`relative rounded-xl transition-colors ${
-          uploadedImages.length > 0
-            ? 'border border-white/10 focus-within:border-[var(--color-accent)]'
-            : ''
-        }`}>
+        <div className="relative rounded-xl bg-[#1a1a1f] border border-white/10 focus-within:border-[var(--color-accent)] transition-colors">
           {/* Thumbnails area inside input container */}
           {isEditMode && uploadedImages.length > 0 && (
             <>
@@ -873,11 +911,7 @@ export default function ImagePanel() {
                   ? '描述如何编辑参考图... (Enter 发送, Shift+Enter 换行)'
                   : '描述你的图片，或拖拽图片到此处作为参考'
               }
-              className={`w-full bg-transparent text-white px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[160px] min-h-[80px] focus:outline-none ${
-                uploadedImages.length > 0
-                  ? 'border-none rounded-b-xl'
-                  : 'rounded-xl border border-white/10 focus:border-[var(--color-accent)]'
-              }`}
+              className={`w-full bg-transparent text-white px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[160px] min-h-[80px] focus:outline-none rounded-xl`}
               rows={3}
             />
 
