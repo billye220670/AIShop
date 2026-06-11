@@ -31,7 +31,8 @@ jobs:
       - name: Package (no publish)
         run: npx electron-builder --win --publish never
 
-      - name: Publish to GitHub Release
-        run: npx electron-builder --win --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.exe
+          tag_name: ${{ github.ref_name }}
