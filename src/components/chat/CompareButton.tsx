@@ -14,10 +14,17 @@ interface CompareButtonProps {
 // 模型竞争力分层推荐表：键为当前使用的模型ID，值为推荐比较的模型ID列表（按优先级排序）
 const COMPARE_RECOMMENDATIONS: Record<string, string[]> = {
   // 顶级旗舰模型互相推荐
-  'claude-opus-4-8': ['gpt-5.5', 'gemini-3.1-pro-preview', 'grok-4.20-0309-reasoning'],
-  'gpt-5.5': ['claude-opus-4-8', 'gemini-3.1-pro-preview', 'grok-4.20-0309-reasoning'],
-  'gemini-3.1-pro-preview': ['claude-opus-4-8', 'gpt-5.5', 'grok-4.20-0309-reasoning'],
-  'grok-4.20-0309-reasoning': ['claude-opus-4-8', 'gpt-5.5', 'gemini-3.1-pro-preview'],
+  'claude-fable-5': ['gpt-5.5', 'gemini-3.1-pro-preview', 'grok-4.20-0309-reasoning'],
+  'claude-opus-4-8': ['claude-fable-5', 'gpt-5.5', 'gemini-3.1-pro-preview'],
+  'gpt-5.5': ['claude-fable-5', 'claude-opus-4-8', 'gemini-3.1-pro-preview'],
+  'gemini-3.1-pro-preview': ['claude-fable-5', 'gpt-5.5', 'grok-4.20-0309-reasoning'],
+  'grok-4.20-0309-reasoning': ['claude-fable-5', 'gpt-5.5', 'gemini-3.1-pro-preview'],
+
+  // 中端模型互相推荐
+  'claude-haiku-4-5-20251001': ['claude-opus-4-7', 'gemini-3.1-flash-lite-preview', 'gpt-5.4-nano'],
+  'claude-opus-4-7': ['claude-haiku-4-5-20251001', 'gemini-3.1-flash-lite-preview', 'gpt-5.4-nano'],
+  'gemini-3.1-flash-lite-preview': ['claude-haiku-4-5-20251001', 'claude-opus-4-7', 'gpt-5.4-nano'],
+  'gpt-5.4-nano': ['claude-haiku-4-5-20251001', 'claude-opus-4-7', 'gemini-3.1-flash-lite-preview'],
 
   // 国内模型互相推荐 + 推荐一个国际旗舰
   'deepseek/deepseek-v4-pro': ['moonshotai/kimi-k2.5', 'qwen/qwen3.5-27b', 'zai-org/glm-5-turbo'],

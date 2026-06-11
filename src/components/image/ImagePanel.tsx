@@ -680,7 +680,7 @@ export default function ImagePanel() {
           electronAPI?.startDrag?.(url);
         }}
         onDragEnd={(_item, clientX, clientY) => {
-          // 检查是否释放在输入区域内
+          // hit-test：是否释放在输入区域内
           const area = inputAreaRef.current;
           if (!area) return;
           const rect = area.getBoundingClientRect();

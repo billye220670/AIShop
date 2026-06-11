@@ -371,7 +371,7 @@ export default function ChatInput({
         </div>
 
         {/* Row 2: Input container with preview + textarea */}
-        <div className="rounded-xl border border-[var(--color-border)] focus-within:border-[var(--color-accent)] transition-colors overflow-hidden">
+        <div className={`rounded-xl border transition-colors overflow-hidden ${isDragging ? 'border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/30' : 'border-[var(--color-border)] focus-within:border-[var(--color-accent)]'}`}>
           {/* 引用消息缩略图 */}
           {quotedMessage && (
             <div className="p-3 pb-2">

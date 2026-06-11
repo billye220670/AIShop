@@ -11,7 +11,7 @@
  * - 不做与"图片"强绑定的假设（未来可扩展为视频卡片等）
  * - 交互事件通过 props/回调向上暴露
  */
-import { useState, useRef, useCallback, useEffect, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   MoreVertical,
@@ -30,9 +30,9 @@ export interface PhotoCardProps {
   onDownload?: (item: PhotoItem) => void;
   /** 删除回调 */
   onDelete?: (item: PhotoItem) => void;
-  /** 原生拖拽到桌面回调 */
+  /** 原生拖拽回调（拖出窗口→startDrag） */
   onNativeDrag?: (url: string) => void;
-  /** 自定义拖拽结束（在应用内释放）回调 */
+  /** App 内释放回调（已在输入区域 hit-test 通过） */
   onDragEnd?: (item: PhotoItem, clientX: number, clientY: number) => void;
   /** 额外的 className */
   className?: string;
@@ -84,19 +84,6 @@ export default function PhotoCard({
   const menuRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-  const dragState = useRef<{
-    pressed: boolean;
-    active: boolean;
-    startX: number;
-    startY: number;
-    nativeTriggered: boolean;
-    visualVisible: boolean;
-    posX: number;
-    posY: number;
-  }>({ pressed: false, active: false, startX: 0, startY: 0, nativeTriggered: false, visualVisible: false, posX: 0, posY: 0 });
-  const [dragVisual, setDragVisual] = useState<{ x: number; y: number } | null>(null);
-  const [dragVisualHidden, setDragVisualHidden] = useState(false);
-  const dragFileUrl = useRef<string>(''); // 记录当前拖拽的文件 URL
 
   const thumbnailUrl = getThumbnailUrl(item);
   const originalUrl = getImageUrl(item);
@@ -125,84 +112,68 @@ export default function PhotoCard({
     };
   }, [menuOpen]);
 
-  // ===== 自定义拖拽（pointer 事件） =====
+  // ===== 混合拖拽：App 内鼠标追踪 + 出窗口 → startDrag() =====
+  // 为什么不能只用 startDrag()：
+  //   startDrag() 触发的是 OS 级别原生拖拽。当用户在同一 Electron 窗口内释放时，
+  //   浏览器的 dragenter / dragover / drop 事件不会对原生拖拽做出反应。
+  //   因此 App 内释放（拖到输入框）需要用鼠标事件自行 hit-test，
+  //   拖出窗口时才切到 startDrag() 让 OS 接管（桌面 / Finder）。
   const DRAG_THRESHOLD = 6;
+  const dragRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    url: string;
+    nativeFired: boolean;
+  }>({ active: false, startX: 0, startY: 0, url: '', nativeFired: false });
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragHidden, setDragHidden] = useState(false);
 
-  const handlePointerDown = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (e.button !== 0) return; // 仅左键
-      const target = e.currentTarget;
-      target.setPointerCapture(e.pointerId);
-      dragFileUrl.current = originalUrl;
-      dragState.current = {
-        pressed: true,
-        active: false,
-        startX: e.clientX,
-        startY: e.clientY,
-        nativeTriggered: false,
-        visualVisible: false,
-        posX: 0,
-        posY: 0,
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const url = originalUrl;
+      dragRef.current = { active: false, startX: e.clientX, startY: e.clientY, url, nativeFired: false };
+
+      const onWindowMove = (ev: MouseEvent) => {
+        const dr = dragRef.current;
+        if (dr.nativeFired) return;
+        const dx = ev.clientX - dr.startX;
+        const dy = ev.clientY - dr.startY;
+        if (!dr.active && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+        dr.active = true;
+
+        // 鼠标移出窗口边界 → 隐藏 visual，触发原生 OS 拖拽
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+        if (ev.clientX < -30 || ev.clientX > W + 30 || ev.clientY < -30 || ev.clientY > H + 30) {
+          dr.nativeFired = true;
+          setDragPos(null);
+          if (onNativeDrag) onNativeDrag(dr.url);
+          return;
+        }
+
+        setDragPos({ x: ev.clientX, y: ev.clientY });
       };
+
+      const onWindowUp = (ev: MouseEvent) => {
+        const dr = dragRef.current;
+        window.removeEventListener('mousemove', onWindowMove);
+        window.removeEventListener('mouseup', onWindowUp);
+        setDragPos(null);
+        setDragHidden(false);
+
+        if (dr.active && !dr.nativeFired && onDragEnd) {
+          onDragEnd(item, ev.clientX, ev.clientY);
+        }
+
+        dr.active = false;
+      };
+
+      window.addEventListener('mousemove', onWindowMove);
+      window.addEventListener('mouseup', onWindowUp, { once: false });
     },
-    [originalUrl],
-  );
-
-  const handlePointerMove = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      const ds = dragState.current;
-      if (!ds.pressed || ds.nativeTriggered) return; // 必须按下才处理
-      const dx = e.clientX - ds.startX;
-      const dy = e.clientY - ds.startY;
-      if (!ds.active && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
-      ds.active = true;
-      setDragVisual({ x: e.clientX, y: e.clientY });
-
-      // 鼠标移出窗口边界 → 隐藏自定义 visual，触发原生拖拽
-      const W = window.innerWidth;
-      const H = window.innerHeight;
-      if (e.clientX < -30 || e.clientX > W + 30 || e.clientY < -30 || e.clientY > H + 30) {
-        ds.nativeTriggered = true;
-        setDragVisual(null);
-        if (onNativeDrag) onNativeDrag(dragFileUrl.current);
-        return;
-      }
-
-      ds.posX = e.clientX;
-      ds.posY = e.clientY;
-      setDragVisual({ x: e.clientX, y: e.clientY });
-    },
-    [onNativeDrag],
-  );
-
-  const handlePointerLeave = useCallback(() => {
-    const ds = dragState.current;
-    if (ds.pressed && !ds.active) {
-      // 按下但未开始拖拽就离开卡片，清理状态
-      ds.pressed = false;
-      ds.active = false;
-      ds.nativeTriggered = false;
-    }
-  }, []);
-
-  const handlePointerUp = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      const ds = dragState.current;
-      setDragVisual(null);
-      setDragVisualHidden(false);
-
-      if (ds.pressed && ds.active && !ds.nativeTriggered && onDragEnd) {
-        // 窗口内释放：检测是否在输入区域
-        onDragEnd(item, e.clientX, e.clientY);
-      }
-
-      ds.pressed = false;
-      ds.active = false;
-      ds.nativeTriggered = false;
-      dragFileUrl.current = '';
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    },
-    [item, onDragEnd],
+    [originalUrl, item, onNativeDrag, onDragEnd],
   );
 
   // 卡片由外层 MasonryPhotoWall 控制高度（基于 width/height 计算），
@@ -211,12 +182,8 @@ export default function PhotoCard({
     <>
     <div
       ref={cardRef}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerLeave}
+      onMouseDown={handleMouseDown}
       className={`relative group overflow-hidden bg-gray-800 cursor-grab active:cursor-grabbing select-none w-full h-full ${className}`}
-      style={{ touchAction: 'none' }}
     >
       {/* 骨架屏/占位背景色 */}
       {!loaded && !error && (
@@ -248,7 +215,7 @@ export default function PhotoCard({
         <div className="flex justify-end pointer-events-auto">
           <button
             ref={menuBtnRef}
-            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               setMenuOpen((v) => !v);
@@ -312,14 +279,14 @@ export default function PhotoCard({
       )}
     </div>
 
-    {/* 拖拽 visual */}
-    {dragVisual &&
+    {/* 拖拽 visual — 跟随鼠标的浮动缩略图 */}
+    {dragPos &&
       createPortal(
         <div
           style={{
             position: 'fixed',
-            left: dragVisual.x - 75,
-            top: dragVisual.y - 75,
+            left: dragPos.x - 75,
+            top: dragPos.y - 75,
             width: 150,
             height: 150,
             pointerEvents: 'none',
@@ -327,7 +294,7 @@ export default function PhotoCard({
             borderRadius: 0,
             overflow: 'hidden',
             boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-            opacity: dragVisualHidden ? 0 : 0.9,
+            opacity: dragHidden ? 0 : 0.9,
             transition: 'opacity 0.05s ease',
           }}
         >

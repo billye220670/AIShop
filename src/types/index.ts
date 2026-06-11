@@ -131,6 +131,9 @@ export interface ImageHistoryItem {
   size?: string;
   quality?: string;
   sourceImages?: number;    // 编辑模式下上传的图片数量
+  width?: number;           // 图片原始宽度（用于瀑布流占位计算）
+  height?: number;          // 图片原始高度（用于瀑布流占位计算）
+  thumbnailUrl?: string;    // 缩略图地址（可选，预留）
 }
 
 // 并发队列中的待处理/错误任务

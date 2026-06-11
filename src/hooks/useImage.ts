@@ -86,6 +86,19 @@ function saveHistory(list: ImageHistoryItem[]): void {
  * 将图片文件压缩为 base64（不含 data:image/...;base64, 前缀）。
  * 最大边长 1024px，JPEG 质量 0.85。
  */
+
+/** 获取图片尺寸（宽高），用于瀑布流占位计算 */
+function getImageDimensions(url: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => reject(new Error('Failed to load image for dimension detection'));
+    img.src = url;
+  });
+}
+
 export function compressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -145,6 +158,38 @@ export function useImage() {
   useEffect(() => {
     saveHistory(history);
   }, [history]);
+
+  // 回填历史数据中缺失的 width/height（用于瀑布流布局）
+  useEffect(() => {
+    const itemsNeedingDimensions = history.filter(it => !it.width || !it.height);
+    if (itemsNeedingDimensions.length === 0) return;
+
+    let cancelled = false;
+    const fillDimensions = async () => {
+      const updates: { id: string; width: number; height: number }[] = [];
+      for (const item of itemsNeedingDimensions) {
+        if (cancelled) break;
+        const firstUrl = item.urls[0];
+        if (!firstUrl) continue;
+        try {
+          const dims = await getImageDimensions(firstUrl);
+          updates.push({ id: item.id, width: dims.width, height: dims.height });
+        } catch {
+          // 忽略加载失败的图片
+        }
+      }
+      if (!cancelled && updates.length > 0) {
+        setHistory(prev =>
+          prev.map(it => {
+            const update = updates.find(u => u.id === it.id);
+            return update ? { ...it, width: update.width, height: update.height } : it;
+          })
+        );
+      }
+    };
+    fillDimensions();
+    return () => { cancelled = true; };
+  }, []); // 仅初始化时执行一次
 
   // 组件卸载时清理所有 controllers
   useEffect(() => {
@@ -265,6 +310,21 @@ export function useImage() {
       }
       // 成功：从队列移除，加入历史
       setPendingTasks(prev => prev.filter(t => t.id !== taskId));
+
+      // 尝试获取第一张图片的尺寸（用于瀑布流占位计算）
+      let imgWidth: number | undefined;
+      let imgHeight: number | undefined;
+      try {
+        const firstUrl = localUrls[0];
+        if (firstUrl) {
+          const dims = await getImageDimensions(firstUrl);
+          imgWidth = dims.width;
+          imgHeight = dims.height;
+        }
+      } catch {
+        // 获取尺寸失败不影响功能，瀑布流会 fallback 到正方形
+      }
+
       const historyItem: ImageHistoryItem = {
         id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8),
         urls: localUrls,
@@ -275,6 +335,8 @@ export function useImage() {
         size: params.size,
         quality: isGptModel(params.model) ? params.quality : undefined,
         sourceImages: params.images ? params.images.length : undefined,
+        width: imgWidth,
+        height: imgHeight,
       };
       // 追加到末尾：保持与 loading 卡片在原位置一致，避免完成后图片跳到最前
       setHistory(prev => [...prev, historyItem]);

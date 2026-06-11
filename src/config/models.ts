@@ -3,6 +3,17 @@ import type { Model } from '../types';
 export const CHAT_MODELS: Model[] = [
   // Anthropic（旗舰 → 小模型）
   {
+    id: 'claude-fable-5',
+    name: 'Claude Fable 5',
+    provider: 'Anthropic',
+    type: 'chat',
+    maxTokens: 128000,
+    contextLength: 200000,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['text'],
+    price: { input: '$1.5/百万tokens', output: '$7.5/百万tokens' },
+  },
+  {
     id: 'claude-opus-4-8',
     name: 'Claude Opus 4.8',
     provider: 'Anthropic',
