@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import MainLayout from './components/layout/MainLayout';
 import ChatPanel from './components/chat/ChatPanel';
-import HistoryPanel from './components/chat/HistoryPanel';
 import ImagePanel from './components/image/ImagePanel';
 import SettingsPanel from './components/settings/SettingsPanel';
 import FavoritesPanel from './components/artifact/FavoritesPanel';
@@ -19,8 +18,6 @@ function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const chat = useChat();
   const { favorites, isFavorite, toggleFavorite, removeFavorite } = useFavoriteArtifacts();
@@ -41,7 +38,6 @@ function App() {
             stopGeneration={chat.stopGeneration}
             conversationTitle={conversationTitle}
             conversation={activeConversation}
-            onToggleHistory={() => setHistoryOpen(v => !v)}
             onNewConversation={chat.newConversation}
             streamingArtifact={chat.streamingArtifact}
             regenerateMessage={chat.regenerateMessage}
@@ -59,6 +55,8 @@ function App() {
         return <ImagePanel />;
       case 'favorites':
         return <FavoritesPanel favorites={favorites} onRemoveFavorite={removeFavorite} />;
+      case 'me':
+        return <SettingsPanel />;
       default:
         return null;
     }
@@ -68,35 +66,19 @@ function App() {
     <>
       <MainLayout
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => setActiveTab(tab)}
         conversations={chat.conversations}
         activeConversationId={chat.activeConversationId}
         onSwitchConversation={chat.switchConversation}
         onNewConversation={chat.newConversation}
         onDeleteConversation={chat.deleteConversation}
         onRenameConversation={chat.renameConversation}
-        onOpenSettings={() => setSettingsOpen(true)}
-        models={CHAT_MODELS}
-        selectedModel={activeConversation?.selectedModel || CHAT_MODELS[0].id}
-        onModelChange={chat.setSelectedModel}
+        models={activeTab === 'chat' ? CHAT_MODELS : undefined}
+        selectedModel={activeTab === 'chat' ? (activeConversation?.selectedModel || CHAT_MODELS[0].id) : undefined}
+        onModelChange={activeTab === 'chat' ? chat.setSelectedModel : undefined}
       >
         {renderContent()}
       </MainLayout>
-
-      {/* History panel at App level - fixed positioning, not clipped by any parent */}
-      <HistoryPanel
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        conversations={chat.conversations}
-        activeConversationId={chat.activeConversationId}
-        onSwitchConversation={chat.switchConversation}
-        onDelete={chat.deleteConversation}
-        onRename={chat.renameConversation}
-      />
-
-      {/* Settings panel */}
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-
     </>
   );
 }

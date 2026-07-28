@@ -19,7 +19,6 @@ interface ChatPanelProps {
   stopGeneration: () => void;
   conversationTitle?: string;
   conversation?: Conversation;
-  onToggleHistory?: () => void;
   onNewConversation?: () => void;
   streamingArtifact?: { title: string; code: string } | null;
   regenerateMessage?: (messageId: string) => void;
@@ -39,7 +38,6 @@ export default function ChatPanel({
   sendMessage,
   stopGeneration,
   conversation,
-  onToggleHistory,
   onNewConversation,
   streamingArtifact,
   regenerateMessage,
@@ -147,6 +145,7 @@ export default function ChatPanel({
         <div
           ref={messagesContainerRef}
           onScroll={handleScroll}
+          data-messages-container
           className="flex-1 overflow-y-auto px-4 py-4"
         >
           {messages.length === 0 && (
@@ -197,7 +196,6 @@ export default function ChatPanel({
           onSend={sendMessage}
           isLoading={isLoading}
           onStop={stopGeneration}
-          onToggleHistory={onToggleHistory}
           onNewConversation={onNewConversation}
           quotedMessage={quotedMessage}
           onRemoveQuote={() => setQuotedMessage(null)}

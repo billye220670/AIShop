@@ -1,137 +1,306 @@
-import { type ComponentType } from 'react';
-import { MessageSquare, Image as ImageIcon, Star, PanelLeftClose, PanelLeftOpen, Settings } from 'lucide-react';
-import type { TabMode, Conversation } from '../../types';
-
-type TabIcon = ComponentType<{ className?: string }>;
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, MoreVertical, Download, Pencil, Trash2 } from 'lucide-react';
+import PinyinMatch from 'pinyin-match';
+import type { Conversation } from '../../types';
+import ConfirmModal from '../common/ConfirmModal';
 
 export interface SidebarProps {
-  activeTab: TabMode;
-  onTabChange: (tab: TabMode) => void;
-  // 会话相关 (仅聊天模式使用)
   conversations?: Conversation[];
   activeConversationId?: string;
   onSwitchConversation?: (id: string) => void;
   onNewConversation?: () => void;
   onDeleteConversation?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
-  onOpenSettings?: () => void;
-  // 折叠状态（由父组件管理）
-  collapsed: boolean;
-  onCollapsedChange: (c: boolean) => void;
 }
-
-const tabs: { id: TabMode; label: string; Icon: TabIcon }[] = [
-  { id: 'chat', label: '聊天', Icon: MessageSquare },
-  { id: 'image', label: '图片', Icon: ImageIcon },
-  { id: 'favorites', label: '收藏', Icon: Star },
-];
 
 export const SIDEBAR_WIDTH = 300;
 export const COLLAPSED_WIDTH = 60;
 export const COLLAPSED_STORAGE_KEY = 'sidebar-collapsed';
 
 export default function Sidebar({
-  activeTab,
-  onTabChange,
-  onOpenSettings,
-  collapsed,
-  onCollapsedChange,
+  conversations,
+  activeConversationId,
+  onSwitchConversation,
+  onDeleteConversation,
+  onRenameConversation,
 }: SidebarProps) {
-  const setCollapsed = onCollapsedChange;
-  const currentWidth = collapsed ? COLLAPSED_WIDTH : SIDEBAR_WIDTH;
+  const [historySearch, setHistorySearch] = useState('');
+  // 三点菜单状态
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  // 编辑状态
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const editInputRef = useRef<HTMLInputElement | null>(null);
+  // 删除确认状态
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const handleClick = () => setMenuOpenId(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [menuOpenId]);
+
+  // 编辑模式自动聚焦
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
+
+  // Filtered conversations (排除空会话)
+  const filteredConversations = useMemo(() => {
+    if (!conversations) return [];
+    const nonEmpty = conversations.filter(conv => conv.messages && conv.messages.length > 0);
+    const keyword = historySearch.trim();
+    if (!keyword) return nonEmpty;
+    return nonEmpty.filter(conv => {
+      if (conv.title.toLowerCase().includes(keyword.toLowerCase())) return true;
+      const match = PinyinMatch.match(conv.title, keyword);
+      return match !== false;
+    });
+  }, [conversations, historySearch]);
+
+  // 时间分组逻辑
+  const groupedConversations = useMemo(() => {
+    if (!filteredConversations.length) return [];
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterdayStart = todayStart - 86400000;
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    const groups: { label: string; items: typeof filteredConversations }[] = [
+      { label: '今天', items: [] },
+      { label: '昨天', items: [] },
+      { label: '本月', items: [] },
+      { label: '更早', items: [] },
+    ];
+
+    for (const conv of filteredConversations) {
+      const t = conv.updatedAt;
+      if (t >= todayStart) groups[0].items.push(conv);
+      else if (t >= yesterdayStart) groups[1].items.push(conv);
+      else if (t >= monthStart) groups[2].items.push(conv);
+      else groups[3].items.push(conv);
+    }
+
+    return groups.filter(g => g.items.length > 0);
+  }, [filteredConversations]);
+
+  // 获取会话最后消息预览
+  const getLastMessagePreview = (conv: Conversation): string => {
+    const lastMsg = conv.messages[conv.messages.length - 1];
+    if (!lastMsg) return '';
+    if (typeof lastMsg.content === 'string') return lastMsg.content;
+    const textPart = lastMsg.content.find(p => p.type === 'text');
+    return textPart?.text || '[图片]';
+  };
+
+  // 导出会话为 JSON
+  const exportConversation = (conv: Conversation) => {
+    const data = {
+      app: 'PortAI',
+      version: 1,
+      conversation: conv,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${conv.title}.portai.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // 编辑操作
+  const enterEdit = (conv: Conversation) => {
+    setMenuOpenId(null);
+    setEditingId(conv.id);
+    setEditText(conv.title);
+  };
+
+  const commitEdit = (id: string) => {
+    const trimmed = editText.trim();
+    if (trimmed) {
+      onRenameConversation?.(id, trimmed);
+    }
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+  };
 
   return (
-    <aside
-      className="relative bg-transparent flex flex-col shrink-0 overflow-visible transition-all duration-200"
-      style={{ width: `${currentWidth}px` }}
-    >
-      {/* 顶部标题 + 折叠按钮 */}
-      <div className={`flex items-center px-5 py-4 mb-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
-        {!collapsed && (
-          <span className="text-2xl text-white select-none tracking-tight" style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900 }}>
-            PortA<span className="relative inline-block">I<span className="absolute bottom-[6px] -right-[14px] w-[12px] h-[5px] bg-[var(--color-accent)] rounded-[1px]" /></span>
-          </span>
-        )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-md text-gray-400 hover:text-white transition-colors"
-          title={collapsed ? '展开侧边栏' : '折叠侧边栏'}
-        >
-          {collapsed ? (
-            <PanelLeftOpen className="w-5 h-5" />
-          ) : (
-            <PanelLeftClose className="w-5 h-5" />
-          )}
-        </button>
+    <aside className="h-full bg-transparent flex flex-col overflow-hidden">
+      {/* 顶部标题 */}
+      <div className="flex items-center px-5 py-4 mb-2">
+        <span className="text-2xl text-white select-none tracking-tight" style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900 }}>
+          PortA<span className="relative inline-block">I<span className="absolute bottom-[6px] -right-[14px] w-[12px] h-[5px] bg-[var(--color-accent)] rounded-[1px]" /></span>
+        </span>
       </div>
 
-      <nav className="flex-1 space-y-1.5 px-2 overflow-visible">
-        {tabs.map(tab => {
-          const Icon = tab.Icon;
-          return (
-            <div key={tab.id} className="relative group">
-              <button
-                onClick={() => onTabChange(tab.id)}
-                {...(!collapsed ? { title: tab.label } : {})}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors ${
-                  collapsed ? 'justify-center' : ''
-                } ${
-                  activeTab === tab.id
-                    ? 'bg-[var(--color-accent)] text-[var(--color-accent-foreground)]'
-                    : 'text-gray-400 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <Icon className="w-5 h-5 shrink-0" />
-                {!collapsed && (
-                  <span className="text-sm font-medium truncate">{tab.label}</span>
-                )}
-              </button>
-
-              {/* 折叠态自定义 Tooltip */}
-              {collapsed && (
-                <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 z-50">
-                  {/* 小三角箭头 */}
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[5px] border-r-[var(--color-bg-elevated)]" />
-                  <div className="bg-[var(--color-bg-elevated)] text-white text-sm rounded-md px-3 py-1.5 shadow-lg whitespace-nowrap">
-                    {tab.label}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-
-      {/* 底部设置按钮 */}
-      <div className="px-2 pb-4 mt-auto">
-        <p className={`text-xs text-gray-500 mb-1 ${collapsed ? 'text-center' : 'px-3'}`}>
-          v{__APP_VERSION__}
-        </p>
-        <div className="relative group">
-          <button
-            onClick={onOpenSettings}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
-              collapsed ? 'justify-center' : ''
-            } text-gray-400 hover:bg-white/5 hover:text-white`}
-          >
-            <Settings className="w-5 h-5 shrink-0" />
-            {!collapsed && (
-              <span className="text-sm font-medium truncate">设置</span>
-            )}
-          </button>
-
-          {/* 折叠态自定义 Tooltip */}
-          {collapsed && (
-            <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 opacity-0 translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 z-50">
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[5px] border-r-[var(--color-bg-elevated)]" />
-              <div className="bg-[var(--color-bg-elevated)] text-white text-sm rounded-md px-3 py-1.5 shadow-lg whitespace-nowrap">
-                设置
-              </div>
-            </div>
-          )}
+      {/* 搜索框 */}
+      <div className="px-4 pb-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <input
+            type="text"
+            value={historySearch}
+            onChange={e => setHistorySearch(e.target.value)}
+            placeholder="搜索对话"
+            className="w-full bg-[#121211] border border-gray-700/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[var(--color-accent)]"
+          />
         </div>
       </div>
 
+      {/* 会话列表 */}
+      <div className="flex-1 overflow-y-auto overflow-x-visible px-2">
+        {filteredConversations.length === 0 && historySearch && (
+          <div className="text-center text-gray-500 text-sm py-8">无匹配结果</div>
+        )}
+        {groupedConversations.map(group => (
+          <div key={group.label}>
+            <div className="px-2 pt-3 pb-1.5 text-xs text-gray-500 font-medium">{group.label}</div>
+            {group.items.map(conv => {
+              const isActive = conv.id === activeConversationId;
+              const isEditing = editingId === conv.id;
+              const isMenuOpen = menuOpenId === conv.id;
+              return (
+                <div
+                  key={conv.id}
+                  className={`group relative w-full text-left px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${
+                    isActive
+                      ? 'bg-[var(--color-accent-soft)]'
+                      : 'hover:bg-white/5'
+                  }`}
+                  onClick={() => {
+                    if (!isEditing) {
+                      onSwitchConversation?.(conv.id);
+                    }
+                  }}
+                >
+                  {/* 标题行 */}
+                  <div className="flex items-center gap-1.5">
+                    {isEditing ? (
+                      <input
+                        ref={editInputRef}
+                        value={editText}
+                        onChange={e => setEditText(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        onBlur={() => commitEdit(conv.id)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            commitEdit(conv.id);
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            cancelEdit();
+                          }
+                        }}
+                        maxLength={50}
+                        className="flex-1 min-w-0 bg-[#121211] text-white text-sm px-2 py-0.5 rounded border border-[var(--color-accent)] outline-none"
+                      />
+                    ) : (
+                      <div className="flex-1 min-w-0 text-sm font-bold text-white truncate">
+                        {conv.title}
+                      </div>
+                    )}
+
+                    {/* 三点菜单按钮 */}
+                    {!isEditing && (
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          setMenuOpenId(isMenuOpen ? null : conv.id);
+                        }}
+                        className={`flex-shrink-0 p-1 rounded-md transition-all ${
+                          isMenuOpen
+                            ? 'opacity-100 bg-white/10'
+                            : 'opacity-0 group-hover:opacity-100 hover:bg-white/10'
+                        }`}
+                      >
+                        <MoreVertical className="w-3.5 h-3.5 text-gray-400" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 预览文本 */}
+                  {!isEditing && (
+                    <div className="text-xs text-gray-400 mt-0.5 line-clamp-2">
+                      {getLastMessagePreview(conv)}
+                    </div>
+                  )}
+
+                  {/* 浮动菜单 */}
+                  {isMenuOpen && (
+                    <div
+                      className="absolute right-2 top-10 z-[200] w-36 bg-[var(--color-bg-secondary)] border border-gray-700/60 rounded-lg shadow-xl py-1"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => {
+                          exportConversation(conv);
+                          setMenuOpenId(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>导出</span>
+                      </button>
+                      <button
+                        onClick={() => enterEdit(conv)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>编辑标题</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDeleteTarget(conv.id);
+                          setMenuOpenId(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-white/10 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>删除</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* 底部版本号 */}
+      <div className="px-4 pb-3 pt-2 mt-auto">
+        <p className="text-xs text-gray-500 text-center">
+          v{__APP_VERSION__}
+        </p>
+      </div>
+
+      {/* 删除确认弹窗 */}
+      <ConfirmModal
+        open={deleteTarget !== null}
+        title="删除会话"
+        message="确定要删除这个会话吗？删除后无法恢复。"
+        confirmText="删除"
+        cancelText="取消"
+        variant="danger"
+        onConfirm={() => {
+          if (deleteTarget) onDeleteConversation?.(deleteTarget);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </aside>
   );
 }

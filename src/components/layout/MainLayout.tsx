@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useRef, type ReactNode } from 'react';
 import Sidebar, { SIDEBAR_WIDTH } from './Sidebar';
 import TopNavBar from './TopNavBar';
+import BottomNavBar from './BottomNavBar';
 import type { TabMode, Conversation, Model } from '../../types';
 
 interface MainLayoutProps {
@@ -13,7 +14,6 @@ interface MainLayoutProps {
   onNewConversation?: () => void;
   onDeleteConversation?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
-  onOpenSettings?: () => void;
   // 模型选择
   models?: Model[];
   selectedModel?: string;
@@ -30,12 +30,30 @@ export default function MainLayout({
   onNewConversation,
   onDeleteConversation,
   onRenameConversation,
-  onOpenSettings,
   models,
   selectedModel,
   onModelChange,
 }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 检测输入框聚焦，隐藏底部菜单栏
+  const handleFocusIn = (e: React.FocusEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'TEXTAREA') {
+      if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
+      setInputFocused(true);
+    }
+  };
+
+  const handleFocusOut = (e: React.FocusEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'TEXTAREA') {
+      // 延迟隐藏，避免切换到同区域其他元素时闪烁
+      blurTimerRef.current = setTimeout(() => setInputFocused(false), 100);
+    }
+  };
 
   // 监听 ESC 关闭侧边栏
   useEffect(() => {
@@ -47,25 +65,26 @@ export default function MainLayout({
     return () => document.removeEventListener('keydown', onKey);
   }, [sidebarOpen]);
 
+  // 冻结初始视口高度，防止键盘弹起时 dvh 变化导致整页收缩
+  const [frozenHeight] = useState(() => window.innerHeight);
+
   return (
-    <div className="h-[100dvh] bg-[#121211] text-white overflow-hidden relative" style={{ touchAction: 'manipulation' }}>
+    <div
+      className="bg-[#121211] text-white overflow-hidden fixed inset-x-0 top-0"
+      style={{ height: frozenHeight, touchAction: 'manipulation' }}
+    >
       {/* 侧边栏 - 绝对定位左侧底层，平时收起在屏幕外 */}
       <div
         className={`absolute top-0 left-0 bottom-0 z-0 transition-transform duration-250 ease-out bg-[#1e1e1c] ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         style={{ width: `${SIDEBAR_WIDTH}px` }}
       >
         <Sidebar
-          activeTab={activeTab}
-          onTabChange={(tab) => { onTabChange(tab); setSidebarOpen(false); }}
           conversations={conversations}
           activeConversationId={activeConversationId}
-          onSwitchConversation={onSwitchConversation}
+          onSwitchConversation={(id) => { onSwitchConversation?.(id); setSidebarOpen(false); }}
           onNewConversation={onNewConversation}
           onDeleteConversation={onDeleteConversation}
           onRenameConversation={onRenameConversation}
-          onOpenSettings={onOpenSettings}
-          collapsed={false}
-          onCollapsedChange={() => {}}
         />
       </div>
 
@@ -73,6 +92,8 @@ export default function MainLayout({
       <div
         className={`h-full flex flex-col relative z-10 transition-transform duration-250 ease-out ${sidebarOpen ? 'translate-x-[300px]' : 'translate-x-0'}`}
         onClick={() => { if (sidebarOpen) setSidebarOpen(false); }}
+        onFocus={handleFocusIn}
+        onBlur={handleFocusOut}
       >
         {/* 顶部导航栏 */}
         {models && selectedModel && onModelChange && (
@@ -85,6 +106,8 @@ export default function MainLayout({
           />
         )}
         <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+        {/* 底部导航栏 */}
+        {!inputFocused && <BottomNavBar activeTab={activeTab} onTabChange={onTabChange} />}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
-import { Paperclip, Square, SendHorizontal, Plus, Clock, X, FileText, MessageSquareQuote, SlidersHorizontal } from 'lucide-react';
+import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
+import { Plus, Square, X, FileText, MessageSquareQuote } from 'lucide-react';
 import type { MessageContent, FileAttachment, Message, ChatFeatureSettings } from '../../types';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
 
@@ -7,7 +7,6 @@ interface ChatInputProps {
   onSend: (content: string | MessageContent[], attachments?: FileAttachment[]) => void;
   isLoading: boolean;
   onStop: () => void;
-  onToggleHistory?: () => void;
   onNewConversation?: () => void;
   quotedMessage?: Message | null;
   onRemoveQuote?: () => void;
@@ -21,7 +20,6 @@ export default function ChatInput({
   onSend,
   isLoading,
   onStop,
-  onToggleHistory,
   onNewConversation,
   quotedMessage,
   onRemoveQuote,
@@ -34,29 +32,11 @@ export default function ChatInput({
   const [images, setImages] = useState<string[]>([]);
   const [files, setFiles] = useState<ParsedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [showFeaturePanel, setShowFeaturePanel] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const featurePanelRef = useRef<HTMLDivElement>(null);
-  const featureButtonRef = useRef<HTMLButtonElement>(null);
 
   const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
   const MAX_TOTAL_FILES = 5;
-
-  // 点击外部关闭 feature panel
-  useEffect(() => {
-    if (!showFeaturePanel) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        featurePanelRef.current && !featurePanelRef.current.contains(e.target as Node) &&
-        featureButtonRef.current && !featureButtonRef.current.contains(e.target as Node)
-      ) {
-        setShowFeaturePanel(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showFeaturePanel]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes}B`;
@@ -103,6 +83,7 @@ export default function ChatInput({
     setFiles([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
+      textareaRef.current.blur();
     }
   };
 
@@ -257,106 +238,8 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* Desktop input area - two row layout */}
-      <div>
-        {/* Row 1: Toolbar */}
-        <div className="flex items-center justify-between mb-3">
-          {/* Left: Upload */}
-          <div className="flex items-center">
-            {/* File upload */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
-              title="上传图片"
-            >
-              <Paperclip className="w-5 h-5" />
-            </button>
-
-          </div>
-
-          {/* Right: action buttons */}
-          <div className="flex items-center gap-2">
-            {/* Feature settings */}
-            <div className="relative">
-              <button
-                ref={featureButtonRef}
-                onClick={() => setShowFeaturePanel(prev => !prev)}
-                className={`p-2 transition-colors rounded-lg hover:bg-gray-700 ${
-                  showFeaturePanel ? 'text-[var(--color-accent)]' : 'text-gray-400 hover:text-white'
-                }`}
-                title="聊天控件"
-              >
-                <SlidersHorizontal className="w-5 h-5" />
-              </button>
-
-              {/* Feature Panel Popover */}
-              {showFeaturePanel && (
-                <div
-                  ref={featurePanelRef}
-                  className="absolute bottom-full right-0 mb-2 w-64 bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl p-4 shadow-2xl z-50"
-                >
-                  <div className="text-white font-medium text-sm mb-3">聊天控件</div>
-                  <div className="text-gray-500 text-xs mb-2">功能</div>
-                  {/* Artifact Toggle */}
-                  <div className="flex items-center justify-between py-1.5">
-                    <span className="text-gray-200 text-sm">Artifacts</span>
-                    <button
-                      onClick={() => onFeatureSettingsChange({ ...featureSettings, artifactEnabled: !featureSettings.artifactEnabled })}
-                      className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
-                        featureSettings.artifactEnabled ? 'bg-[var(--color-accent)]' : 'bg-gray-600'
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${
-                          featureSettings.artifactEnabled ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  {/* Web Search Toggle */}
-                  <div className="flex items-center justify-between py-1.5 mt-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-200 text-sm">联网搜索</span>
-                    </div>
-                    <button
-                      onClick={() => onWebSearchEnabledChange?.(!webSearchEnabled)}
-                      className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
-                        webSearchEnabled ? 'bg-[var(--color-accent)]' : 'bg-gray-600'
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${
-                          webSearchEnabled ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* History toggle */}
-            <button
-              onClick={() => onToggleHistory?.()}
-              className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
-              title="会话历史"
-            >
-              <Clock className="w-5 h-5" />
-            </button>
-
-            {/* New conversation */}
-            <button
-              onClick={() => onNewConversation?.()}
-              className="w-7 h-7 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-[var(--color-accent-foreground)] rounded-full flex items-center justify-center transition-colors"
-              title="新建会话"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Row 2: Input container with preview + textarea */}
-        <div className={`rounded-xl border transition-colors overflow-hidden ${isDragging ? 'border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/30' : 'border-[var(--color-border)] focus-within:border-[var(--color-accent)]'}`}>
+      {/* Row 2: Input container with preview + textarea */}
+        <div className={`rounded-full border transition-colors overflow-hidden ${isDragging ? 'border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/30' : 'border-[var(--color-border)] focus-within:border-[var(--color-accent)]'}`}>
           {/* 引用消息缩略图 */}
           {quotedMessage && (
             <div className="p-3 pb-2">
@@ -418,21 +301,29 @@ export default function ChatInput({
             </>
           )}
           {/* Textarea */}
-          <div className="relative">
+          <div className="relative flex items-start">
+            {/* + 按钮 overlay */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="pl-4 pr-2 py-3 mt-0.5 text-gray-400 hover:text-white transition-colors"
+              title="上传文件"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
             <textarea
               ref={textareaRef}
               value={text}
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
-              className="w-full bg-transparent text-white px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[200px] min-h-[80px] focus:outline-none"
-              rows={3}
+              placeholder="询问任何问题..."
+              className="flex-1 bg-transparent text-white pr-4 py-3 resize-none placeholder-gray-500 max-h-[200px] min-h-[44px] focus:outline-none"
+              rows={1}
             />
 
-            {/* Send / Stop button */}
-            <div className="absolute right-3 bottom-3">
-              {isLoading ? (
+            {/* Stop button (仅加载时) */}
+            {isLoading && (
+              <div className="pr-2 py-2">
                 <button
                   onClick={onStop}
                   className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-full transition-colors"
@@ -440,20 +331,10 @@ export default function ChatInput({
                 >
                   <Square className="w-4 h-4" fill="currentColor" strokeWidth={0} />
                 </button>
-              ) : (
-                <button
-                  onClick={handleSubmit}
-                  disabled={!text.trim() && images.length === 0 && files.length === 0}
-                  className="p-2 text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] disabled:text-gray-500 transition-colors"
-                  title="发送"
-                >
-                  <SendHorizontal className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
 
     </div>
