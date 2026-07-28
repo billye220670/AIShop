@@ -526,21 +526,8 @@ export default function ImagePanel() {
         }
 
         file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
-      } else if (url.startsWith('local-image://')) {
-        // Electron 自定义协议：通过 IPC 从主进程读取 base64
-        const electronAPI = (window as unknown as { electronAPI?: { readImageAsBase64?: (url: string) => Promise<string | null> } }).electronAPI;
-        const base64 = electronAPI?.readImageAsBase64
-          ? await electronAPI.readImageAsBase64(url)
-          : null;
-        if (!base64) {
-          setUploadError('无法读取本地图片');
-          return;
-        }
-        const resp = await fetch(`data:image/png;base64,${base64}`);
-        const lBlob = await resp.blob();
-        file = new File([lBlob], 'reference.png', { type: lBlob.type || 'image/png' });
       } else {
-        // 其他格式的 URL（不认识的协议），尝试 fetch 兜底
+        // 其他格式的 URL，尝试 fetch 兜底
         try {
           const resp = await fetch(url);
           const blob = await resp.blob();
@@ -630,20 +617,9 @@ export default function ImagePanel() {
     setUploadError(null);
     try {
       let file: File;
-      if (url.startsWith('local-image://')) {
-        const electronAPI = (window as unknown as { electronAPI?: { readImageAsBase64?: (url: string) => Promise<string | null> } }).electronAPI;
-        const base64 = electronAPI?.readImageAsBase64
-          ? await electronAPI.readImageAsBase64(url)
-          : null;
-        if (!base64) { setUploadError('无法读取本地图片'); return; }
-        const resp = await fetch(`data:image/png;base64,${base64}`);
-        const blob = await resp.blob();
-        file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
-      } else {
-        const resp = await fetch(url);
-        const blob = await resp.blob();
-        file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
-      }
+      const resp = await fetch(url);
+      const blob = await resp.blob();
+      file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
       const dt = new DataTransfer();
       dt.items.add(file);
       await addImages(dt.files);
@@ -675,10 +651,6 @@ export default function ImagePanel() {
         item={item}
         onDownload={() => handleDownload(card.url, card.prompt, card.timestamp)}
         onDelete={() => deleteHistoryItem(card.id)}
-        onNativeDrag={(url) => {
-          const electronAPI = (window as unknown as { electronAPI?: { startDrag?: (url: string) => void } }).electronAPI;
-          electronAPI?.startDrag?.(url);
-        }}
         onDragEnd={(_item, clientX, clientY) => {
           // hit-test：是否释放在输入区域内
           const area = inputAreaRef.current;

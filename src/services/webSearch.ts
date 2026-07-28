@@ -42,17 +42,6 @@ async function searchWithBocha(query: string): Promise<SearchResult[]> {
   const apiKey = await settingsService.getApiKey('bocha');
   if (!apiKey) {
     console.warn('⚠️ Bocha API key not configured');
-    console.log('🔍 调试信息:');
-    console.log('  - isElectron:', typeof window !== 'undefined' && !!window.electronAPI);
-    console.log('  - window.electronAPI:', window?.electronAPI?.settings);
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem('aishop_settings');
-        console.log('  - localStorage aishop_settings:', raw);
-      } catch (e) {
-        console.log('  - localStorage 不可用:', e);
-      }
-    }
     return [];
   }
 

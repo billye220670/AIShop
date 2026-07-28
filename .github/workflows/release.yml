@@ -1,4 +1,4 @@
-name: Build and Release
+name: Build and Deploy
 
 on:
   push:
@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -25,10 +25,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build app
-        run: npm run build:electron
+      - name: Build web app
+        run: npm run build
 
-      - name: Package and Publish
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: npx electron-builder --win --publish always
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

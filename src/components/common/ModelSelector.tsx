@@ -115,7 +115,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
       const maxHeight = Math.max(
         120,
         placement === 'bottom' ? spaceBelow - MENU_TOP_PADDING : spaceAbove
-      );
+      ) / 2;
       if (placement === 'bottom') {
         setPos({
           top: rect.bottom + MENU_GAP,
@@ -237,7 +237,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
         onClick={toggle}
         className={`flex items-center gap-2 text-sm cursor-pointer ${
           compact
-            ? 'rounded-full bg-[#2a2a30] text-white border border-white/5 px-4 py-2 hover:border-gray-600 ml-0'
+            ? 'rounded-full bg-[#1c1c20] text-white border border-white/5 px-4 py-2 hover:border-gray-600 ml-0'
             : 'bg-gray-700 text-white rounded-lg px-3 py-1.5 border border-gray-600 hover:border-gray-500 focus:outline-none focus:border-blue-500'
         }`}
       >

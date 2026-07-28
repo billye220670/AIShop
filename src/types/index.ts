@@ -80,7 +80,7 @@ export interface Model {
   };
 }
 
-export type TabMode = 'chat' | 'image' | 'video' | 'music' | 'favorites';
+export type TabMode = 'chat' | 'image' | 'favorites';
 
 export interface ChatState {
   messages: Message[];

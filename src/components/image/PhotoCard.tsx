@@ -30,8 +30,6 @@ export interface PhotoCardProps {
   onDownload?: (item: PhotoItem) => void;
   /** 删除回调 */
   onDelete?: (item: PhotoItem) => void;
-  /** 原生拖拽回调（拖出窗口→startDrag） */
-  onNativeDrag?: (url: string) => void;
   /** App 内释放回调（已在输入区域 hit-test 通过） */
   onDragEnd?: (item: PhotoItem, clientX: number, clientY: number) => void;
   /** 额外的 className */
@@ -73,7 +71,6 @@ export default function PhotoCard({
   item,
   onDownload,
   onDelete,
-  onNativeDrag,
   onDragEnd,
   className = '',
 }: PhotoCardProps) {
@@ -112,12 +109,7 @@ export default function PhotoCard({
     };
   }, [menuOpen]);
 
-  // ===== 混合拖拽：App 内鼠标追踪 + 出窗口 → startDrag() =====
-  // 为什么不能只用 startDrag()：
-  //   startDrag() 触发的是 OS 级别原生拖拽。当用户在同一 Electron 窗口内释放时，
-  //   浏览器的 dragenter / dragover / drop 事件不会对原生拖拽做出反应。
-  //   因此 App 内释放（拖到输入框）需要用鼠标事件自行 hit-test，
-  //   拖出窗口时才切到 startDrag() 让 OS 接管（桌面 / Finder）。
+  // App 内拖拽：鼠标追踪 + hit-test
   const DRAG_THRESHOLD = 6;
   const dragRef = useRef<{
     active: boolean;
@@ -143,16 +135,6 @@ export default function PhotoCard({
         if (!dr.active && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
         dr.active = true;
 
-        // 鼠标移出窗口边界 → 隐藏 visual，触发原生 OS 拖拽
-        const W = window.innerWidth;
-        const H = window.innerHeight;
-        if (ev.clientX < -30 || ev.clientX > W + 30 || ev.clientY < -30 || ev.clientY > H + 30) {
-          dr.nativeFired = true;
-          setDragPos(null);
-          if (onNativeDrag) onNativeDrag(dr.url);
-          return;
-        }
-
         setDragPos({ x: ev.clientX, y: ev.clientY });
       };
 
@@ -173,7 +155,7 @@ export default function PhotoCard({
       window.addEventListener('mousemove', onWindowMove);
       window.addEventListener('mouseup', onWindowUp, { once: false });
     },
-    [originalUrl, item, onNativeDrag, onDragEnd],
+    [originalUrl, item, onDragEnd],
   );
 
   // 卡片由外层 MasonryPhotoWall 控制高度（基于 width/height 计算），

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { Conversation, Message, Model, FileAttachment, ChatFeatureSettings } from '../../types';
+import type { Conversation, Message, FileAttachment, ChatFeatureSettings } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
 import { useArtifact, parseArtifactFromContent } from '../../hooks/useArtifact';
 import MessageBubble from './MessageBubble';
@@ -21,9 +21,6 @@ interface ChatPanelProps {
   conversation?: Conversation;
   onToggleHistory?: () => void;
   onNewConversation?: () => void;
-  selectedModel?: string;
-  onModelChange?: (modelId: string) => void;
-  models?: Model[];
   streamingArtifact?: { title: string; code: string } | null;
   regenerateMessage?: (messageId: string) => void;
   featureSettings: ChatFeatureSettings;
@@ -44,9 +41,6 @@ export default function ChatPanel({
   conversation,
   onToggleHistory,
   onNewConversation,
-  selectedModel,
-  onModelChange,
-  models,
   streamingArtifact,
   regenerateMessage,
   featureSettings,
@@ -156,12 +150,12 @@ export default function ChatPanel({
           className="flex-1 overflow-y-auto px-4 py-4"
         >
           {messages.length === 0 && (
-            <div className="pt-8 pl-12">
+            <div className="pt-3 pl-1">
               <div className="flex flex-col">
-                <span className="text-5xl font-extrabold tracking-tight text-white">
+                <span className="text-3xl font-extrabold tracking-tight text-white">
                   你好，
                 </span>
-                <span className="text-4xl font-bold text-white mt-2">
+                <span className="text-2xl font-bold text-white mt-1">
                   今天我能帮你什么？
                 </span>
               </div>
@@ -205,9 +199,6 @@ export default function ChatPanel({
           onStop={stopGeneration}
           onToggleHistory={onToggleHistory}
           onNewConversation={onNewConversation}
-          models={models}
-          selectedModel={selectedModel}
-          onModelChange={onModelChange}
           quotedMessage={quotedMessage}
           onRemoveQuote={() => setQuotedMessage(null)}
           featureSettings={featureSettings}

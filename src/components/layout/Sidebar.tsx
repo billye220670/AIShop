@@ -1,5 +1,5 @@
 import { type ComponentType } from 'react';
-import { MessageSquare, Image as ImageIcon, Film, Music, Star, PanelLeftClose, PanelLeftOpen, Settings } from 'lucide-react';
+import { MessageSquare, Image as ImageIcon, Star, PanelLeftClose, PanelLeftOpen, Settings } from 'lucide-react';
 import type { TabMode, Conversation } from '../../types';
 
 type TabIcon = ComponentType<{ className?: string }>;
@@ -23,12 +23,10 @@ export interface SidebarProps {
 const tabs: { id: TabMode; label: string; Icon: TabIcon }[] = [
   { id: 'chat', label: '聊天', Icon: MessageSquare },
   { id: 'image', label: '图片', Icon: ImageIcon },
-  { id: 'video', label: '视频', Icon: Film },
-  { id: 'music', label: '音乐', Icon: Music },
   { id: 'favorites', label: '收藏', Icon: Star },
 ];
 
-export const SIDEBAR_WIDTH = 224;
+export const SIDEBAR_WIDTH = 300;
 export const COLLAPSED_WIDTH = 60;
 export const COLLAPSED_STORAGE_KEY = 'sidebar-collapsed';
 

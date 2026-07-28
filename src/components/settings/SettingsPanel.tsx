@@ -30,12 +30,6 @@ const CATEGORIES: { key: keyof ProviderConfig; label: string; Icon: typeof Messa
   { key: 'search', label: '联网搜索', Icon: Eye },
 ];
 
-// 标题栏颜色映射表
-const TITLEBAR_COLORS: Record<string, { bg: string; symbol: string }> = {
-  purple: { bg: '#0d0a1a', symbol: '#ffffff' },
-  green: { bg: 'rgb(18, 18, 17)', symbol: '#e0e0e0' },
-};
-
 export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const [visible, setVisible] = useState(false);
   const mounted = open || visible;
@@ -122,11 +116,6 @@ export default function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       // 保存主题
       saveTheme(selectedTheme);
       initialThemeRef.current = selectedTheme;
-      // 通知主进程更新标题栏颜色
-      if (window.electronAPI?.updateTitleBarColor) {
-        const colors = TITLEBAR_COLORS[selectedTheme] || TITLEBAR_COLORS.purple;
-        window.electronAPI.updateTitleBarColor(colors.bg, colors.symbol);
-      }
       onClose();
     } finally {
       setSaving(false);

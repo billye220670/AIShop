@@ -47,17 +47,6 @@ export async function fetchUsageBills(
 
   const url = `${baseUrl}/openapi/v1/billing/bill/list?${params.toString()}`;
 
-  // 通过 Electron 主进程代理请求，绕过 CORS
-  if (window.electronAPI?.fetchBilling) {
-    const result = await window.electronAPI.fetchBilling(url, apiKey);
-    if (result.error) {
-      throw new Error(`账单查询失败 (${result.status}): ${result.body}`);
-    }
-    const data = result.data as BillResponse;
-    return data.bills ?? [];
-  }
-
-  // 回退：直接 fetch（Web 环境）
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30_000);
 

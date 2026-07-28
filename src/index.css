@@ -45,7 +45,7 @@
   --color-code-bg: rgb(18, 18, 17);
 }
 
-/* 全局：禁止页面级滚动与下拉刷新/橡皮筋效果 */
+/* 全局：禁止页面级滚动与下拉刷新/橡皮筋效果，禁止缩放 */
 html,
 body,
 #root {
@@ -53,6 +53,7 @@ body,
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
 /* 自定义滚动条 */

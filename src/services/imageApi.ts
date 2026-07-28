@@ -189,43 +189,6 @@ export async function generateImage(
     ? combineAbortSignals(signal, fetchController.signal)
     : fetchController.signal;
 
-  // Electron 环境：通过主进程 IPC 发起请求，绕过 CORS 和浏览器网络限制
-  const electronAPI = (window as unknown as { electronAPI?: { imageGenerate?: (url: string, body: string, apiKey: string) => Promise<{ error: boolean; status?: number; body?: string; data?: unknown }> } }).electronAPI;
-
-  if (electronAPI?.imageGenerate) {
-    try {
-      const result = await Promise.race([
-        electronAPI.imageGenerate(url, JSON.stringify(body), apiKey),
-        new Promise<never>((_, reject) => {
-          combinedSignal.addEventListener('abort', () => reject(new Error('AbortError')), { once: true });
-          if (combinedSignal.aborted) reject(new Error('AbortError'));
-        }),
-      ]);
-      clearTimeout(fetchTimeout);
-
-      if (result.error) {
-        let errorPayload: { detail?: unknown; error?: { message?: string } } = {};
-        try { errorPayload = JSON.parse(result.body || '{}'); } catch { /* keep empty */ }
-        const detail = typeof errorPayload.detail === 'string' ? errorPayload.detail
-          : errorPayload.detail ? JSON.stringify(errorPayload.detail) : '';
-        const errorLabel = errorPayload.error?.message || `请求失败: ${result.status}`;
-        throw new Error(detail ? `${errorLabel}: ${detail}` : errorLabel);
-      }
-
-      const urls = extractUrls(result.data);
-      if (urls.length === 0) throw new Error('未返回图片地址');
-      return urls;
-    } catch (ipcErr: unknown) {
-      clearTimeout(fetchTimeout);
-      if (ipcErr instanceof Error && (ipcErr.message === 'AbortError' || ipcErr.message.includes('AbortError'))) {
-        if (signal?.aborted) throw new Error('请求已取消');
-        throw new Error('上游服务响应超时，请稍后重试');
-      }
-      throw ipcErr;
-    }
-  }
-
-  // 非 Electron 环境回退：直接 fetch
   let response: Response;
   try {
     response = await fetch(url, {

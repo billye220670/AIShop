@@ -3,57 +3,25 @@ import MainLayout from './components/layout/MainLayout';
 import ChatPanel from './components/chat/ChatPanel';
 import HistoryPanel from './components/chat/HistoryPanel';
 import ImagePanel from './components/image/ImagePanel';
-import VideoPanel from './components/video/VideoPanel';
-import MusicPanel from './components/music/MusicPanel';
 import SettingsPanel from './components/settings/SettingsPanel';
-import UsagePanel from './components/usage/UsagePanel';
 import FavoritesPanel from './components/artifact/FavoritesPanel';
-import UpdateNotification from './components/common/UpdateNotification';
 import { useChat } from './hooks/useChat';
 import { useFavoriteArtifacts } from './hooks/useFavoriteArtifacts';
 import { CHAT_MODELS } from './config/models';
 import { loadTheme } from './services/storage';
 import type { TabMode } from './types';
 
-// 标题栏颜色映射表
-const titleBarColors: Record<string, { bg: string; symbol: string }> = {
-  purple: { bg: '#0d0a1a', symbol: '#ffffff' },
-  green: { bg: 'rgb(18, 18, 17)', symbol: '#e0e0e0' },
-};
-
 function App() {
   // 应用启动时加载主题
   useEffect(() => {
     const theme = loadTheme();
     document.documentElement.dataset.theme = theme;
-    if (window.electronAPI?.updateTitleBarColor) {
-      const colors = titleBarColors[theme] || titleBarColors.green;
-      window.electronAPI.updateTitleBarColor(colors.bg, colors.symbol);
-    }
   }, []);
 
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [usageOpen, setUsageOpen] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<{ version: string; releaseNotes: string } | null>(null);
 
-  // 监听自动更新可用事件
-  useEffect(() => {
-    if (!window.electronAPI?.onUpdateAvailable) return;
-    window.electronAPI.onUpdateAvailable((...args: unknown[]) => {
-      const info = args[1] as { version: string; releaseNotes: string | { version: string; note: string }[] | null } | undefined;
-      if (!info) return;
-      // releaseNotes 可能是字符串、数组或 null，统一处理为字符串
-      let notes = '';
-      if (typeof info.releaseNotes === 'string') {
-        notes = info.releaseNotes;
-      } else if (Array.isArray(info.releaseNotes)) {
-        notes = info.releaseNotes.map(n => n.note).join('\n');
-      }
-      setUpdateInfo({ version: info.version, releaseNotes: notes });
-    });
-  }, []);
   const chat = useChat();
   const { favorites, isFavorite, toggleFavorite, removeFavorite } = useFavoriteArtifacts();
 
@@ -75,9 +43,6 @@ function App() {
             conversation={activeConversation}
             onToggleHistory={() => setHistoryOpen(v => !v)}
             onNewConversation={chat.newConversation}
-            selectedModel={activeConversation?.selectedModel || CHAT_MODELS[0].id}
-            onModelChange={chat.setSelectedModel}
-            models={CHAT_MODELS}
             streamingArtifact={chat.streamingArtifact}
             regenerateMessage={chat.regenerateMessage}
             featureSettings={chat.featureSettings}
@@ -92,10 +57,6 @@ function App() {
         );
       case 'image':
         return <ImagePanel />;
-      case 'video':
-        return <VideoPanel />;
-      case 'music':
-        return <MusicPanel />;
       case 'favorites':
         return <FavoritesPanel favorites={favorites} onRemoveFavorite={removeFavorite} />;
       default:
@@ -115,7 +76,9 @@ function App() {
         onDeleteConversation={chat.deleteConversation}
         onRenameConversation={chat.renameConversation}
         onOpenSettings={() => setSettingsOpen(true)}
-        onOpenUsage={() => setUsageOpen(true)}
+        models={CHAT_MODELS}
+        selectedModel={activeConversation?.selectedModel || CHAT_MODELS[0].id}
+        onModelChange={chat.setSelectedModel}
       >
         {renderContent()}
       </MainLayout>
@@ -134,20 +97,6 @@ function App() {
       {/* Settings panel */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {/* Usage panel */}
-      <UsagePanel open={usageOpen} onClose={() => setUsageOpen(false)} />
-
-      {/* 自动更新弹窗 */}
-      <UpdateNotification
-        open={!!updateInfo}
-        version={updateInfo?.version || ''}
-        releaseNotes={updateInfo?.releaseNotes || ''}
-        onConfirm={() => {
-          window.electronAPI?.startDownload();
-          setUpdateInfo(null);
-        }}
-        onCancel={() => setUpdateInfo(null)}
-      />
     </>
   );
 }

@@ -12,11 +12,7 @@ import CompareButton from './CompareButton';
 
 /* ─── 打开外部链接辅助函数 ─── */
 function openUrl(url: string) {
-  if (window.electronAPI?.openExternal) {
-    window.electronAPI.openExternal(url);
-  } else {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 /* ─── CodeBlock 组件：语法高亮 + 复制按钮 + 语言标签 ─── */
@@ -418,17 +414,13 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                       const defaultName = content.slice(0, 20).replace(/[\\/:*?"<>|\n]/g, '_').trim() || 'message';
                       const fileName = `${defaultName}.md`;
 
-                      if (window.electronAPI?.saveMarkdown) {
-                        await window.electronAPI.saveMarkdown(content, fileName);
-                      } else {
-                        const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = fileName;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }
+                      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = fileName;
+                      a.click();
+                      URL.revokeObjectURL(url);
                     }}
                     className="p-1.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
                     title="保存为 Markdown"

@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
 import { Paperclip, Square, SendHorizontal, Plus, Clock, X, FileText, MessageSquareQuote, SlidersHorizontal } from 'lucide-react';
-import type { MessageContent, Model, FileAttachment, Message, ChatFeatureSettings } from '../../types';
-import ModelSelector from '../common/ModelSelector';
+import type { MessageContent, FileAttachment, Message, ChatFeatureSettings } from '../../types';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
 
 interface ChatInputProps {
@@ -10,9 +9,6 @@ interface ChatInputProps {
   onStop: () => void;
   onToggleHistory?: () => void;
   onNewConversation?: () => void;
-  models?: Model[];
-  selectedModel?: string;
-  onModelChange?: (modelId: string) => void;
   quotedMessage?: Message | null;
   onRemoveQuote?: () => void;
   featureSettings: ChatFeatureSettings;
@@ -27,9 +23,6 @@ export default function ChatInput({
   onStop,
   onToggleHistory,
   onNewConversation,
-  models,
-  selectedModel,
-  onModelChange,
   quotedMessage,
   onRemoveQuote,
   featureSettings,
@@ -268,20 +261,12 @@ export default function ChatInput({
       <div>
         {/* Row 1: Toolbar */}
         <div className="flex items-center justify-between mb-3">
-          {/* Left: ModelSelector + Upload */}
+          {/* Left: Upload */}
           <div className="flex items-center">
-            {models && selectedModel && onModelChange && (
-              <ModelSelector
-                models={models}
-                selectedModel={selectedModel}
-                onModelChange={onModelChange}
-                compact={true}
-              />
-            )}
             {/* File upload */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="ml-2 p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
+              className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
               title="上传图片"
             >
               <Paperclip className="w-5 h-5" />

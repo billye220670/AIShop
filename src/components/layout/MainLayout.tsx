@@ -1,11 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Home, BarChart3 } from 'lucide-react';
-import Sidebar from './Sidebar';
-import {
-  SIDEBAR_WIDTH,
-  COLLAPSED_STORAGE_KEY,
-} from './Sidebar';
-import type { TabMode, Conversation } from '../../types';
+import Sidebar, { SIDEBAR_WIDTH } from './Sidebar';
+import TopNavBar from './TopNavBar';
+import type { TabMode, Conversation, Model } from '../../types';
 
 interface MainLayoutProps {
   activeTab: TabMode;
@@ -18,16 +14,10 @@ interface MainLayoutProps {
   onDeleteConversation?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
   onOpenSettings?: () => void;
-  onOpenUsage?: () => void;
-}
-
-function readStoredCollapsed(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
+  // 模型选择
+  models?: Model[];
+  selectedModel?: string;
+  onModelChange?: (modelId: string) => void;
 }
 
 export default function MainLayout({
@@ -41,55 +31,32 @@ export default function MainLayout({
   onDeleteConversation,
   onRenameConversation,
   onOpenSettings,
-  onOpenUsage,
+  models,
+  selectedModel,
+  onModelChange,
 }: MainLayoutProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => readStoredCollapsed());
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // 持久化折叠状态
+  // 监听 ESC 关闭侧边栏
   useEffect(() => {
-    try {
-      window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(sidebarCollapsed));
-    } catch {
-      // ignore
-    }
-  }, [sidebarCollapsed]);
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-[var(--color-bg-base)] text-white overflow-hidden">
-      {/* 顶部 Tab 栏 - 支持窗口拖拽，高度撑满标题栏区域 */}
+    <div className="h-[100dvh] bg-[#121211] text-white overflow-hidden relative" style={{ touchAction: 'manipulation' }}>
+      {/* 侧边栏 - 绝对定位左侧底层，平时收起在屏幕外 */}
       <div
-        className="h-[52px] shrink-0 w-full flex pt-2 bg-[var(--color-bg-base)]"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        className={`absolute top-0 left-0 bottom-0 z-0 transition-transform duration-250 ease-out bg-[#1e1e1c] ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ width: `${SIDEBAR_WIDTH}px` }}
       >
-        {/* 左侧 Tab 区域 - 与侧边栏等宽，完全撑满 */}
-        <div
-          className="shrink-0 h-full flex items-center px-3"
-          style={{ width: `${SIDEBAR_WIDTH}px` }}
-        >
-          <div
-            className="w-full h-full flex items-center gap-2 px-3 rounded-md bg-white/[0.08] text-white/90 text-sm font-medium select-none cursor-default"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          >
-            <Home className="w-4 h-4" />
-            <span>首页</span>
-          </div>
-        </div>
-        {/* 右侧拖拽区域 + 用量按钮 */}
-        <div className="flex-1 h-full flex items-center justify-end px-2">
-          <button
-            onClick={onOpenUsage}
-            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-            title="用量查询"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          >
-            <BarChart3 className="w-[18px] h-[18px]" />
-          </button>
-        </div>
-      </div>
-      <div className="flex flex-1 overflow-hidden">
         <Sidebar
           activeTab={activeTab}
-          onTabChange={onTabChange}
+          onTabChange={(tab) => { onTabChange(tab); setSidebarOpen(false); }}
           conversations={conversations}
           activeConversationId={activeConversationId}
           onSwitchConversation={onSwitchConversation}
@@ -97,10 +64,27 @@ export default function MainLayout({
           onDeleteConversation={onDeleteConversation}
           onRenameConversation={onRenameConversation}
           onOpenSettings={onOpenSettings}
-          collapsed={sidebarCollapsed}
-          onCollapsedChange={setSidebarCollapsed}
+          collapsed={false}
+          onCollapsedChange={() => {}}
         />
-        <main className="flex-1 flex flex-col overflow-hidden bg-[var(--color-bg-primary)] rounded-2xl m-2 ml-0">{children}</main>
+      </div>
+
+      {/* 内容区 - 全宽，translateX 推出，右侧被 overflow-hidden 裁剪 */}
+      <div
+        className={`h-full flex flex-col relative z-10 transition-transform duration-250 ease-out ${sidebarOpen ? 'translate-x-[300px]' : 'translate-x-0'}`}
+        onClick={() => { if (sidebarOpen) setSidebarOpen(false); }}
+      >
+        {/* 顶部导航栏 */}
+        {models && selectedModel && onModelChange && (
+          <TopNavBar
+            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+            models={models}
+            selectedModel={selectedModel}
+            onModelChange={onModelChange}
+            onNewConversation={onNewConversation}
+          />
+        )}
+        <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
       </div>
     </div>
   );
