@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 保存图片到桌面
   saveImageToDesktop: (imageUrl: string) =>
     ipcRenderer.invoke('image:save-to-desktop', imageUrl),
+  // 账单查询通过主进程发起，绕过 CORS
+  fetchBilling: (url: string, apiKey: string) =>
+    ipcRenderer.invoke('billing:fetch', url, apiKey),
   // 保存 Markdown 文件
   saveMarkdown: (content: string, defaultName: string) =>
     ipcRenderer.invoke('file:save-markdown', content, defaultName),

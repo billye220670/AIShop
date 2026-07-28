@@ -26,6 +26,12 @@ export interface ElectronAPI {
     path?: string;
     error?: string;
   }>;
+  fetchBilling: (url: string, apiKey: string) => Promise<{
+    error: boolean;
+    status?: number;
+    body?: string;
+    data?: unknown;
+  }>;
   saveMarkdown: (content: string, defaultName: string) => Promise<{
     success: boolean;
     canceled?: boolean;

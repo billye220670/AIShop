@@ -1,9 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Home } from 'lucide-react';
+import { Home, BarChart3 } from 'lucide-react';
 import Sidebar from './Sidebar';
 import {
   SIDEBAR_WIDTH,
-  COLLAPSED_WIDTH,
   COLLAPSED_STORAGE_KEY,
 } from './Sidebar';
 import type { TabMode, Conversation } from '../../types';
@@ -19,6 +18,7 @@ interface MainLayoutProps {
   onDeleteConversation?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
   onOpenSettings?: () => void;
+  onOpenUsage?: () => void;
 }
 
 function readStoredCollapsed(): boolean {
@@ -41,6 +41,7 @@ export default function MainLayout({
   onDeleteConversation,
   onRenameConversation,
   onOpenSettings,
+  onOpenUsage,
 }: MainLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => readStoredCollapsed());
 
@@ -52,8 +53,6 @@ export default function MainLayout({
       // ignore
     }
   }, [sidebarCollapsed]);
-
-  const currentWidth = sidebarCollapsed ? COLLAPSED_WIDTH : SIDEBAR_WIDTH;
 
   return (
     <div className="h-[100dvh] flex flex-col bg-[var(--color-bg-base)] text-white overflow-hidden">
@@ -75,8 +74,17 @@ export default function MainLayout({
             <span>首页</span>
           </div>
         </div>
-        {/* 右侧空白拖拽区域 */}
-        <div className="flex-1 h-full" />
+        {/* 右侧拖拽区域 + 用量按钮 */}
+        <div className="flex-1 h-full flex items-center justify-end px-2">
+          <button
+            onClick={onOpenUsage}
+            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            title="用量查询"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
+            <BarChart3 className="w-[18px] h-[18px]" />
+          </button>
+        </div>
       </div>
       <div className="flex flex-1 overflow-hidden">
         <Sidebar

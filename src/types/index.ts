@@ -148,3 +148,38 @@ export interface PendingImageTask {
 }
 
 export type ThemeId = 'purple' | 'green';
+
+// 用量查询相关类型
+export type UsageCycleType = 'Hour' | 'Day' | 'Week' | 'Month';
+
+export interface BillItem {
+  userId: string;
+  startTime: string;
+  endTime: string;
+  billingMethod: string;
+  productName: string;
+  category: string;
+  ownerID: string;
+  billNum0: string;   // 输入 tokens
+  billNum1: string;   // 输出 tokens
+  discountPrice0: string;  // 输入 tokens 单价
+  discountPrice1: string;  // 输出 tokens 单价
+  amount: string;     // 总价
+  voucherAmount: string;  // 代金券抵扣
+  payAmount: string;  // 实际支付
+  payAmountDisplay: string;
+  pricePrecision: string;
+  productId: string;
+}
+
+export interface BillResponse {
+  bills: BillItem[];
+}
+
+export interface ModelUsageSummary {
+  modelName: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalAmount: number;
+  payAmount: number;
+}

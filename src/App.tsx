@@ -6,6 +6,7 @@ import ImagePanel from './components/image/ImagePanel';
 import VideoPanel from './components/video/VideoPanel';
 import MusicPanel from './components/music/MusicPanel';
 import SettingsPanel from './components/settings/SettingsPanel';
+import UsagePanel from './components/usage/UsagePanel';
 import FavoritesPanel from './components/artifact/FavoritesPanel';
 import UpdateNotification from './components/common/UpdateNotification';
 import { useChat } from './hooks/useChat';
@@ -34,6 +35,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [usageOpen, setUsageOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{ version: string; releaseNotes: string } | null>(null);
 
   // 监听自动更新可用事件
@@ -113,6 +115,7 @@ function App() {
         onDeleteConversation={chat.deleteConversation}
         onRenameConversation={chat.renameConversation}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenUsage={() => setUsageOpen(true)}
       >
         {renderContent()}
       </MainLayout>
@@ -130,6 +133,9 @@ function App() {
 
       {/* Settings panel */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* Usage panel */}
+      <UsagePanel open={usageOpen} onClose={() => setUsageOpen(false)} />
 
       {/* 自动更新弹窗 */}
       <UpdateNotification

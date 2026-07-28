@@ -153,6 +153,38 @@ function registerSettingsHandlers() {
     }
   });
 
+  // 账单查询：通过主进程 net.fetch 发起，绕过 CORS
+  ipcMain.handle('billing:fetch', async (_event, url: string, apiKey: string) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const response = await net.fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { error: true, status: response.status, body: text };
+      }
+
+      const data = await response.json();
+      return { error: false, data };
+    } catch (err: unknown) {
+      clearTimeout(timeout);
+      if (err instanceof Error && err.name === 'AbortError') {
+        return { error: true, status: 408, body: '请求超时(30s)' };
+      }
+      return { error: true, status: 0, body: String(err) };
+    }
+  });
+
   // 保存 Markdown 文件到本地（通过系统对话框选择路径）
   ipcMain.handle('file:save-markdown', async (_event, content: string, defaultName: string) => {
     if (!mainWindow) return { success: false, error: 'No active window' };
