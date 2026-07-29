@@ -20,13 +20,13 @@ export default function ChatInput({
   onSend,
   isLoading,
   onStop,
-  onNewConversation,
+  onNewConversation: _onNewConversation,
   quotedMessage,
   onRemoveQuote,
-  featureSettings,
-  onFeatureSettingsChange,
-  webSearchEnabled = false,
-  onWebSearchEnabledChange,
+  featureSettings: _featureSettings,
+  onFeatureSettingsChange: _onFeatureSettingsChange,
+  webSearchEnabled: _webSearchEnabled = false,
+  onWebSearchEnabledChange: _onWebSearchEnabledChange,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
