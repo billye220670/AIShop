@@ -201,7 +201,7 @@ export default function HistoryPanel({
                 return (
                   <div
                     key={conv.id}
-                    className={`group relative w-full text-left px-3 py-3 rounded-lg mb-1 transition-colors cursor-pointer ${
+                    className={`group relative w-full text-left px-3 py-3.5 pb-[18px] rounded-2xl mb-1 transition-colors cursor-pointer ${
                       isActive
                         ? 'bg-[var(--color-accent-soft)]'
                         : 'hover:bg-white/5'
@@ -235,7 +235,7 @@ export default function HistoryPanel({
                           className="flex-1 min-w-0 bg-gray-800 text-white text-sm px-2 py-0.5 rounded border border-[var(--color-accent)] outline-none"
                         />
                       ) : (
-                        <div className="flex-1 min-w-0 text-sm font-bold text-white truncate">
+                        <div className="flex-1 min-w-0 text-xl font-bold text-white truncate">
                           {conv.title}
                         </div>
                       )}
@@ -260,7 +260,7 @@ export default function HistoryPanel({
 
                     {/* 预览文本 */}
                     {!isEditing && (
-                      <div className="text-xs text-gray-400 mt-1 line-clamp-2">
+                      <div className="text-base text-gray-400 mt-1.5 line-clamp-2">
                         {getLastMessagePreview(conv)}
                       </div>
                     )}

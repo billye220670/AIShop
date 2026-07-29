@@ -127,7 +127,7 @@ export default function ConversationList({
                 />
               ) : (
                 <span
-                  className="flex-1 text-sm truncate"
+                  className="flex-1 text-lg truncate"
                   onDoubleClick={e => {
                     e.stopPropagation();
                     enterEdit(conv);

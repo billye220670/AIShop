@@ -13,7 +13,7 @@ export interface SidebarProps {
   onRenameConversation?: (id: string, title: string) => void;
 }
 
-export const SIDEBAR_WIDTH = 300;
+export const SIDEBAR_WIDTH = 360;
 export const COLLAPSED_WIDTH = 60;
 export const COLLAPSED_STORAGE_KEY = 'sidebar-collapsed';
 
@@ -139,15 +139,8 @@ export default function Sidebar({
 
   return (
     <aside className="h-full bg-transparent flex flex-col overflow-hidden">
-      {/* 顶部标题 */}
-      <div className="flex items-center px-5 py-4 mb-2">
-        <span className="text-2xl text-white select-none tracking-tight" style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900 }}>
-          PortA<span className="relative inline-block">I<span className="absolute bottom-[6px] -right-[14px] w-[12px] h-[5px] bg-[var(--color-accent)] rounded-[1px]" /></span>
-        </span>
-      </div>
-
       {/* 搜索框 */}
-      <div className="px-4 pb-3">
+      <div className="px-4 pt-4 pb-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
@@ -155,7 +148,7 @@ export default function Sidebar({
             value={historySearch}
             onChange={e => setHistorySearch(e.target.value)}
             placeholder="搜索对话"
-            className="w-full bg-[#121211] border border-gray-700/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[var(--color-accent)]"
+            className="w-full bg-[#121211] border border-gray-700/50 rounded-full pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[var(--color-accent)]"
           />
         </div>
       </div>
@@ -175,7 +168,7 @@ export default function Sidebar({
               return (
                 <div
                   key={conv.id}
-                  className={`group relative w-full text-left px-3 py-2.5 rounded-lg mb-0.5 transition-colors cursor-pointer ${
+                  className={`group relative w-full text-left px-3 py-3 pb-4 rounded-2xl mb-0.5 transition-colors cursor-pointer ${
                     isActive
                       ? 'bg-[var(--color-accent-soft)]'
                       : 'hover:bg-white/5'
@@ -208,7 +201,7 @@ export default function Sidebar({
                         className="flex-1 min-w-0 bg-[#121211] text-white text-sm px-2 py-0.5 rounded border border-[var(--color-accent)] outline-none"
                       />
                     ) : (
-                      <div className="flex-1 min-w-0 text-sm font-bold text-white truncate">
+                      <div className="flex-1 min-w-0 text-base font-bold text-white truncate">
                         {conv.title}
                       </div>
                     )}
@@ -233,7 +226,7 @@ export default function Sidebar({
 
                   {/* 预览文本 */}
                   {!isEditing && (
-                    <div className="text-xs text-gray-400 mt-0.5 line-clamp-2">
+                    <div className="text-xs text-gray-400 mt-1.5 line-clamp-2">
                       {getLastMessagePreview(conv)}
                     </div>
                   )}

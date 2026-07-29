@@ -90,11 +90,17 @@ export default function MainLayout({
 
       {/* 内容区 - 全宽，translateX 推出，右侧被 overflow-hidden 裁剪 */}
       <div
-        className={`h-full flex flex-col relative z-10 transition-transform duration-250 ease-out ${sidebarOpen ? 'translate-x-[300px]' : 'translate-x-0'}`}
-        onClick={() => { if (sidebarOpen) setSidebarOpen(false); }}
+        className={`h-full flex flex-col relative z-10 transition-transform duration-250 ease-out ${sidebarOpen ? '' : 'translate-x-0'}`}
+        style={{ transform: sidebarOpen ? `translateX(${SIDEBAR_WIDTH}px)` : undefined }}
         onFocus={handleFocusIn}
         onBlur={handleFocusOut}
       >
+        {/* 侧边栏打开时主内容区变暗遮罩 */}
+        <div
+          className={`absolute inset-0 bg-black/50 z-20 transition-opacity duration-250 ${sidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          onClick={() => setSidebarOpen(false)}
+        />
+
         {/* 顶部导航栏 */}
         {models && selectedModel && onModelChange && (
           <TopNavBar

@@ -1,5 +1,5 @@
-import { useState, useRef, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
-import { Plus, Square, X, FileText, MessageSquareQuote } from 'lucide-react';
+import { useState, useRef, useEffect, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
+import { Plus, Square, X, FileText, MessageSquareQuote, ArrowUp } from 'lucide-react';
 import type { MessageContent, FileAttachment, Message, ChatFeatureSettings } from '../../types';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
 
@@ -32,8 +32,22 @@ export default function ChatInput({
   const [images, setImages] = useState<string[]>([]);
   const [files, setFiles] = useState<ParsedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const hasContent = text.trim().length > 0 || images.length > 0 || files.length > 0;
+
+  // 布局切换到展开态后自动聚焦 textarea，确保键盘弹出
+  useEffect(() => {
+    if ((isFocused || hasContent) && textareaRef.current) {
+      // 延迟一帧确保 DOM 已更新
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
+    }
+  }, [isFocused, hasContent]);
 
   const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
   const MAX_TOTAL_FILES = 5;
@@ -81,6 +95,12 @@ export default function ChatInput({
     setText('');
     setImages([]);
     setFiles([]);
+    // 发送后立即失焦，关闭键盘
+    if (blurTimerRef.current) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+    setIsFocused(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.blur();
@@ -204,6 +224,16 @@ export default function ChatInput({
     await processFiles(validFiles);
   };
 
+  const handleFocus = () => {
+    if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
+    setIsFocused(true);
+  };
+
+  const handleBlur = () => {
+    // 延迟重置，确保发送按钮等点击事件能正常触发
+    blurTimerRef.current = setTimeout(() => setIsFocused(false), 150);
+  };
+
   const removeImage = (index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
   };
@@ -214,7 +244,7 @@ export default function ChatInput({
 
   return (
     <div
-      className={`bg-transparent p-4 relative transition-all ${isDragging ? 'ring-2 ring-[var(--color-accent)] bg-[var(--color-accent)]/5 rounded-xl' : ''}`}
+      className={`bg-transparent relative transition-all ${isDragging ? 'ring-2 ring-[var(--color-accent)] bg-[var(--color-accent)]/5 rounded-xl' : ''} ${(isFocused || hasContent) ? '!p-0' : 'p-4'}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -239,7 +269,7 @@ export default function ChatInput({
       )}
 
       {/* Row 2: Input container with preview + textarea */}
-        <div className={`rounded-full border transition-colors overflow-hidden ${isDragging ? 'border-[var(--color-accent)] ring-1 ring-[var(--color-accent)]/30' : 'border-[var(--color-border)] focus-within:border-[var(--color-accent)]'}`}>
+        <div className={`transition-colors overflow-hidden bg-[var(--color-bg-primary)] ${isDragging ? 'ring-2 ring-[var(--color-accent)]' : ''} ${isFocused ? 'rounded-t-2xl' : (hasContent ? 'rounded-2xl' : 'rounded-full')}`}>
           {/* 引用消息缩略图 */}
           {quotedMessage && (
             <div className="p-3 pb-2">
@@ -301,39 +331,113 @@ export default function ChatInput({
             </>
           )}
           {/* Textarea */}
-          <div className="relative flex items-start">
-            {/* + 按钮 overlay */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="pl-4 pr-2 py-3 mt-0.5 text-gray-400 hover:text-white transition-colors"
-              title="上传文件"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
-            <textarea
-              ref={textareaRef}
-              value={text}
-              onChange={handleTextChange}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              placeholder="询问任何问题..."
-              className="flex-1 bg-transparent text-white pr-4 py-3 resize-none placeholder-gray-500 max-h-[200px] min-h-[44px] focus:outline-none"
-              rows={1}
-            />
-
-            {/* Stop button (仅加载时) */}
-            {isLoading && (
-              <div className="pr-2 py-2">
+          {(isFocused || hasContent) ? (
+            <div className="relative flex flex-col">
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={handleTextChange}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                placeholder="询问任何问题..."
+                className="w-full bg-transparent text-white px-4 py-4 resize-none placeholder-gray-500 max-h-[200px] min-h-[64px] focus:outline-none"
+                rows={2}
+              />
+              <div className="flex items-center justify-between px-2 pb-3">
+                {/* + 按钮 */}
                 <button
-                  onClick={onStop}
-                  className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-full transition-colors"
-                  title="停止生成"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-2 py-2 text-gray-400 hover:text-white transition-colors"
+                  title="上传文件"
                 >
-                  <Square className="w-4 h-4" fill="currentColor" strokeWidth={0} />
+                  <Plus className="w-5 h-5" />
                 </button>
+                <div className="flex items-center gap-2">
+                  {/* Send button */}
+                  {!isLoading && (
+                    <button
+                      onClick={handleSubmit}
+                      className="p-1.5 rounded-full transition-opacity hover:opacity-90"
+                      style={{ backgroundColor: 'var(--color-accent)' }}
+                      title="发送"
+                    >
+                      <ArrowUp className="w-4 h-4 text-black" strokeWidth={2.5} />
+                    </button>
+                  )}
+                  {/* Stop button */}
+                  {isLoading && (
+                    <button
+                      onClick={onStop}
+                      className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-full transition-colors"
+                      title="停止生成"
+                    >
+                      <Square className="w-4 h-4" fill="currentColor" strokeWidth={0} />
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
+              {/* 底部渐隐 */}
+              {isFocused && (
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(to bottom, transparent, var(--color-bg-base))',
+                  }}
+                />
+              )}
+            </div>
+          ) : (
+            <div className="relative flex items-start">
+              {/* + 按钮 */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="pl-4 pr-2 text-gray-400 hover:text-white transition-colors"
+                style={{ paddingTop: '14px', paddingBottom: '14px' }}
+                title="上传文件"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={handleTextChange}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                placeholder="询问任何问题..."
+                className="flex-1 bg-transparent text-white pr-4 py-3 resize-none placeholder-gray-500 max-h-[200px] min-h-[48px] focus:outline-none"
+                rows={1}
+              />
+              {/* Send button */}
+              {!isLoading && (
+                <div className="pr-3 py-3">
+                  <button
+                    onClick={handleSubmit}
+                    className="p-1.5 rounded-full transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: 'var(--color-accent)' }}
+                    title="发送"
+                  >
+                    <ArrowUp className="w-4 h-4 text-black" strokeWidth={2.5} />
+                  </button>
+                </div>
+              )}
+              {/* Stop button */}
+              {isLoading && (
+                <div className="pr-2 py-2">
+                  <button
+                    onClick={onStop}
+                    className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-full transition-colors"
+                    title="停止生成"
+                  >
+                    <Square className="w-4 h-4" fill="currentColor" strokeWidth={0} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
 
