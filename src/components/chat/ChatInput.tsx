@@ -36,13 +36,14 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 控制是否应该自动聚焦：用户主动聚焦时为 true，主动失焦时为 false
+  const shouldFocusRef = useRef(false);
 
   const hasContent = text.trim().length > 0 || images.length > 0 || files.length > 0;
 
   // 布局切换到展开态后自动聚焦 textarea，确保键盘弹出
   useEffect(() => {
-    if ((isFocused || hasContent) && textareaRef.current) {
-      // 延迟一帧确保 DOM 已更新
+    if (shouldFocusRef.current && (isFocused || hasContent) && textareaRef.current) {
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
       });
@@ -100,17 +101,11 @@ export default function ChatInput({
       clearTimeout(blurTimerRef.current);
       blurTimerRef.current = null;
     }
+    shouldFocusRef.current = false;
     setIsFocused(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.blur();
-    }
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
     }
   };
 
@@ -226,11 +221,13 @@ export default function ChatInput({
 
   const handleFocus = () => {
     if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
+    shouldFocusRef.current = true;
     setIsFocused(true);
   };
 
   const handleBlur = () => {
     // 延迟重置，确保发送按钮等点击事件能正常触发
+    shouldFocusRef.current = false;
     blurTimerRef.current = setTimeout(() => setIsFocused(false), 150);
   };
 
@@ -244,7 +241,7 @@ export default function ChatInput({
 
   return (
     <div
-      className={`bg-transparent relative transition-all ${isDragging ? 'ring-2 ring-[var(--color-accent)] bg-[var(--color-accent)]/5 rounded-xl' : ''} ${(isFocused || hasContent) ? '!p-0' : 'p-4'}`}
+      className={`bg-transparent relative transition-all ${isDragging ? 'ring-2 ring-[var(--color-accent)] bg-[var(--color-accent)]/5 rounded-xl' : ''} ${isFocused ? '!p-0' : 'p-4'}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -295,15 +292,15 @@ export default function ChatInput({
           {/* Desktop: unified preview area */}
           {(images.length > 0 || files.length > 0) && (
             <>
-              <div className="flex gap-2 p-3 pb-2 flex-wrap">
+              <div className="flex gap-3 p-3 pb-2 flex-wrap">
                 {images.map((img, idx) => (
-                  <div key={`img-${idx}`} className="relative group">
-                    <img src={img} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-600" />
+                  <div key={`img-${idx}`} className="relative">
+                    <img src={img} alt="" className="w-[4.5rem] h-[4.5rem] object-cover rounded-2xl" draggable={false} />
                     <button
                       onClick={() => removeImage(idx)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-1 right-1 w-5 h-5 bg-gray-600/80 hover:bg-gray-500 text-white rounded-full flex items-center justify-center"
                     >
-                      ×
+                      <X className="w-2.5 h-2.5" />
                     </button>
                   </div>
                 ))}
@@ -327,7 +324,6 @@ export default function ChatInput({
                   </div>
                 ))}
               </div>
-              <div className="border-t border-gray-700/60 mx-3" />
             </>
           )}
           {/* Textarea */}
@@ -337,7 +333,6 @@ export default function ChatInput({
                 ref={textareaRef}
                 value={text}
                 onChange={handleTextChange}
-                onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
@@ -403,7 +398,6 @@ export default function ChatInput({
                 ref={textareaRef}
                 value={text}
                 onChange={handleTextChange}
-                onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 onFocus={handleFocus}
                 onBlur={handleBlur}

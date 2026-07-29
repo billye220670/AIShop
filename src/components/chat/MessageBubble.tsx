@@ -209,7 +209,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                 key={idx}
                 src={part.image_url.url}
                 alt="uploaded"
-                className="max-w-xs rounded-lg"
+                className="max-w-full rounded-lg"
               />
             );
           }
