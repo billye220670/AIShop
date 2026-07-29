@@ -342,7 +342,23 @@ export function useChat() {
         });
       } catch (err: unknown) {
         const e = err as Error;
-        if (e.name === 'AbortError') return;
+        if (e.name === 'AbortError') {
+          // 用户取消生成，更新消息状态（作为 stopGeneration 的安全兜底）
+          updateActiveConversation(conv => {
+            const updated = [...conv.messages];
+            const lastIdx = updated.length - 1;
+            if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                content: '用户已取消生成',
+                isStreaming: false,
+                webSearching: false,
+              };
+            }
+            return { ...conv, messages: updated };
+          });
+          return;
+        }
         setError(e.message || '请求失败');
         updateActiveConversation(conv => {
           const updated = [...conv.messages];
@@ -365,7 +381,34 @@ export function useChat() {
   const stopGeneration = useCallback(() => {
     abortControllerRef.current?.abort();
     setIsLoading(false);
-  }, []);
+    // 立即更新最后一条 assistant 消息，显示取消状态
+    updateActiveConversation(conv => {
+      const updated = [...conv.messages];
+      const lastIdx = updated.length - 1;
+      if (lastIdx >= 0 && updated[lastIdx].role === 'assistant' && updated[lastIdx].isStreaming) {
+        updated[lastIdx] = {
+          ...updated[lastIdx],
+          content: '用户已取消生成',
+          isStreaming: false,
+          webSearching: false,
+        };
+        // 同时更新多版本中的当前活跃版本
+        if (updated[lastIdx].versions && updated[lastIdx].versions.length > 0) {
+          const vIdx = updated[lastIdx].activeVersionIndex ?? updated[lastIdx].versions!.length - 1;
+          if (vIdx >= 0 && vIdx < updated[lastIdx].versions!.length) {
+            const versions = [...updated[lastIdx].versions!];
+            versions[vIdx] = {
+              ...versions[vIdx],
+              content: '用户已取消生成',
+              isStreaming: false,
+            };
+            updated[lastIdx] = { ...updated[lastIdx], versions };
+          }
+        }
+      }
+      return { ...conv, messages: updated };
+    });
+  }, [updateActiveConversation]);
 
   const clearMessages = useCallback(() => {
     updateActiveConversation(conv => ({
@@ -558,7 +601,23 @@ export function useChat() {
         });
       } catch (error: unknown) {
         const e = error as Error;
-        if (e.name !== 'AbortError') {
+        if (e.name === 'AbortError') {
+          // 用户取消生成，更新版本内容
+          updateActiveConversation(conv => {
+            const updated = [...conv.messages];
+            const msg = updated[msgIndex];
+            const versions = [...(msg.versions || [])];
+            if (versions[newActiveIndex]) {
+              versions[newActiveIndex] = {
+                ...versions[newActiveIndex],
+                content: '用户已取消生成',
+                isStreaming: false,
+              };
+            }
+            updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex, isStreaming: false };
+            return { ...conv, messages: updated, updatedAt: Date.now() };
+          });
+        } else {
           // 错误处理：标记 version 为完成状态，内容为错误信息
           updateActiveConversation(conv => {
             const updated = [...conv.messages];
@@ -717,7 +776,23 @@ export function useChat() {
         });
       } catch (error: unknown) {
         const e = error as Error;
-        if (e.name !== 'AbortError') {
+        if (e.name === 'AbortError') {
+          // 用户取消生成，更新版本内容
+          updateActiveConversation(conv => {
+            const updated = [...conv.messages];
+            const msg = updated[msgIndex];
+            const versions = [...(msg.versions || [])];
+            if (versions[newActiveIndex]) {
+              versions[newActiveIndex] = {
+                ...versions[newActiveIndex],
+                content: '用户已取消生成',
+                isStreaming: false,
+              };
+            }
+            updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex, isStreaming: false };
+            return { ...conv, messages: updated, updatedAt: Date.now() };
+          });
+        } else {
           // 错误处理：标记 version 为完成状态，内容为错误信息
           updateActiveConversation(conv => {
             const updated = [...conv.messages];
