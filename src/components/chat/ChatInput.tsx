@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type KeyboardEvent, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
+import { useState, useRef, useEffect, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
 import { Plus, Square, X, FileText, MessageSquareQuote, ArrowUp } from 'lucide-react';
 import type { MessageContent, FileAttachment, Message, ChatFeatureSettings } from '../../types';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
