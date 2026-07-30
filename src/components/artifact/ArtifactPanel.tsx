@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Code, Eye, RefreshCw, Copy, Download, X, Check, Globe, Star, Loader2, ArrowLeft } from 'lucide-react';
+import { Code, Eye, RefreshCw, Download, Star, Loader2, ArrowLeft } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import type { ArtifactBlock } from '../../types';
 
@@ -65,7 +65,6 @@ async function captureArtifactThumbnail(iframe: HTMLIFrameElement): Promise<stri
 
 export default function ArtifactPanel({ artifact, onClose, isGenerating = false, autoPreviewSignal = 0, isFavorite = false, onToggleFavorite }: ArtifactPanelProps) {
   const [mode, setMode] = useState<ViewMode>('preview');
-  const [copied, setCopied] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const codeContainerRef = useRef<HTMLPreElement>(null);
@@ -92,12 +91,6 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
       codeContainerRef.current.scrollTop = codeContainerRef.current.scrollHeight;
     }
   }, [isGenerating, artifact.code]);
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(artifact.code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [artifact.code]);
 
   const handleDownload = useCallback(() => {
     const blob = new Blob([artifact.code], { type: 'text/html' });
