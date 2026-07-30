@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { Conversation, Message, FileAttachment, ChatFeatureSettings } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
 import { useArtifact, parseArtifactFromContent } from '../../hooks/useArtifact';
+import { useStickToBottom } from '../../hooks/useStickToBottom';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
 import ArtifactPanel from '../artifact/ArtifactPanel';
@@ -50,11 +51,14 @@ export default function ChatPanel({
   isFavorite = false,
   onToggleFavorite,
 }: ChatPanelProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const shouldAutoScrollRef = useRef(true);
   const lastUserMsgIdRef = useRef<string | null>(null);
   const artifactStreamStartedRef = useRef(false);
+  // 吸底滚动：解除靠用户输入事件，恢复靠滚回底部，追内容靠 ResizeObserver + rAF 缓动
+  const {
+    containerRef: messagesContainerRef,
+    contentRef: messagesContentRef,
+    scrollToBottom,
+  } = useStickToBottom<HTMLDivElement>();
   const { activeArtifact, isArtifactGenerating, openArtifact, closeArtifact, startStreamingArtifact, updateStreamingCode, finishStreamingArtifact } = useArtifact();
   const [autoPreviewSignal, setAutoPreviewSignal] = useState(0);
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
@@ -106,28 +110,24 @@ export default function ChatPanel({
     }
   }, [streamingArtifact]);
 
-  const handleScroll = useCallback(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    shouldAutoScrollRef.current = isNearBottom;
-  }, []);
-
-  // 当用户发送新消息时，强制恢复自动滚动
+  // 用户发出新消息时，强制恢复吸底（哪怕之前手动上滑过）
   useEffect(() => {
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     if (lastUserMsg && lastUserMsg.id !== lastUserMsgIdRef.current) {
       lastUserMsgIdRef.current = lastUserMsg.id;
-      shouldAutoScrollRef.current = true;
+      scrollToBottom('smooth');
     }
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
+  // 切换会话时直接跳到底部
   useEffect(() => {
-    if (shouldAutoScrollRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages]);
+    lastUserMsgIdRef.current = null;
+    scrollToBottom('auto');
+  }, [conversation?.id, scrollToBottom]);
+
+  // 流式追内容由 useStickToBottom 内部的 ResizeObserver 驱动，此处无需再监听 messages
+
+
 
   // [已屏蔽] 拖拽JSON导入功能 - 改为在ChatInput中实现拖拽上传
   // const handleDragEnter = (e: React.DragEvent) => { ... };
@@ -144,10 +144,10 @@ export default function ChatPanel({
         {/* Messages */}
         <div
           ref={messagesContainerRef}
-          onScroll={handleScroll}
           data-messages-container
           className="flex-1 overflow-y-auto px-4 py-4"
         >
+         <div ref={messagesContentRef}>
           {messages.length === 0 && (
             <div className="pt-3 pl-1">
               <div className="flex flex-col">
@@ -188,7 +188,7 @@ export default function ChatPanel({
               />
             );
           })}
-          <div ref={messagesEndRef} />
+         </div>
         </div>
 
         {/* Input */}
