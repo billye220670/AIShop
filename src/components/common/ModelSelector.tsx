@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown } from 'lucide-react';
+import { Settings2 } from 'lucide-react';
+import ModelBottomSheet from './ModelBottomSheet';
 import type { Model } from '../../types';
 
 interface ModelSelectorProps {
@@ -8,6 +9,10 @@ interface ModelSelectorProps {
   selectedModel: string;
   onModelChange: (modelId: string) => void;
   compact?: boolean; // 是否使用紧凑模式（全圆角、无边框）
+  webSearchEnabled?: boolean; // 联网搜索开关（仅 compact 模式使用）
+  onWebSearchToggle?: () => void; // 联网搜索开关回调（仅 compact 模式使用）
+  artifactEnabled?: boolean; // Artifact 开关（仅 compact 模式使用）
+  onArtifactToggle?: () => void; // Artifact 开关回调（仅 compact 模式使用）
 }
 
 // provider 名称 → /public/providers/ 下的图标文件名
@@ -61,11 +66,12 @@ interface MenuPosition {
   placement: 'top' | 'bottom';
 }
 
-export default function ModelSelector({ models, selectedModel, onModelChange, compact = false }: ModelSelectorProps) {
+export default function ModelSelector({ models, selectedModel, onModelChange, compact = false, webSearchEnabled = false, onWebSearchToggle, artifactEnabled = false, onArtifactToggle }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [animVisible, setAnimVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [pos, setPos] = useState<MenuPosition | null>(null);
+  const [showBottomSheet, setShowBottomSheet] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -81,6 +87,13 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
 
   // 打开菜单：同步挂载 DOM
   const toggle = () => {
+    // 如果是 compact 模式，打开 bottom sheet
+    if (compact) {
+      setShowBottomSheet(true);
+      return;
+    }
+
+    // 否则使用原有的下拉菜单逻辑
     if (!open) {
       clearTimeout(unmountTimer.current);
       setMounted(true);
@@ -237,18 +250,33 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
         onClick={toggle}
         className={`flex items-center gap-2 text-sm cursor-pointer ${
           compact
-            ? 'rounded-full bg-[#1c1c20] text-white border border-white/5 px-4 py-2 hover:border-gray-600 ml-0'
+            ? 'rounded-full bg-[var(--color-bg-button)]/80 text-white px-4 py-2 hover:bg-[var(--color-bg-button)] ml-0 transition-colors'
             : 'bg-gray-700 text-white rounded-lg px-3 py-1.5 border border-gray-600 hover:border-gray-500 focus:outline-none focus:border-blue-500'
         }`}
       >
         {renderTriggerIcon()}
         <span className="whitespace-nowrap">{current.name}</span>
-        <ChevronDown
-          className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
+        <div className="w-px h-4 bg-white/10" />
+        <Settings2 className="w-3.5 h-3.5" />
       </button>
 
-      {mounted && pos &&
+      {/* Compact 模式使用 Bottom Sheet */}
+      {compact && (
+        <ModelBottomSheet
+          isOpen={showBottomSheet}
+          onClose={() => setShowBottomSheet(false)}
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={onModelChange}
+          webSearchEnabled={webSearchEnabled}
+          onWebSearchToggle={onWebSearchToggle || (() => {})}
+          artifactEnabled={artifactEnabled}
+          onArtifactToggle={onArtifactToggle || (() => {})}
+        />
+      )}
+
+      {/* 非 Compact 模式使用原有的下拉菜单 */}
+      {!compact && mounted && pos &&
         createPortal(
           <div
             ref={menuRef}

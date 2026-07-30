@@ -267,7 +267,7 @@ export default function CompareButton({
     <div ref={containerRef} className="relative inline-flex">
       {/* 整体按钮容器 */}
       <div
-        className={`inline-flex items-center rounded-full border border-[var(--color-border-subtle)] h-9 ${
+        className={`inline-flex items-center rounded-full h-9 ${
           disabled
             ? 'bg-[var(--color-bg-button)]/40 opacity-50 cursor-not-allowed'
             : 'bg-[var(--color-bg-button)]/80'
@@ -295,7 +295,7 @@ export default function CompareButton({
         </button>
 
         {/* 分隔线 */}
-        <span className="w-px h-5 bg-[var(--color-border-subtle)]" />
+        <span className="w-px h-5 bg-white/10" />
 
         {/* 右侧：展开模型列表 */}
         <button

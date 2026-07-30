@@ -37,5 +37,15 @@ export function useFavoriteArtifacts() {
     });
   }, []);
 
-  return { favorites, addFavorite, removeFavorite, isFavorite, toggleFavorite };
+  const renameFavorite = useCallback((artifactId: string, newTitle: string) => {
+    setFavorites(prev =>
+      prev.map(f =>
+        f.artifact.id === artifactId
+          ? { ...f, artifact: { ...f.artifact, title: newTitle } }
+          : f
+      )
+    );
+  }, []);
+
+  return { favorites, addFavorite, removeFavorite, isFavorite, toggleFavorite, renameFavorite };
 }

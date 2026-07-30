@@ -715,10 +715,10 @@ export function useChat() {
             const msg = updated[msgIndex];
             const versions = [...(msg.versions || [])];
             if (versions[newActiveIndex]) {
-              const versionContent = typeof versions[newActiveIndex].content === 'string'
-                ? versions[newActiveIndex].content
-                : '';
-              const hasContent = versionContent.trim().length > 0;
+              const versionContent = versions[newActiveIndex].content;
+              const hasContent = typeof versionContent === 'string'
+                ? versionContent.trim().length > 0
+                : versionContent.length > 0;
 
               versions[newActiveIndex] = {
                 ...versions[newActiveIndex],
@@ -897,10 +897,10 @@ export function useChat() {
             const msg = updated[msgIndex];
             const versions = [...(msg.versions || [])];
             if (versions[newActiveIndex]) {
-              const versionContent = typeof versions[newActiveIndex].content === 'string'
-                ? versions[newActiveIndex].content
-                : '';
-              const hasContent = versionContent.trim().length > 0;
+              const versionContent = versions[newActiveIndex].content;
+              const hasContent = typeof versionContent === 'string'
+                ? versionContent.trim().length > 0
+                : versionContent.length > 0;
 
               versions[newActiveIndex] = {
                 ...versions[newActiveIndex],

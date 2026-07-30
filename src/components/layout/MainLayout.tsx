@@ -22,6 +22,12 @@ interface MainLayoutProps {
   models?: Model[];
   selectedModel?: string;
   onModelChange?: (modelId: string) => void;
+  // 联网搜索
+  webSearchEnabled?: boolean;
+  onWebSearchToggle?: () => void;
+  // Artifact
+  artifactEnabled?: boolean;
+  onArtifactToggle?: () => void;
 }
 
 export default function MainLayout({
@@ -39,6 +45,10 @@ export default function MainLayout({
   models,
   selectedModel,
   onModelChange,
+  webSearchEnabled,
+  onWebSearchToggle,
+  artifactEnabled,
+  onArtifactToggle,
 }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -148,6 +158,10 @@ export default function MainLayout({
             selectedModel={selectedModel}
             onModelChange={onModelChange}
             onNewConversation={onNewConversation}
+            webSearchEnabled={webSearchEnabled}
+            onWebSearchToggle={onWebSearchToggle}
+            artifactEnabled={artifactEnabled}
+            onArtifactToggle={onArtifactToggle}
           />
         )}
         <main className="flex-1 flex flex-col overflow-hidden">{children}</main>

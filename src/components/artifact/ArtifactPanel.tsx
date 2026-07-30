@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Code, Eye, RefreshCw, Copy, Download, X, Check, Globe, Star, Loader2 } from 'lucide-react';
+import { Code, Eye, RefreshCw, Copy, Download, X, Check, Globe, Star, Loader2, ArrowLeft } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import type { ArtifactBlock } from '../../types';
 
@@ -124,53 +124,29 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
     <div className="flex flex-col h-full bg-[var(--color-bg-base)] overflow-hidden">
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50 bg-[var(--color-bg-primary)]">
-        {/* 左侧：图标 + 标题 + 刷新按钮 */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-            <Globe className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-white font-medium text-sm truncate">{artifact.title}</span>
+        {/* 左侧：返回按钮 */}
+        <button
+          onClick={onClose}
+          className="p-2 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10 flex-shrink-0"
+          title="返回"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+
+        {/* 中间占位 */}
+        <div className="flex-1" />
+
+        {/* 右侧：操作按钮 + 模式切换 */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {mode === 'preview' && (
             <button
               onClick={handleRefresh}
-              className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10 flex-shrink-0"
+              className="p-2 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10"
               title="刷新预览"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
           )}
-        </div>
-
-        {/* 右侧：模式切换 + 操作按钮 */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* 模式切换下拉 */}
-          <div className="flex items-center bg-[var(--color-bg-base)] rounded-lg p-0.5">
-            <button
-              onClick={() => setMode('code')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                mode === 'code'
-                  ? 'bg-[var(--color-accent)] text-white'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
-            >
-              <Code className="w-3.5 h-3.5" />
-              代码
-            </button>
-            <button
-              onClick={() => !isGenerating && setMode('preview')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                mode === 'preview'
-                  ? 'bg-[var(--color-accent)] text-white'
-                  : isGenerating
-                    ? 'text-gray-600 cursor-not-allowed'
-                    : 'text-gray-400 hover:text-gray-200'
-              }`}
-              title={isGenerating ? '代码生成中，完成后可预览' : ''}
-            >
-              <Eye className="w-3.5 h-3.5" />
-              预览
-            </button>
-          </div>
 
           {/* 收藏按钮 */}
           <button
@@ -198,7 +174,7 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
               }
             }}
             disabled={capturing}
-            className={`p-1.5 transition-colors rounded-md hover:bg-white/10 ${
+            className={`p-2 transition-colors rounded-md hover:bg-white/10 ${
               isFavorite ? 'text-yellow-500' : 'text-gray-400 hover:text-white'
             } ${capturing ? 'opacity-50 cursor-not-allowed' : ''}`}
             title={isFavorite ? '取消收藏' : '收藏'}
@@ -210,32 +186,42 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
             )}
           </button>
 
-          {/* 复制按钮 */}
-          <button
-            onClick={handleCopy}
-            className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10"
-            title="复制代码"
-          >
-            {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-          </button>
-
           {/* 下载按钮 */}
           <button
             onClick={handleDownload}
-            className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10"
+            className="p-2 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10"
             title="下载 HTML"
           >
             <Download className="w-4 h-4" />
           </button>
 
-          {/* 关闭按钮 */}
-          <button
-            onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10"
-            title="关闭"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {/* 模式切换 - 仅图标 */}
+          <div className="flex items-center bg-[var(--color-bg-base)] rounded-full px-1 py-0.5 gap-0.5">
+            <button
+              onClick={() => setMode('code')}
+              className={`p-2 rounded-full transition-colors ${
+                mode === 'code'
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+              title="代码"
+            >
+              <Code className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => !isGenerating && setMode('preview')}
+              className={`p-2 rounded-full transition-colors ${
+                mode === 'preview'
+                  ? 'bg-[var(--color-accent)] text-white'
+                  : isGenerating
+                    ? 'text-gray-600 cursor-not-allowed'
+                    : 'text-gray-400 hover:text-gray-200'
+              }`}
+              title={isGenerating ? '代码生成中，完成后可预览' : '预览'}
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 

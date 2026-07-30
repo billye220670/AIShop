@@ -12,20 +12,146 @@ import type { Message, MessageContent } from '../../types';
 import LoadingDots from './LoadingDots';
 import VersionNavigator from './VersionNavigator';
 import CompareButton from './CompareButton';
+import Toast from '../common/Toast';
 
 /* ─── 打开外部链接辅助函数 ─── */
 function openUrl(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+/* ─── 复制到剪贴板辅助函数 ─── */
+async function copyToClipboard(text: string): Promise<boolean> {
+  // 方法1: 尝试使用现代 Clipboard API
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      // 验证是否真的复制成功
+      try {
+        const clipText = await navigator.clipboard.readText();
+        if (clipText === text) {
+          return true;
+        }
+      } catch (readErr) {
+        // 即使无法验证，仍认为写入成功
+        return true;
+      }
+    } catch (err) {
+      // 失败则尝试降级方案
+    }
+  }
+
+  // 方法2: 降级方案 - 使用 contenteditable div
+  try {
+    const container = document.createElement('div');
+    container.contentEditable = 'true';
+    container.style.position = 'fixed';
+    container.style.top = '0';
+    container.style.left = '-9999px';
+    container.style.width = '1px';
+    container.style.height = '1px';
+    container.style.opacity = '0';
+    container.style.pointerEvents = 'none';
+    container.textContent = text;
+
+    document.body.appendChild(container);
+
+    const range = document.createRange();
+    range.selectNodeContents(container);
+    const selection = window.getSelection();
+
+    if (!selection) {
+      document.body.removeChild(container);
+      return false;
+    }
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+    container.focus();
+
+    const successful = document.execCommand('copy');
+
+    selection.removeAllRanges();
+    document.body.removeChild(container);
+
+    if (successful) {
+      return true;
+    }
+  } catch (err) {
+    // 继续尝试下一个方案
+  }
+
+  // 方法3: 使用 textarea（移动端优化）
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+
+    // 移动端友好的样式
+    textarea.style.position = 'absolute';
+    textarea.style.left = '0';
+    textarea.style.top = '0';
+    textarea.style.width = '100%';
+    textarea.style.height = '2em';
+    textarea.style.fontSize = '16px'; // 防止 iOS 缩放
+    textarea.style.border = 'none';
+    textarea.style.outline = 'none';
+    textarea.style.boxShadow = 'none';
+    textarea.style.background = 'transparent';
+    textarea.style.color = 'transparent';
+    textarea.setAttribute('readonly', '');
+
+    document.body.appendChild(textarea);
+
+    // iOS 特殊处理
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isiOS = /iphone|ipad|ipod/.test(userAgent);
+
+    if (isiOS) {
+      const range = document.createRange();
+      range.selectNodeContents(textarea);
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      textarea.setSelectionRange(0, text.length);
+    } else {
+      textarea.focus();
+      textarea.select();
+    }
+
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textarea);
+
+    if (successful) {
+      return true;
+    }
+  } catch (err) {
+    // 所有方案都失败
+  }
+
+  return false;
+}
+
 /* ─── CodeBlock 组件：语法高亮 + 复制按钮 + 语言标签 ─── */
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    const success = await copyToClipboard(code);
+    if (success) {
+      setCopied(true);
+      setToastMessage('已复制到剪贴板');
+      setToastType('success');
+      setShowToast(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      setToastMessage('复制失败，请重试');
+      setToastType('error');
+      setShowToast(true);
+    }
   };
 
   let highlighted: string;
@@ -36,25 +162,34 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
   }
 
   return (
-    <div className="relative group rounded-lg overflow-hidden my-3 border border-gray-700">
-      {/* 顶部栏：语言标签 + 复制按钮 */}
-      <div className="flex items-center justify-between px-4 py-3 bg-[var(--color-code-bg)] text-xs text-gray-400">
-        <span>{language || 'code'}</span>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1 text-gray-400 hover:text-gray-200 transition-colors"
-        >
-          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-        </button>
-      </div>
-      {/* 代码区域 */}
-      <pre className="!m-0 !rounded-none !bg-[var(--color-code-bg)]">
-        <code
-          className="block px-4 py-3 overflow-x-auto text-sm !bg-transparent"
-          dangerouslySetInnerHTML={{ __html: highlighted }}
+    <>
+      {showToast && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setShowToast(false)}
         />
-      </pre>
-    </div>
+      )}
+      <div className="relative group rounded-lg overflow-hidden my-3 border border-gray-700">
+        {/* 顶部栏：语言标签 + 复制按钮 */}
+        <div className="flex items-center justify-between px-4 py-3 bg-[var(--color-code-bg)] text-xs text-gray-400">
+          <span>{language || 'code'}</span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 text-gray-400 hover:text-gray-200 transition-colors"
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+        {/* 代码区域 */}
+        <pre className="!m-0 !rounded-none !bg-[var(--color-code-bg)]">
+          <code
+            className="block px-4 py-3 overflow-x-auto text-sm !bg-transparent"
+            dangerouslySetInnerHTML={{ __html: highlighted }}
+          />
+        </pre>
+      </div>
+    </>
   );
 }
 
@@ -95,6 +230,9 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false); // 新增：控制搜索结果展开/折叠
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
 
   // 多版本相关
   const hasMultipleVersions = message.versions && message.versions.length > 1;
@@ -252,8 +390,16 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
 
   // AI消息：无背景、无边框、撑满宽度
   return (
-    <div className="flex justify-start mb-4">
-      <div className="w-full px-4 py-3 text-gray-100">
+    <>
+      {showToast && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setShowToast(false)}
+        />
+      )}
+      <div className="flex justify-start mb-4">
+        <div className="w-full px-4 py-3 text-gray-100">
         {/* 模型图标 + 名称 / 版本导航 */}
         <div className="flex items-center gap-2 mb-4">
           {hasMultipleVersions ? (
@@ -355,10 +501,8 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
               <>
                 {typeof displayContent === 'string' && displayContent.trim().length > 0 ? (
                   // 有内容：显示分割线
-                  <div className="flex items-center gap-3 my-4">
-                    <div className="flex-1 h-px bg-gray-700"></div>
-                    <span className="text-sm text-gray-500">用户已停止</span>
-                    <div className="flex-1 h-px bg-gray-700"></div>
+                  <div className="flex items-center justify-center my-4">
+                    <span className="text-sm text-[var(--color-text-secondary)]">用户已停止</span>
                   </div>
                 ) : (
                   // 无内容：显示请求已被取消的卡片
@@ -366,13 +510,13 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                     <div className="flex items-center gap-2 text-gray-400 mb-4">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <circle cx="12" cy="12" r="10" strokeWidth="2" />
-                        <path strokeLinecap="round" strokeLinecap="round" strokeWidth="2" d="M12 8v4m0 4h.01" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01" />
                       </svg>
                       <span className="text-sm">请求已被取消。</span>
                     </div>
                     <button
                       onClick={() => onRegenerate?.(message.id)}
-                      className="w-full py-2.5 px-4 bg-gray-600/50 hover:bg-gray-600 text-gray-200 rounded-full transition-colors text-sm font-medium"
+                      className="w-full py-2.5 px-4 bg-[var(--color-bg-hover)] hover:bg-[var(--color-bg-elevated)] text-gray-200 rounded-full transition-colors text-sm font-medium"
                     >
                       立即重新生成
                     </button>
@@ -384,14 +528,25 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             {displayArtifact && (
               <div
                 onClick={() => onOpenArtifact?.(displayArtifact)}
-                className="mt-3 p-3 bg-[var(--color-bg-primary)] border border-gray-700 rounded-xl cursor-pointer hover:bg-[var(--color-bg-hover)] transition-colors flex items-center gap-3"
+                className="mt-3 p-4 rounded-2xl cursor-pointer hover:brightness-110 transition-all flex items-center gap-3 relative overflow-hidden"
               >
-                <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-                  <Globe className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <div className="text-white font-medium text-sm">{displayArtifact.title}</div>
-                  <div className="text-gray-400 text-xs">点击预览</div>
+                {/* 渐变背景层 */}
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: `linear-gradient(to bottom, color-mix(in srgb, var(--color-accent) 18%, transparent), rgba(25, 25, 25, 0.9))`
+                  }}
+                />
+
+                {/* 内容层 */}
+                <div className="relative z-10 flex items-center gap-3 w-full">
+                  <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                    <Globe className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <div className="text-white font-medium text-sm">{displayArtifact.title}</div>
+                    <div className="text-gray-400 text-xs">点击预览</div>
+                  </div>
                 </div>
               </div>
             )}
@@ -399,12 +554,12 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
               displaySuggestions &&
               displaySuggestions.length > 0 &&
               !displayIsStreaming && (
-                <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-gray-700">
+                <div className="flex flex-wrap gap-2 mt-5">
                   {displaySuggestions.map((suggestion, idx) => (
                     <button
                       key={idx}
                       onClick={() => onSuggestionClick?.(suggestion)}
-                      className="text-sm px-4 py-2 bg-[var(--color-accent-soft)] hover:bg-[var(--color-accent)]/25 text-gray-200 rounded-full transition-colors border border-[var(--color-accent)]/30 hover:border-[var(--color-accent)]/50"
+                      className="text-sm px-4 py-2 bg-[var(--color-accent-soft)] hover:bg-[var(--color-accent)]/25 text-gray-200 rounded-full transition-colors"
                     >
                       {suggestion}
                     </button>
@@ -413,7 +568,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
               )}
             {/* 消息操作按钮组 - 仅 AI 消息且非流式生成中 */}
             {!displayIsStreaming && !isStreaming && (
-              <div className="mt-3 pt-3 border-t border-gray-700/30">
+              <div className="mt-6 pt-6 border-t border-gray-700/30">
                 {/* 多模型比较按钮 - 独立一行 */}
                 {onCompareWithModel && (
                   <div className="mb-2">
@@ -428,18 +583,27 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                 <div className="flex items-center gap-1">
                   {/* 复制 */}
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       const text = typeof displayContent === 'string'
                         ? displayContent
                         : (displayContent as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('\n');
-                      navigator.clipboard.writeText(text);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 1500);
+                      const success = await copyToClipboard(text);
+                      if (success) {
+                        setCopied(true);
+                        setToastMessage('已复制到剪贴板');
+                        setToastType('success');
+                        setShowToast(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      } else {
+                        setToastMessage('复制失败，请重试');
+                        setToastType('error');
+                        setShowToast(true);
+                      }
                     }}
-                    className="p-1.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
+                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
                     title="复制"
                   >
-                    {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                    {copied ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
                   </button>
                   {/* 保存为 Markdown */}
                   <button
@@ -458,26 +622,26 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                       a.click();
                       URL.revokeObjectURL(url);
                     }}
-                    className="p-1.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
+                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
                     title="保存为 Markdown"
                   >
-                    <FileDown className="w-4 h-4" />
+                    <FileDown className="w-5 h-5" />
                   </button>
                   {/* 重新生成 */}
                   <button
                     onClick={() => onRegenerate?.(message.id)}
-                    className="p-1.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
+                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
                     title="重新生成"
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <RefreshCw className="w-5 h-5" />
                   </button>
                   {/* 引用 */}
                   <button
                     onClick={() => onQuote?.(message)}
-                    className="p-1.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
+                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
                     title="引用"
                   >
-                    <MessageSquareQuote className="w-4 h-4" />
+                    <MessageSquareQuote className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -486,5 +650,6 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
         )}
       </div>
     </div>
+    </>
   );
 }

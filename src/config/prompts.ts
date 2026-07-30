@@ -35,8 +35,11 @@ title: "用户友好的标题"
 代码要求：
 - 必须是完整独立的 HTML 文件，内联 CSS 和 JS，可直接在 iframe 中运行
 - 可以使用 Tailwind CSS CDN（<script src="https://cdn.tailwindcss.com"></script>）增强样式
-- 代码必须响应式设计，适配不同屏幕尺寸
-- 界面要美观、专业，有良好的用户体验
+- **强制要求：必须为移动端优化设计**，默认按照手机屏幕（375px-428px 宽度）进行布局和交互设计
+- 使用移动端友好的设计模式：大号触控按钮（最小 44x44px）、适当的字体大小（最小 16px）、合理的间距、垂直布局优先
+- 添加 viewport meta 标签：<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+- 支持触摸手势交互，避免依赖鼠标悬停效果
+- 界面要美观、专业，有良好的移动端用户体验
 
 重要：在 artifact 标记之前可以有文字介绍说明，artifact 标记之后可以继续提供跟进建议。`;
 

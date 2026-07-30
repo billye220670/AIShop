@@ -9,6 +9,10 @@ interface TopNavBarProps {
   selectedModel: string;
   onModelChange: (modelId: string) => void;
   onNewConversation?: () => void;
+  webSearchEnabled?: boolean;
+  onWebSearchToggle?: () => void;
+  artifactEnabled?: boolean;
+  onArtifactToggle?: () => void;
 }
 
 export default function TopNavBar({
@@ -17,6 +21,10 @@ export default function TopNavBar({
   selectedModel,
   onModelChange,
   onNewConversation,
+  webSearchEnabled = false,
+  onWebSearchToggle,
+  artifactEnabled = false,
+  onArtifactToggle,
 }: TopNavBarProps) {
   return (
     <div className="flex items-center justify-between px-3 py-2 shrink-0">
@@ -35,6 +43,10 @@ export default function TopNavBar({
           selectedModel={selectedModel}
           onModelChange={onModelChange}
           compact={true}
+          webSearchEnabled={webSearchEnabled}
+          onWebSearchToggle={onWebSearchToggle}
+          artifactEnabled={artifactEnabled}
+          onArtifactToggle={onArtifactToggle}
         />
       </div>
 

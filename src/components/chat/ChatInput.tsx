@@ -42,7 +42,7 @@ export default function ChatInput({
   // 控制是否应该自动聚焦：用户主动聚焦时为 true，主动失焦时为 false
   const shouldFocusRef = useRef(false);
 
-  const hasContent = text.trim().length > 0 || images.length > 0 || files.length > 0;
+  const hasContent = text.trim().length > 0 || images.length > 0 || files.length > 0 || !!quotedMessage;
 
   // 布局切换到展开态后自动聚焦 textarea，确保键盘弹出
   useEffect(() => {
@@ -278,7 +278,7 @@ export default function ChatInput({
           {/* 引用消息缩略图 */}
           {quotedMessage && (
             <div className="p-3 pb-2">
-              <div className="flex items-center gap-2 bg-[var(--color-bg-primary)] border border-gray-700 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 bg-[var(--color-bg-button)]/80 rounded-full px-3 py-2 max-w-md">
                 <div className="w-8 h-8 rounded-md bg-[var(--color-accent-soft)] flex items-center justify-center flex-shrink-0">
                   <MessageSquareQuote className="w-4 h-4 text-[var(--color-accent)]" />
                 </div>

@@ -20,7 +20,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
 
   const chat = useChat();
-  const { favorites, isFavorite, toggleFavorite, removeFavorite } = useFavoriteArtifacts();
+  const { favorites, isFavorite, toggleFavorite, removeFavorite, renameFavorite } = useFavoriteArtifacts();
 
   const activeConversation = chat.conversations.find(
     c => c.id === chat.activeConversationId
@@ -54,7 +54,7 @@ function App() {
       case 'image':
         return <ImagePanel />;
       case 'favorites':
-        return <FavoritesPanel favorites={favorites} onRemoveFavorite={removeFavorite} />;
+        return <FavoritesPanel favorites={favorites} onRemoveFavorite={removeFavorite} onRenameFavorite={renameFavorite} />;
       case 'me':
         return <SettingsPanel />;
       default:
@@ -78,6 +78,10 @@ function App() {
         models={activeTab === 'chat' ? CHAT_MODELS : undefined}
         selectedModel={activeTab === 'chat' ? (activeConversation?.selectedModel || CHAT_MODELS[0].id) : undefined}
         onModelChange={activeTab === 'chat' ? chat.setSelectedModel : undefined}
+        webSearchEnabled={activeTab === 'chat' ? chat.webSearchEnabled : undefined}
+        onWebSearchToggle={activeTab === 'chat' ? () => chat.setWebSearchEnabled(!chat.webSearchEnabled) : undefined}
+        artifactEnabled={activeTab === 'chat' ? chat.featureSettings.artifactEnabled : undefined}
+        onArtifactToggle={activeTab === 'chat' ? () => chat.setFeatureSettings({ ...chat.featureSettings, artifactEnabled: !chat.featureSettings.artifactEnabled }) : undefined}
       >
         {renderContent()}
       </MainLayout>

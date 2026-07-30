@@ -141,11 +141,9 @@ export default function ChatPanel({
   // const handleDrop = (e: React.DragEvent) => { ... };
 
   return (
-    <div
-      className="flex-1 flex overflow-hidden relative"
-    >
-      {/* 左侧聊天区 */}
-      <div className={`flex flex-col transition-all duration-300 overflow-hidden ${activeArtifact ? 'w-[45%]' : 'w-full'}`}>
+    <>
+      {/* 主聊天区 */}
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* Messages */}
         <div
           ref={messagesContainerRef}
@@ -230,12 +228,17 @@ export default function ChatPanel({
         />
       </div>
 
-      {/* Artifact 面板 - 桌面端 */}
-      {activeArtifact && (
-        <div className="w-[55%] border-l border-gray-700/50 transition-all duration-300">
+      {/* Artifact 全屏页面 - 覆盖整个应用（包括顶部和底部导航栏） */}
+      <div
+        className={`fixed inset-0 z-[100] bg-[var(--color-bg-base)] transition-transform duration-300 ease-out ${
+          activeArtifact ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        style={{ pointerEvents: activeArtifact ? 'auto' : 'none' }}
+      >
+        {activeArtifact && (
           <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} isFavorite={isFavorite} onToggleFavorite={onToggleFavorite} />
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }
