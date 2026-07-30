@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Download, Pencil, Trash2 } from 'lucide-react';
+import { Search, Download, Pencil, Trash2, MessageSquare, Star, X, Check } from 'lucide-react';
 import PinyinMatch from 'pinyin-match';
 import type { Conversation } from '../../types';
 import ConfirmModal from '../common/ConfirmModal';
@@ -12,6 +12,8 @@ export interface SidebarProps {
   onSwitchConversation?: (id: string) => void;
   onNewConversation?: () => void;
   onDeleteConversation?: (id: string) => void;
+  onDeleteConversations?: (ids: string[]) => void;
+  onToggleConversationFavorite?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
 }
 
@@ -19,11 +21,15 @@ export const SIDEBAR_WIDTH = 360;
 export const COLLAPSED_WIDTH = 60;
 export const COLLAPSED_STORAGE_KEY = 'sidebar-collapsed';
 
+type FilterMode = 'all' | 'favorite';
+
 export default function Sidebar({
   conversations,
   activeConversationId,
   onSwitchConversation,
   onDeleteConversation,
+  onDeleteConversations,
+  onToggleConversationFavorite,
   onRenameConversation,
 }: SidebarProps) {
   const [historySearch, setHistorySearch] = useState('');
@@ -31,8 +37,28 @@ export default function Sidebar({
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   // 重命名弹窗状态（弹窗内部自行管理输入值）
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
-  // 删除确认状态
+  // 删除确认状态（单个 / 批量）
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
+  // 筛选模式：所有 / 收藏
+  const [filterMode, setFilterMode] = useState<FilterMode>('all');
+  // 批量选择模式
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // --- 点击后延迟切换 ---
   /** 点击项先本地高亮，短暂停顿让用户看到选中反馈，再真正切换并收起面板 */
@@ -114,7 +140,10 @@ export default function Sidebar({
   // Filtered conversations (排除空会话)
   const filteredConversations = useMemo(() => {
     if (!conversations) return [];
-    const nonEmpty = conversations.filter(conv => conv.messages && conv.messages.length > 0);
+    let nonEmpty = conversations.filter(conv => conv.messages && conv.messages.length > 0);
+    if (filterMode === 'favorite') {
+      nonEmpty = nonEmpty.filter(conv => conv.isFavorite);
+    }
     const keyword = historySearch.trim();
     if (!keyword) return nonEmpty;
     return nonEmpty.filter(conv => {
@@ -122,7 +151,7 @@ export default function Sidebar({
       const match = PinyinMatch.match(conv.title, keyword);
       return match !== false;
     });
-  }, [conversations, historySearch]);
+  }, [conversations, historySearch, filterMode]);
 
   // 时间分组逻辑
   const groupedConversations = useMemo(() => {
@@ -197,9 +226,72 @@ export default function Sidebar({
             value={historySearch}
             onChange={e => setHistorySearch(e.target.value)}
             placeholder="搜索对话"
-            className="w-full h-10 bg-[#121211] border border-gray-700/50 rounded-full pl-9 pr-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[var(--color-accent)]"
+            className="w-full h-10 bg-[var(--color-bg-primary)] rounded-full pl-9 pr-3 text-sm text-white placeholder-gray-500 focus:outline-none"
           />
         </div>
+      </div>
+
+      {/* 操作按钮栏：状态切换（所有/收藏） + 删除入口 / 批量操作（取消/删除） */}
+      <div className="px-4 py-3 flex items-center justify-between shrink-0">
+        {selectMode ? (
+          <>
+            <button
+              onClick={exitSelectMode}
+              className="p-2.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              title="取消"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => {
+                if (selectedIds.size > 0) setBatchDeleteConfirm(true);
+              }}
+              disabled={selectedIds.size === 0}
+              className={`p-2.5 rounded-full transition-colors ${
+                selectedIds.size === 0
+                  ? 'text-red-400/40 cursor-default'
+                  : 'text-red-400 hover:bg-red-500/10'
+              }`}
+              title="删除"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setFilterMode('all')}
+                className={`p-2.5 rounded-full transition-colors ${
+                  filterMode === 'all'
+                    ? 'bg-[var(--color-accent)] text-black'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                }`}
+                title="所有"
+              >
+                <MessageSquare className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setFilterMode('favorite')}
+                className={`p-2.5 rounded-full transition-colors ${
+                  filterMode === 'favorite'
+                    ? 'bg-[var(--color-accent)] text-black'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                }`}
+                title="收藏"
+              >
+                <Star className="w-4 h-4" />
+              </button>
+            </div>
+            <button
+              onClick={() => setSelectMode(true)}
+              className="p-2.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              title="批量删除"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* 长按呼出上下文菜单时的背景模糊遮罩：只模糊背景，不拦截列表本身的定位 */}
@@ -223,17 +315,18 @@ export default function Sidebar({
               // pendingId 让高亮在真正切换前就先落到被点的项上
               const isActive = pendingId ? conv.id === pendingId : conv.id === activeConversationId;
               const isMenuOpen = menuOpenId === conv.id;
+              const isChecked = selectedIds.has(conv.id);
               return (
                 <div
                   key={conv.id}
-                  className={`group relative w-full text-left px-3 py-3 pb-4 rounded-2xl mb-0.5 transition-colors cursor-pointer select-none [-webkit-touch-callout:none] ${
-                    isActive
+                  className={`group relative w-full text-left px-3 py-3 pb-4 rounded-2xl mb-0.5 transition-colors cursor-pointer select-none [-webkit-touch-callout:none] flex items-start gap-2 ${
+                    isActive && !selectMode
                       ? 'bg-[var(--color-accent-soft)]'
                       : isMenuOpen
                         ? 'bg-white/10'
                         : 'hover:bg-white/5'
                   } ${isMenuOpen ? 'relative z-[201] context-menu-pop' : ''}`}
-                  onPointerDown={e => handlePressStart(conv.id, e)}
+                  onPointerDown={e => { if (!selectMode) handlePressStart(conv.id, e); }}
                   onPointerMove={handlePressMove}
                   onPointerUp={clearPressTimer}
                   onPointerCancel={clearPressTimer}
@@ -245,19 +338,38 @@ export default function Sidebar({
                       suppressClickRef.current = false;
                       return;
                     }
+                    if (selectMode) {
+                      toggleSelected(conv.id);
+                      return;
+                    }
                     selectConversation(conv.id);
                   }}
                 >
-                  {/* 标题行 */}
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 min-w-0 text-base font-bold text-white truncate">
-                      {conv.title}
+                  {/* 批量选择模式下的复选框，与标题行水平对齐 */}
+                  {selectMode && (
+                    <div
+                      className={`mt-0.5 mr-1 w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-colors ${
+                        isChecked
+                          ? 'bg-[var(--color-accent)] border-[var(--color-accent)]'
+                          : 'border-gray-500'
+                      }`}
+                    >
+                      {isChecked && <Check className="w-3.5 h-3.5 text-white" />}
                     </div>
-                  </div>
+                  )}
 
-                  {/* 预览文本 */}
-                  <div className="text-xs text-gray-400 mt-1.5 line-clamp-2">
-                    {getLastMessagePreview(conv)}
+                  <div className="flex-1 min-w-0">
+                    {/* 标题行 */}
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 min-w-0 text-base font-bold text-white truncate">
+                        {conv.title}
+                      </div>
+                    </div>
+
+                    {/* 预览文本 */}
+                    <div className="text-xs text-gray-400 mt-1.5 line-clamp-2">
+                      {getLastMessagePreview(conv)}
+                    </div>
                   </div>
 
                   {/* 浮动菜单 */}
@@ -283,6 +395,16 @@ export default function Sidebar({
                       >
                         <Pencil className="w-5 h-5 flex-shrink-0" />
                         <span>编辑标题</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          onToggleConversationFavorite?.(conv.id);
+                          setMenuOpenId(null);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+                      >
+                        <Star className="w-5 h-5 flex-shrink-0" fill={conv.isFavorite ? 'currentColor' : 'none'} />
+                        <span>{conv.isFavorite ? '取消收藏' : '收藏'}</span>
                       </button>
                       <button
                         onClick={() => {
@@ -339,6 +461,22 @@ export default function Sidebar({
           setDeleteTarget(null);
         }}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* 批量删除确认弹窗 */}
+      <ConfirmModal
+        open={batchDeleteConfirm}
+        title="删除会话"
+        message={`确定要删除选中的 ${selectedIds.size} 个会话吗？删除后无法恢复。`}
+        confirmText="删除"
+        cancelText="取消"
+        variant="danger"
+        onConfirm={() => {
+          onDeleteConversations?.(Array.from(selectedIds));
+          setBatchDeleteConfirm(false);
+          exitSelectMode();
+        }}
+        onCancel={() => setBatchDeleteConfirm(false)}
       />
     </aside>
   );

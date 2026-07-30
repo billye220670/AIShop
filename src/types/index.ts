@@ -106,6 +106,7 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   isRenamed: boolean;
+  isFavorite?: boolean;
 }
 
 // 图片生成请求参数

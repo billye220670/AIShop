@@ -72,6 +72,8 @@ function App() {
         onSwitchConversation={chat.switchConversation}
         onNewConversation={chat.newConversation}
         onDeleteConversation={chat.deleteConversation}
+        onDeleteConversations={chat.deleteConversations}
+        onToggleConversationFavorite={chat.toggleConversationFavorite}
         onRenameConversation={chat.renameConversation}
         models={activeTab === 'chat' ? CHAT_MODELS : undefined}
         selectedModel={activeTab === 'chat' ? (activeConversation?.selectedModel || CHAT_MODELS[0].id) : undefined}

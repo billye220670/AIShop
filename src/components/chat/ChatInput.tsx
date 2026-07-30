@@ -362,11 +362,12 @@ export default function ChatInput({
                   {!isLoading && (
                     <button
                       onClick={handleSubmit}
-                      className="p-1.5 rounded-full transition-opacity hover:opacity-90"
-                      style={{ backgroundColor: 'var(--color-accent)' }}
+                      disabled={!hasContent}
+                      className={`p-1.5 rounded-full transition-colors ${hasContent ? 'hover:opacity-90 cursor-pointer' : 'cursor-not-allowed'}`}
+                      style={{ backgroundColor: hasContent ? 'var(--color-accent)' : '#4b4b4b' }}
                       title="发送"
                     >
-                      <ArrowUp className="w-4 h-4 text-black" strokeWidth={2.5} />
+                      <ArrowUp className={`w-4 h-4 ${hasContent ? 'text-black' : 'text-gray-400'}`} strokeWidth={2.5} />
                     </button>
                   )}
                   {/* Stop button */}
@@ -418,11 +419,12 @@ export default function ChatInput({
                 <div className="pr-3 py-3">
                   <button
                     onClick={handleSubmit}
-                    className="p-1.5 rounded-full transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: 'var(--color-accent)' }}
+                    disabled={!hasContent}
+                    className={`p-1.5 rounded-full transition-colors ${hasContent ? 'hover:opacity-90 cursor-pointer' : 'cursor-not-allowed'}`}
+                    style={{ backgroundColor: hasContent ? 'var(--color-accent)' : '#4b4b4b' }}
                     title="发送"
                   >
-                    <ArrowUp className="w-4 h-4 text-black" strokeWidth={2.5} />
+                    <ArrowUp className={`w-4 h-4 ${hasContent ? 'text-black' : 'text-gray-400'}`} strokeWidth={2.5} />
                   </button>
                 </div>
               )}

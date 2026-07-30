@@ -15,6 +15,8 @@ interface MainLayoutProps {
   onSwitchConversation?: (id: string) => void;
   onNewConversation?: () => void;
   onDeleteConversation?: (id: string) => void;
+  onDeleteConversations?: (ids: string[]) => void;
+  onToggleConversationFavorite?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
   // 模型选择
   models?: Model[];
@@ -31,6 +33,8 @@ export default function MainLayout({
   onSwitchConversation,
   onNewConversation,
   onDeleteConversation,
+  onDeleteConversations,
+  onToggleConversationFavorite,
   onRenameConversation,
   models,
   selectedModel,
@@ -105,6 +109,8 @@ export default function MainLayout({
           onSwitchConversation={(id) => { onSwitchConversation?.(id); setSidebarOpen(false); }}
           onNewConversation={onNewConversation}
           onDeleteConversation={onDeleteConversation}
+          onDeleteConversations={onDeleteConversations}
+          onToggleConversationFavorite={onToggleConversationFavorite}
           onRenameConversation={onRenameConversation}
         />
       </div>

@@ -518,6 +518,31 @@ export function useChat() {
     [activeId]
   );
 
+  const deleteConversations = useCallback(
+    (ids: string[]) => {
+      const idSet = new Set(ids);
+      setConversations(prev => {
+        const filtered = prev.filter(c => !idSet.has(c.id));
+        if (filtered.length === 0) {
+          const newConv = createConversation(getLastUsedModel());
+          if (idSet.has(activeId)) setActiveId(newConv.id);
+          return [newConv];
+        }
+        if (idSet.has(activeId)) {
+          setActiveId(filtered[0].id);
+        }
+        return filtered;
+      });
+    },
+    [activeId]
+  );
+
+  const toggleConversationFavorite = useCallback((id: string) => {
+    setConversations(prev =>
+      prev.map(c => (c.id === id ? { ...c, isFavorite: !c.isFavorite } : c))
+    );
+  }, []);
+
   // 导入会话（来自 .portai.json 文件）
   const regenerateMessage = useCallback(
     async (messageId: string) => {
@@ -894,6 +919,8 @@ export function useChat() {
     newConversation,
     switchConversation,
     deleteConversation,
+    deleteConversations,
+    toggleConversationFavorite,
     renameConversation,
     importConversation,
     compareWithModel,
