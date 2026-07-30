@@ -388,11 +388,17 @@ export function useChat() {
             const updated = [...conv.messages];
             const lastIdx = updated.length - 1;
             if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+              const currentContent = typeof updated[lastIdx].content === 'string'
+                ? updated[lastIdx].content
+                : '';
+              const hasContent = currentContent.trim().length > 0;
+
               updated[lastIdx] = {
                 ...updated[lastIdx],
-                content: '用户已取消生成',
+                content: hasContent ? currentContent : '',
                 isStreaming: false,
                 webSearching: false,
+                stoppedByUser: true,
               };
             }
             return { ...conv, messages: updated };
@@ -426,21 +432,36 @@ export function useChat() {
       const updated = [...conv.messages];
       const lastIdx = updated.length - 1;
       if (lastIdx >= 0 && updated[lastIdx].role === 'assistant' && updated[lastIdx].isStreaming) {
+        const currentContent = typeof updated[lastIdx].content === 'string'
+          ? updated[lastIdx].content
+          : '';
+
+        // 判断是否有内容：如果内容为空，显示"请求已被取消"；否则保留内容并标记为停止
+        const hasContent = currentContent.trim().length > 0;
+
         updated[lastIdx] = {
           ...updated[lastIdx],
-          content: '用户已取消生成',
+          content: hasContent ? currentContent : '',
           isStreaming: false,
           webSearching: false,
+          stoppedByUser: true,
         };
+
         // 同时更新多版本中的当前活跃版本
         if (updated[lastIdx].versions && updated[lastIdx].versions.length > 0) {
           const vIdx = updated[lastIdx].activeVersionIndex ?? updated[lastIdx].versions!.length - 1;
           if (vIdx >= 0 && vIdx < updated[lastIdx].versions!.length) {
             const versions = [...updated[lastIdx].versions!];
+            const versionContent = typeof versions[vIdx].content === 'string'
+              ? versions[vIdx].content
+              : '';
+            const versionHasContent = versionContent.trim().length > 0;
+
             versions[vIdx] = {
               ...versions[vIdx],
-              content: '用户已取消生成',
+              content: versionHasContent ? versionContent : '',
               isStreaming: false,
+              stoppedByUser: true,
             };
             updated[lastIdx] = { ...updated[lastIdx], versions };
           }
@@ -579,26 +600,46 @@ export function useChat() {
           webSearchFailed: conv.messages[msgIndex].webSearchFailed,
           searchResults: conv.messages[msgIndex].searchResults,
           artifact: conv.messages[msgIndex].artifact,
+          stoppedByUser: conv.messages[msgIndex].stoppedByUser,
         }];
       }
 
       // 检查当前模型是否已存在于 versions 中
       const currentModelIndex = existingVersions.findIndex(v => v.model === (conv.messages[msgIndex].model || selectedModel));
-      if (currentModelIndex >= 0 && currentModelIndex === existingVersions.length - 1) {
+      // 如果当前版本被用户停止了，允许重新生成；否则检查是否已经是最新版本
+      const currentVersionStoppedByUser = existingVersions[currentModelIndex]?.stoppedByUser || conv.messages[msgIndex].stoppedByUser;
+      if (currentModelIndex >= 0 && currentModelIndex === existingVersions.length - 1 && !currentVersionStoppedByUser) {
         return; // 已经是最新版本，无需重新生成
       }
 
-      // 创建新 version
-      const newVersionId = Date.now().toString() + '-v' + existingVersions.length;
-      const newVersion: MessageVersion = {
-        id: newVersionId,
-        model: conv.messages[msgIndex].model || selectedModel,
-        content: '',
-        timestamp: Date.now(),
-        isStreaming: true,
-      };
-      const newVersions = [...existingVersions, newVersion];
-      const newActiveIndex = newVersions.length - 1;
+      // 如果当前版本被停止了，重用当前版本而不是创建新版本
+      let newVersionId: string;
+      let newActiveIndex: number;
+      let newVersions: MessageVersion[];
+
+      if (currentVersionStoppedByUser && currentModelIndex >= 0) {
+        // 重新生成被停止的版本
+        newActiveIndex = currentModelIndex;
+        newVersions = [...existingVersions];
+        newVersions[newActiveIndex] = {
+          ...newVersions[newActiveIndex],
+          content: '',
+          isStreaming: true,
+          stoppedByUser: false, // 清除停止标记
+        };
+      } else {
+        // 创建新 version
+        newVersionId = Date.now().toString() + '-v' + existingVersions.length;
+        const newVersion: MessageVersion = {
+          id: newVersionId,
+          model: conv.messages[msgIndex].model || selectedModel,
+          content: '',
+          timestamp: Date.now(),
+          isStreaming: true,
+        };
+        newVersions = [...existingVersions, newVersion];
+        newActiveIndex = newVersions.length - 1;
+      }
 
       // 更新消息状态：追加 versions，切换到新版本
       updateActiveConversation(conv => {
@@ -674,10 +715,16 @@ export function useChat() {
             const msg = updated[msgIndex];
             const versions = [...(msg.versions || [])];
             if (versions[newActiveIndex]) {
+              const versionContent = typeof versions[newActiveIndex].content === 'string'
+                ? versions[newActiveIndex].content
+                : '';
+              const hasContent = versionContent.trim().length > 0;
+
               versions[newActiveIndex] = {
                 ...versions[newActiveIndex],
-                content: '用户已取消生成',
+                content: hasContent ? versionContent : '',
                 isStreaming: false,
+                stoppedByUser: true,
               };
             }
             updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex, isStreaming: false };
@@ -850,10 +897,16 @@ export function useChat() {
             const msg = updated[msgIndex];
             const versions = [...(msg.versions || [])];
             if (versions[newActiveIndex]) {
+              const versionContent = typeof versions[newActiveIndex].content === 'string'
+                ? versions[newActiveIndex].content
+                : '';
+              const hasContent = versionContent.trim().length > 0;
+
               versions[newActiveIndex] = {
                 ...versions[newActiveIndex],
-                content: '用户已取消生成',
+                content: hasContent ? versionContent : '',
                 isStreaming: false,
+                stoppedByUser: true,
               };
             }
             updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex, isStreaming: false };

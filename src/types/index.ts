@@ -40,6 +40,7 @@ export interface MessageVersion {
   webSearchFailed?: boolean;
   searchResults?: Array<{ name: string; url: string; siteName: string }>;
   artifact?: ArtifactBlock;
+  stoppedByUser?: boolean; // 用户是否停止了生成
 }
 
 export interface Message {
@@ -62,6 +63,7 @@ export interface Message {
   model?: string;  // 生成该消息时使用的模型 ID
   versions?: MessageVersion[];       // 多模型回答版本列表
   activeVersionIndex?: number;       // 当前展示的版本索引
+  stoppedByUser?: boolean; // 用户是否停止了生成
 }
 
 export interface Model {

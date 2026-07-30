@@ -109,6 +109,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
   const displayWebSearchFailed = activeVersion ? activeVersion.webSearchFailed : message.webSearchFailed;
   const displaySearchResults = activeVersion ? activeVersion.searchResults : message.searchResults;
   const displayWebSearching = activeVersion ? activeVersion.webSearching : message.webSearching;
+  const displayStoppedByUser = activeVersion ? activeVersion.stoppedByUser : message.stoppedByUser;
 
   // AI消息内容为空且正在流式输出 → 显示加载状态
   const isAiLoading = !isUser && displayIsStreaming && (
@@ -348,6 +349,37 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
 
             {/* 主要内容 */}
             {renderContent()}
+
+            {/* 用户停止生成的状态提示 */}
+            {displayStoppedByUser && (
+              <>
+                {typeof displayContent === 'string' && displayContent.trim().length > 0 ? (
+                  // 有内容：显示分割线
+                  <div className="flex items-center gap-3 my-4">
+                    <div className="flex-1 h-px bg-gray-700"></div>
+                    <span className="text-sm text-gray-500">用户已停止</span>
+                    <div className="flex-1 h-px bg-gray-700"></div>
+                  </div>
+                ) : (
+                  // 无内容：显示请求已被取消的卡片
+                  <div className="my-3 py-6 px-4 bg-[var(--color-bg-secondary)] rounded-3xl">
+                    <div className="flex items-center gap-2 text-gray-400 mb-4">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" strokeWidth="2" />
+                        <path strokeLinecap="round" strokeLinecap="round" strokeWidth="2" d="M12 8v4m0 4h.01" />
+                      </svg>
+                      <span className="text-sm">请求已被取消。</span>
+                    </div>
+                    <button
+                      onClick={() => onRegenerate?.(message.id)}
+                      className="w-full py-2.5 px-4 bg-gray-600/50 hover:bg-gray-600 text-gray-200 rounded-full transition-colors text-sm font-medium"
+                    >
+                      立即重新生成
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
 
             {displayArtifact && (
               <div
