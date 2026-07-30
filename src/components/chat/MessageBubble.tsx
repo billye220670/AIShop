@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { Globe, TriangleAlert, Copy, Check, FileText, FileDown, RefreshCw, MessageSquareQuote, ChevronDown, ChevronUp } from 'lucide-react';
 import type { ArtifactBlock } from '../../types';
 import hljs from 'highlight.js';
@@ -134,7 +137,8 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
       return (
         <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
             urlTransform={(url) => url}
             components={{
               code({ className, children, ...props }) {

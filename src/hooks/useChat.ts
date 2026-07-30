@@ -25,6 +25,45 @@ function getLastUsedModel(): string {
   return loadLastModel() || CHAT_MODELS[0].id;
 }
 
+// 智能清理过度使用的反引号：只保留真正的代码/技术内容
+function cleanExcessiveBackticks(content: string): string {
+  // 保护代码块（```），不处理
+  const codeBlocks: string[] = [];
+  let cleaned = content.replace(/```[\s\S]*?```/g, (match) => {
+    codeBlocks.push(match);
+    return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+  });
+
+  // 处理行内反引号：移除明显不应该是代码的内容
+  // 规则：如果反引号内容是中文为主的长句（>15字）或包含标点密集的描述性文本，则移除反引号
+  cleaned = cleaned.replace(/`([^`\n]{1,200})`/g, (match, inner) => {
+    // 保留：纯英文、短内容、包含特殊字符（代码特征）
+    if (
+      inner.length <= 15 ||
+      /^[a-zA-Z0-9_\-\.\/\\:]+$/.test(inner) || // 文件名、函数名、命令
+      /[<>{}[\]()=>$#]/.test(inner) || // 代码符号
+      /^[a-zA-Z]+\(/.test(inner) // 函数调用
+    ) {
+      return match; // 保留原始反引号
+    }
+
+    // 移除：中文长句、描述性文本
+    const chineseCount = (inner.match(/[一-龥]/g) || []).length;
+    if (chineseCount > 5 || inner.length > 30) {
+      return inner; // 移除反引号
+    }
+
+    return match; // 默认保留
+  });
+
+  // 恢复代码块
+  codeBlocks.forEach((block, i) => {
+    cleaned = cleaned.replace(`__CODE_BLOCK_${i}__`, block);
+  });
+
+  return cleaned;
+}
+
 function parseSuggestions(content: string): { text: string; suggestions: string[] } {
   // 格式1：完整标记对 <<<SUGGESTIONS>>>...<<<END_SUGGESTIONS>>>
   const fullRegex = /<<<SUGGESTIONS>>>\s*([\s\S]*?)\s*<<<END_SUGGESTIONS>>>/;
@@ -324,9 +363,10 @@ export function useChat() {
         updateActiveConversation(conv => {
           const updated = [...conv.messages];
           const lastIdx = updated.length - 1;
-          // 先去除 artifact 标记，再解析 suggestions
+          // 先去除 artifact 标记，再清理过度反引号，最后解析 suggestions
           const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
-          const { text, suggestions } = parseSuggestions(contentWithoutArtifact);
+          const cleanedContent = cleanExcessiveBackticks(contentWithoutArtifact);
+          const { text, suggestions } = parseSuggestions(cleanedContent);
           const artifact = parseArtifactFromContent(fullContent);
           updated[lastIdx] = {
             ...updated[lastIdx],
@@ -582,7 +622,8 @@ export function useChat() {
 
         // 流式完成：解析 suggestions/artifact
         const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
-        const { text, suggestions } = parseSuggestions(contentWithoutArtifact);
+        const cleanedContent = cleanExcessiveBackticks(contentWithoutArtifact);
+        const { text, suggestions } = parseSuggestions(cleanedContent);
         const artifact = parseArtifactFromContent(fullContent);
 
         updateActiveConversation(conv => {
@@ -757,7 +798,8 @@ export function useChat() {
 
         // 8. 流式完成：解析 suggestions/artifact
         const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
-        const { text, suggestions } = parseSuggestions(contentWithoutArtifact);
+        const cleanedContent = cleanExcessiveBackticks(contentWithoutArtifact);
+        const { text, suggestions } = parseSuggestions(cleanedContent);
         const artifact = parseArtifactFromContent(fullContent);
 
         updateActiveConversation(conv => {

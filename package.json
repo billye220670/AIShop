@@ -14,6 +14,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "highlight.js": "^11.11.1",
     "html2canvas": "^1.4.1",
+    "katex": "^0.18.1",
     "lucide-react": "^1.17.0",
     "officeparser": "^7.1.0",
     "pdfjs-dist": "^6.0.227",
@@ -21,7 +22,9 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "tailwindcss": "^4.3.0",
     "xlsx": "^0.18.5"
   },
