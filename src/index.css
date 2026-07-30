@@ -18,8 +18,9 @@
   --color-text-tertiary: rgb(114, 115, 138);
   --color-border: rgba(255, 255, 255, 0.1);
   --color-border-subtle: rgba(70, 61, 123, 0.5);
-  --color-scrollbar-thumb: #4b5563;
-  --color-scrollbar-hover: #6b7280;
+  /* 比 --color-bg-base #0d0a1a 亮一档 */
+  --color-scrollbar-thumb: rgb(60, 56, 82);
+  --color-scrollbar-hover: rgb(84, 78, 112);
   --color-code-bg: #161b22;
 }
 
@@ -40,8 +41,9 @@
   --color-text-tertiary: rgb(120, 120, 115);
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-subtle: rgba(42, 219, 92, 0.2);
-  --color-scrollbar-thumb: #3a3a38;
-  --color-scrollbar-hover: #4a4a47;
+  /* 比 --color-bg-base rgb(18,18,17) 亮一档，能看见但不抢视线 */
+  --color-scrollbar-thumb: rgb(64, 64, 60);
+  --color-scrollbar-hover: rgb(88, 88, 83);
   --color-code-bg: rgb(18, 18, 17);
 }
 
@@ -57,8 +59,16 @@ body,
 }
 
 /* 自定义滚动条 */
+/* 标准属性：Firefox 及新版 Chrome 在部分场景下优先于 -webkit- 伪元素，
+   不声明会回落到浏览器默认的近黑色 thumb */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar-thumb) transparent;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -113,6 +123,40 @@ button {
     transform: scale(0.75);
     box-shadow: 0 0 2px var(--color-accent);
   }
+}
+
+/* 长按会话项呼出上下文菜单：背景遮罩淡入 */
+@keyframes context-menu-overlay-in {
+  from {
+    opacity: 0;
+    -webkit-backdrop-filter: blur(0px);
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+}
+
+/* 被长按的会话项、弹出的上下文菜单：轻微放大 + 淡入 */
+@keyframes context-menu-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-menu-overlay {
+  animation: context-menu-overlay-in 0.18s ease-out forwards;
+}
+
+.context-menu-pop {
+  animation: context-menu-pop-in 0.16s ease-out forwards;
 }
 
 /* highlight.js 主题覆盖 - 确保代码块背景一致 */

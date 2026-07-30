@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CSSProperties } from 'react';
 
 export type ConfirmModalVariant = 'danger' | 'warning' | 'info';
@@ -79,10 +80,12 @@ export default function ConfirmModal({
     transform: shown ? 'scale(1)' : 'scale(0.95)',
   };
 
-  return (
+  // 挂到 body：侧边栏等祖先带 transform 会成为 fixed 的包含块，导致弹窗在抽屉内居中
+  return createPortal(
     <div
       className="fixed inset-0 z-[500] flex items-center justify-center bg-[var(--color-bg-base)]/60 backdrop-blur-sm"
       style={overlayStyle}
+      data-swipe-ignore
       onClick={onCancel}
       role="presentation"
     >
@@ -125,6 +128,7 @@ export default function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

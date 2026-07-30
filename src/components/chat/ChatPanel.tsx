@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 import type { Conversation, Message, FileAttachment, ChatFeatureSettings } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
@@ -58,7 +59,11 @@ export default function ChatPanel({
     containerRef: messagesContainerRef,
     contentRef: messagesContentRef,
     scrollToBottom,
+    isFarFromBottom,
   } = useStickToBottom<HTMLDivElement>();
+  const [isInputActive, setIsInputActive] = useState(false);
+  // 距底部超过一屏且输入框未激活时，露出“回到底部”按钮
+  const showScrollToBottom = isFarFromBottom && !isInputActive;
   const { activeArtifact, isArtifactGenerating, openArtifact, closeArtifact, startStreamingArtifact, updateStreamingCode, finishStreamingArtifact } = useArtifact();
   const [autoPreviewSignal, setAutoPreviewSignal] = useState(0);
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
@@ -191,8 +196,27 @@ export default function ChatPanel({
          </div>
         </div>
 
+        {/* 回到底部按钮 */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => scrollToBottom('smooth-long')}
+            aria-label="回到底部"
+            aria-hidden={!showScrollToBottom}
+            tabIndex={showScrollToBottom ? 0 : -1}
+            className={`absolute bottom-1 left-1/2 -translate-x-1/2 z-20 w-9 h-9 rounded-full bg-[var(--color-bg-elevated)] hover:bg-[var(--color-bg-hover)] border border-white/5 text-gray-300 shadow-lg flex items-center justify-center transition-all duration-200 ${
+              showScrollToBottom
+                ? 'opacity-100'
+                : 'opacity-0 pointer-events-none translate-y-1'
+            }`}
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
+        </div>
+
         {/* Input */}
         <ChatInput
+          onActiveChange={setIsInputActive}
           onSend={sendMessage}
           isLoading={isLoading}
           onStop={stopGeneration}

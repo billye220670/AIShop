@@ -17,15 +17,24 @@ export function useStickToBottom<T extends HTMLElement>(options?: {
   threshold?: number;
   /** 缓动系数，越大越快贴底 */
   ease?: number;
+  /**
+   * 判定“离底部很远”的距离，单位为容器可视高度的倍数。
+   * 1 = 距底部超过一个屏高，此时值得给用户一个“回到底部”的入口。
+   */
+  farScreens?: number;
 }) {
   const threshold = options?.threshold ?? 32;
   const ease = options?.ease ?? 0.28;
+  const farScreens = options?.farScreens ?? 1;
 
   const containerRef = useRef<T | null>(null);
-  const contentRef = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const pinnedRef = useRef(true);
   const rafRef = useRef<number | null>(null);
+  /** 本轮缓动是否允许长距离动画（用户主动点击回到底部） */
+  const animateLongRef = useRef(false);
   const [isPinned, setIsPinned] = useState(true);
+  const [isFarFromBottom, setIsFarFromBottom] = useState(false);
 
   const setPinned = useCallback((next: boolean) => {
     if (pinnedRef.current === next) return;
@@ -36,37 +45,64 @@ export function useStickToBottom<T extends HTMLElement>(options?: {
   const distanceFromBottom = (el: HTMLElement) =>
     el.scrollHeight - el.scrollTop - el.clientHeight;
 
-  /** 启动缓动循环，持续追当前的底部位置 */
-  const startFollow = useCallback(() => {
-    if (rafRef.current != null) return;
-    const step = () => {
-      rafRef.current = null;
-      const el = containerRef.current;
-      if (!el || !pinnedRef.current) return;
-      const target = el.scrollHeight - el.clientHeight;
-      const diff = target - el.scrollTop;
-      if (diff <= 0.5) {
-        // 已贴底，停止循环（下次内容增长会重新启动）
-        if (diff > 0) el.scrollTop = target;
-        return;
-      }
-      // 距离过大（切换会话、历史加载）直接跳，避免长距离滚动动画
-      el.scrollTop = diff > 1200 ? target : el.scrollTop + diff * ease;
+  /** 更新“离底部是否超过 farScreens 个屏高” */
+  const syncFar = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const far = distanceFromBottom(el) > el.clientHeight * farScreens;
+    setIsFarFromBottom(prev => (prev === far ? prev : far));
+  }, [farScreens]);
+
+  /**
+   * 启动缓动循环，持续追当前的底部位置
+   *
+   * animateLongDistance = true 时不走"距离过大直接跳"的捷径，
+   * 用于用户主动点击"回到底部"这类需要看到滚动过程的场景。
+   */
+  const startFollow = useCallback(
+    (animateLongDistance = false) => {
+      if (animateLongDistance) animateLongRef.current = true;
+      if (rafRef.current != null) return;
+      const step = () => {
+        rafRef.current = null;
+        const el = containerRef.current;
+        if (!el || !pinnedRef.current) {
+          animateLongRef.current = false;
+          return;
+        }
+        const target = el.scrollHeight - el.clientHeight;
+        const diff = target - el.scrollTop;
+        if (diff <= 0.5) {
+          // 已贴底，停止循环（下次内容增长会重新启动）
+          if (diff > 0) el.scrollTop = target;
+          animateLongRef.current = false;
+          return;
+        }
+        // 距离过大（切换会话、历史加载）直接跳，避免长距离滚动动画
+        if (diff > 1200 && !animateLongRef.current) {
+          el.scrollTop = target;
+        } else {
+          // 保证每帧至少推进一点，避免尾段无限趋近导致收尾拖沓
+          el.scrollTop += Math.max(diff * ease, Math.min(diff, 2));
+        }
+        rafRef.current = requestAnimationFrame(step);
+      };
       rafRef.current = requestAnimationFrame(step);
-    };
-    rafRef.current = requestAnimationFrame(step);
-  }, [ease]);
+    },
+    [ease]
+  );
 
   /** 立即贴底并恢复吸附（用于发送消息等主动场景） */
   const scrollToBottom = useCallback(
-    (behavior: 'auto' | 'smooth' = 'smooth') => {
+    (behavior: 'auto' | 'smooth' | 'smooth-long' = 'smooth') => {
       const el = containerRef.current;
       setPinned(true);
+      setIsFarFromBottom(false);
       if (!el) return;
       if (behavior === 'auto') {
         el.scrollTop = el.scrollHeight - el.clientHeight;
       } else {
-        startFollow();
+        startFollow(behavior === 'smooth-long');
       }
     },
     [setPinned, startFollow]
@@ -97,6 +133,7 @@ export function useStickToBottom<T extends HTMLElement>(options?: {
 
     // --- 恢复吸底：仅根据是否滚回底部 ---
     const onScroll = () => {
+      syncFar();
       if (distanceFromBottom(el) <= threshold) {
         if (!pinnedRef.current) {
           setPinned(true);
@@ -115,8 +152,11 @@ export function useStickToBottom<T extends HTMLElement>(options?: {
     const observed = contentRef.current ?? el;
     const ro = new ResizeObserver(() => {
       if (pinnedRef.current) startFollow();
+      syncFar();
     });
     ro.observe(observed);
+    if (observed !== el) ro.observe(el);
+    syncFar();
 
     return () => {
       el.removeEventListener('wheel', onWheel);
@@ -128,7 +168,7 @@ export function useStickToBottom<T extends HTMLElement>(options?: {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [setPinned, startFollow, threshold]);
+  }, [setPinned, startFollow, syncFar, threshold]);
 
-  return { containerRef, contentRef, isPinned, scrollToBottom };
+  return { containerRef, contentRef, isPinned, isFarFromBottom, scrollToBottom };
 }

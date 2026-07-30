@@ -3,6 +3,8 @@ import Sidebar, { SIDEBAR_WIDTH } from './Sidebar';
 import TopNavBar from './TopNavBar';
 import BottomNavBar from './BottomNavBar';
 import type { TabMode, Conversation, Model } from '../../types';
+import { useDrawerSwipe } from '../../hooks/useDrawerSwipe';
+import { haptic } from '../../utils/haptics';
 
 interface MainLayoutProps {
   activeTab: TabMode;
@@ -68,15 +70,34 @@ export default function MainLayout({
   // 冻结初始视口高度，防止键盘弹起时 dvh 变化导致整页收缩
   const [frozenHeight] = useState(() => window.innerHeight);
 
+  // 横向滑动手势：任意位置右滑拉出侧边栏、左滑收回
+  const { ref: swipeRef, dragging, dragOffset, shouldSuppressClick } = useDrawerSwipe({
+    width: SIDEBAR_WIDTH,
+    open: sidebarOpen,
+    onOpenChange: setSidebarOpen,
+    onSettle: () => haptic(),
+  });
+
+  // 拖动中用实时位移接管 transform / 遮罩透明度，松手后交还 CSS class
+  const progress = dragOffset === null ? (sidebarOpen ? 1 : 0) : dragOffset / SIDEBAR_WIDTH;
+  const transition = dragging ? 'none' : undefined;
+
   return (
     <div
+      ref={swipeRef}
       className="bg-[#121211] text-white overflow-hidden fixed inset-x-0 top-0"
       style={{ height: frozenHeight, touchAction: 'manipulation' }}
     >
       {/* 侧边栏 - 绝对定位左侧底层，平时收起在屏幕外 */}
       <div
-        className={`absolute top-0 left-0 bottom-0 z-0 transition-transform duration-250 ease-out bg-[#1e1e1c] ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        style={{ width: `${SIDEBAR_WIDTH}px` }}
+        className={`absolute top-0 left-0 bottom-0 z-0 transition-transform duration-250 ease-out bg-[#121211] ${
+          dragOffset === null ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full') : ''
+        }`}
+        style={{
+          width: `${SIDEBAR_WIDTH}px`,
+          transform: dragOffset === null ? undefined : `translateX(${dragOffset - SIDEBAR_WIDTH}px)`,
+          transition,
+        }}
       >
         <Sidebar
           conversations={conversations}
@@ -90,15 +111,27 @@ export default function MainLayout({
 
       {/* 内容区 - 全宽，translateX 推出，右侧被 overflow-hidden 裁剪 */}
       <div
-        className={`h-full flex flex-col relative z-10 transition-transform duration-250 ease-out ${sidebarOpen ? '' : 'translate-x-0'}`}
-        style={{ transform: sidebarOpen ? `translateX(${SIDEBAR_WIDTH}px)` : undefined }}
+        className="h-full flex flex-col relative z-10 transition-transform duration-250 ease-out"
+        style={{
+          transform: dragOffset !== null
+            ? `translateX(${dragOffset}px)`
+            : sidebarOpen ? `translateX(${SIDEBAR_WIDTH}px)` : undefined,
+          transition,
+        }}
         onFocus={handleFocusIn}
         onBlur={handleFocusOut}
       >
         {/* 侧边栏打开时主内容区变暗遮罩 */}
         <div
-          className={`absolute inset-0 bg-black/50 z-20 transition-opacity duration-250 ${sidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-          onClick={() => setSidebarOpen(false)}
+          className={`absolute inset-0 bg-black/50 z-20 transition-opacity duration-250 ${
+            progress > 0 ? 'pointer-events-auto' : 'pointer-events-none'
+          }`}
+          style={{ opacity: progress, transition }}
+          onClick={() => {
+            // 吞掉横滑手势结束时紧随的 click，否则刚拉开就被遮罩关掉
+            if (shouldSuppressClick()) return;
+            setSidebarOpen(false);
+          }}
         />
 
         {/* 顶部导航栏 */}

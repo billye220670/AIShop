@@ -142,6 +142,7 @@ export default function UsagePanel({ open, onClose }: UsagePanelProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       style={overlayStyle}
       onClick={onClose}
+      data-swipe-ignore
       role="presentation"
     >
       <div

@@ -14,6 +14,8 @@ interface ChatInputProps {
   onFeatureSettingsChange: (settings: ChatFeatureSettings) => void;
   webSearchEnabled?: boolean;
   onWebSearchEnabledChange?: (enabled: boolean) => void;
+  /** 输入框进入/退出激活（展开）态时通知父组件 */
+  onActiveChange?: (active: boolean) => void;
 }
 
 export default function ChatInput({
@@ -27,6 +29,7 @@ export default function ChatInput({
   onFeatureSettingsChange: _onFeatureSettingsChange,
   webSearchEnabled: _webSearchEnabled = false,
   onWebSearchEnabledChange: _onWebSearchEnabledChange,
+  onActiveChange,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
@@ -49,6 +52,11 @@ export default function ChatInput({
       });
     }
   }, [isFocused, hasContent]);
+
+  // 激活态（展开布局）同步给父组件，用于隐藏“回到底部”按钮等
+  useEffect(() => {
+    onActiveChange?.(isFocused || hasContent);
+  }, [isFocused, hasContent, onActiveChange]);
 
   const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
   const MAX_TOTAL_FILES = 5;
