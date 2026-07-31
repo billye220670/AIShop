@@ -274,26 +274,32 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
       }
       const processedContent = preprocessCitations(displayContent);
       return (
-        <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
+        <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeKatex]}
             urlTransform={(url) => url}
             components={{
-              code({ className, children, ...props }) {
+              code({ node, inline, className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || '');
                 const codeStr = String(children).replace(/\n$/, '');
-                // 有 language 标记视为代码块
+
+                // 行内代码：单反引号
+                if (inline) {
+                  return (
+                    <code className="bg-gray-700/40 px-1 py-0.5 rounded text-[0.9em]" {...props}>
+                      {children}
+                    </code>
+                  );
+                }
+
+                // 代码块：三反引号（有语言标识）
                 if (match) {
                   return <CodeBlock code={codeStr} language={match[1]} />;
                 }
-                // 没有 language 但被 pre 包裹的（无语言标注的代码块）
-                // react-markdown 对 fenced code block 总会加 className，这里处理行内代码
-                return (
-                  <code className="bg-gray-700/50 px-1.5 py-0.5 rounded text-sm" {...props}>
-                    {children}
-                  </code>
-                );
+
+                // 代码块：三反引号（无语言标识）
+                return <CodeBlock code={codeStr} />;
               },
               pre({ children }) {
                 // 如果子元素已经是 CodeBlock，直接返回，不再包裹 pre
