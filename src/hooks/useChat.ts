@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Message, MessageVersion, Conversation, FileAttachment, MessageContent, ChatFeatureSettings } from '../types';
 import { streamChat } from '../services/api';
 import { CHAT_MODELS } from '../config/models';
-import { BASE_SYSTEM_PROMPT, ARTIFACT_PROMPT } from '../config/prompts';
+import { BASE_SYSTEM_PROMPT, ARTIFACT_PROMPT, buildContextInfo } from '../config/prompts';
 import {
   parseArtifactFromContent,
   getDisplayContentWithoutArtifact,
@@ -23,6 +23,12 @@ import { searchWeb, formatSearchResultsForContext } from '../services/webSearch'
 
 function getLastUsedModel(): string {
   return loadLastModel() || CHAT_MODELS[0].id;
+}
+
+function buildSystemPrompt(artifactEnabled: boolean, modelId: string): string {
+  const base = artifactEnabled ? BASE_SYSTEM_PROMPT + '\n\n' + ARTIFACT_PROMPT : BASE_SYSTEM_PROMPT;
+  const modelName = CHAT_MODELS.find(m => m.id === modelId)?.name;
+  return buildContextInfo(modelName) + '\n\n' + base;
 }
 
 // 智能清理过度使用的反引号：只保留真正的代码/技术内容
@@ -320,9 +326,7 @@ export function useChat() {
 
         let fullContent = '';
         let artifactStreamStarted = false;
-        const systemPrompt = featureSettings.artifactEnabled
-          ? BASE_SYSTEM_PROMPT + '\n\n' + ARTIFACT_PROMPT
-          : BASE_SYSTEM_PROMPT;
+        const systemPrompt = buildSystemPrompt(featureSettings.artifactEnabled, selectedModel);
         for await (const chunk of streamChat(
           allMessages,
           selectedModel,
@@ -658,9 +662,7 @@ export function useChat() {
 
       let fullContent = '';
       try {
-        const systemPrompt = featureSettings.artifactEnabled
-          ? BASE_SYSTEM_PROMPT + '\n\n' + ARTIFACT_PROMPT
-          : BASE_SYSTEM_PROMPT;
+        const systemPrompt = buildSystemPrompt(featureSettings.artifactEnabled, conv.messages[msgIndex].model || selectedModel);
 
         for await (const chunk of streamChat(
           contextMessages,
@@ -840,9 +842,7 @@ export function useChat() {
 
       let fullContent = '';
       try {
-        const systemPrompt = featureSettings.artifactEnabled
-          ? BASE_SYSTEM_PROMPT + '\n\n' + ARTIFACT_PROMPT
-          : BASE_SYSTEM_PROMPT;
+        const systemPrompt = buildSystemPrompt(featureSettings.artifactEnabled, targetModelId);
 
         for await (const chunk of streamChat(
           contextMessages,

@@ -7,12 +7,13 @@
 export const BASE_SYSTEM_PROMPT = `回复格式要求：
 1. 使用自然的文本表达，不要过度使用反引号（\`）包裹普通文本
 2. 反引号仅用于：代码片段、函数名、文件名、命令等技术内容
-3. 数学公式使用 LaTeX 格式：
+3. 禁止用单个反引号把整段话、多行内容或示例配置包裹起来；如需展示多行示例，请使用三个反引号的代码块（\`\`\`），不要用行内反引号代替
+4. 数学公式使用 LaTeX 格式：
    - 行内公式：$公式内容$（例如：$E = mc^2$）
    - 独立公式块：$$公式内容$$（例如：$$\\int_0^1 x^2 dx$$）
    - 不要用反引号包裹数学公式
-4. 概念解释、普通强调等使用**加粗**而非反引号
-5. 保持段落自然换行，避免单行过长
+5. 概念解释、普通强调等使用**加粗**而非反引号
+6. 保持段落自然换行，避免单行过长
 
 在每次回复的最末尾，请用以下格式提供3-4个用户可能想继续探讨的方向（必须放在回复的最后，每个建议不超过15个字）：
 <<<SUGGESTIONS>>>
@@ -49,4 +50,43 @@ export const SYSTEM_PROMPTS = {
 
 export function getSystemPrompt(key: keyof typeof SYSTEM_PROMPTS = 'default'): string {
   return SYSTEM_PROMPTS[key];
+}
+
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/**
+ * 构建基础上下文信息块（时间、时区、语言、设备、当前模型），拼接到系统提示词最前面。
+ * 应用目前没有登录/用户资料体系，因此仅提供浏览器可获取的环境信息。
+ */
+export function buildContextInfo(modelName?: string): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())} ${WEEKDAYS[now.getDay()]}`;
+
+  let timeZone = '未知';
+  let utcOffset = '';
+  try {
+    const opts = Intl.DateTimeFormat().resolvedOptions();
+    timeZone = opts.timeZone || timeZone;
+    const offsetMin = -now.getTimezoneOffset();
+    const sign = offsetMin >= 0 ? '+' : '-';
+    utcOffset = `（UTC${sign}${Math.abs(offsetMin / 60)}）`;
+  } catch {
+    // Intl 不可用时忽略
+  }
+
+  const language = typeof navigator !== 'undefined' ? navigator.language : '未知';
+  const isMobile = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  const device = isMobile ? '移动设备' : '桌面设备';
+
+  const lines = [
+    '【基础信息（供参考，非用户主动提供，不要在回复中主动提及）】',
+    `当前时间：${dateStr}${utcOffset}，时区：${timeZone}`,
+    `用户语言偏好：${language}`,
+    `设备类型：${device}`,
+  ];
+  if (modelName) {
+    lines.push(`当前对话模型：${modelName}`);
+  }
+  return lines.join('\n');
 }
