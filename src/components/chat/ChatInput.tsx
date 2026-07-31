@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type ChangeEvent, type ClipboardEvent, type DragEvent } from 'react';
-import { Plus, Square, X, FileText, MessageSquareQuote, ArrowUp } from 'lucide-react';
+import { Plus, Square, X, FileText, MessageSquareQuote, ArrowUp, Globe } from 'lucide-react';
 import type { MessageContent, FileAttachment, Message, ChatFeatureSettings } from '../../types';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
 
@@ -27,8 +27,8 @@ export default function ChatInput({
   onRemoveQuote,
   featureSettings: _featureSettings,
   onFeatureSettingsChange: _onFeatureSettingsChange,
-  webSearchEnabled: _webSearchEnabled = false,
-  onWebSearchEnabledChange: _onWebSearchEnabledChange,
+  webSearchEnabled = false,
+  onWebSearchEnabledChange,
   onActiveChange,
 }: ChatInputProps) {
   const [text, setText] = useState('');
@@ -349,14 +349,31 @@ export default function ChatInput({
                 rows={2}
               />
               <div className="flex items-center justify-between px-2 pb-3">
-                {/* + 按钮 */}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-2 py-2 text-gray-400 hover:text-white transition-colors"
-                  title="上传文件"
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-1">
+                  {/* + 按钮 */}
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-2 py-2 text-gray-400 hover:text-white transition-colors"
+                    title="上传文件"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                  {/* 联网搜索开关 */}
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onWebSearchEnabledChange?.(!webSearchEnabled)}
+                    className={`p-2 rounded-full transition-colors ${
+                      webSearchEnabled ? 'bg-[var(--color-accent)]' : 'hover:bg-[var(--color-bg-hover)]'
+                    }`}
+                    title="全网搜索"
+                  >
+                    <Globe
+                      className={`w-5 h-5 ${webSearchEnabled ? '' : 'text-gray-400'}`}
+                      style={webSearchEnabled ? { color: 'var(--color-accent-foreground)' } : undefined}
+                    />
+                  </button>
+                </div>
                 <div className="flex items-center gap-2">
                   {/* Send button */}
                   {!isLoading && (
