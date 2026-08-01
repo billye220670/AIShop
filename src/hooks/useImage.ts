@@ -2,9 +2,17 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { ImageGenerationParams, ImageHistoryItem, PendingImageTask } from '../types';
 import { IMAGE_MODELS } from '../config/models';
 import { generateImage as apiGenerateImage } from '../services/imageApi';
+import {
+  listImageHistory,
+  putImageHistoryItem,
+  updateImageDimensions,
+  deleteImageHistoryItem,
+  clearImageHistory,
+  getBlob,
+  parseBlobRefUrl,
+} from '../db';
 
 const MODEL_KEY = 'aishop_image_model';
-const HISTORY_KEY = 'aishop_image_history';
 
 // ---------- 模型分组工具 ----------
 function isGptModel(id: string): boolean {
@@ -53,33 +61,7 @@ function saveModel(id: string): void {
     /* ignore */
   }
 }
-function loadHistory(): ImageHistoryItem[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((it): it is ImageHistoryItem => {
-      return (
-        it &&
-        typeof it.id === 'string' &&
-        Array.isArray(it.urls) &&
-        typeof it.prompt === 'string' &&
-        typeof it.model === 'string' &&
-        typeof it.timestamp === 'number'
-      );
-    });
-  } catch {
-    return [];
-  }
-}
-function saveHistory(list: ImageHistoryItem[]): void {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
-  } catch (e) {
-    console.error('Failed to save image history:', e);
-  }
-}
+// 历史已迁到 IndexedDB，见 db/imageHistoryRepo。这里只留模型选择这类小设置。
 
 // ---------- 图片压缩 ----------
 /**
@@ -140,7 +122,8 @@ export function compressImage(file: File): Promise<string> {
 // ---------- Hook ----------
 export function useImage() {
   const [selectedModel, setSelectedModelState] = useState<string>(() => loadModel());
-  const [history, setHistory] = useState<ImageHistoryItem[]>(() => loadHistory());
+  // 历史存在 IndexedDB 里，异步加载，所以初始为空
+  const [history, setHistory] = useState<ImageHistoryItem[]>([]);
 
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
 
@@ -154,10 +137,17 @@ export function useImage() {
   const [pendingTasks, setPendingTasks] = useState<PendingImageTask[]>([]);
   const controllersRef = useRef<Map<string, AbortController>>(new Map());
 
-  // 持久化
+  // 启动时从库里加载历史。
+  // 不再有「整体写回」的 effect——生成/删除时各自定向写库，
+  // 否则每次 state 变化都要把所有图片重新落一遍盘。
   useEffect(() => {
-    saveHistory(history);
-  }, [history]);
+    const load = () => {
+      void listImageHistory()
+        .then(setHistory)
+        .catch(e => console.error('[useImage] 加载历史失败', e));
+    };
+    load();
+  }, []);
 
   // 回填历史数据中缺失的 width/height（用于瀑布流布局）
   useEffect(() => {
@@ -172,8 +162,20 @@ export function useImage() {
         const firstUrl = item.urls[0];
         if (!firstUrl) continue;
         try {
-          const dims = await getImageDimensions(firstUrl);
+          // blob 入库时已经量过尺寸了，优先直接读，省一次图片解码。
+          // getImageDimensions 也认不了 aishop-blob: 这种自定义协议。
+          const blobId = parseBlobRefUrl(firstUrl);
+          const dims = blobId
+            ? await getBlob(blobId).then(rec =>
+                rec?.width && rec.height
+                  ? { width: rec.width, height: rec.height }
+                  : null
+              )
+            : await getImageDimensions(firstUrl);
+          if (!dims) continue;
           updates.push({ id: item.id, width: dims.width, height: dims.height });
+          // 一并写回库，下次启动就不用再算
+          void updateImageDimensions(item.id, dims.width, dims.height);
         } catch {
           // 忽略加载失败的图片
         }
@@ -324,6 +326,13 @@ export function useImage() {
       };
       // 追加到末尾：保持与 loading 卡片在原位置一致，避免完成后图片跳到最前
       setHistory(prev => [...prev, historyItem]);
+
+      // 落库。base64 会被换成 blob 引用，所以写完要把 state 里那条也换掉，
+      // 否则内存里一直挂着一份完整 base64（一张 2K 图就是几 MB）。
+      void putImageHistoryItem(historyItem)
+        .then(listImageHistory)
+        .then(setHistory)
+        .catch(e => console.error('[useImage] 保存历史失败', e));
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         // 检查是用户手动取消还是超时
@@ -405,10 +414,16 @@ export function useImage() {
   // ---------- 历史 ----------
   const deleteHistoryItem = useCallback((id: string) => {
     setHistory(prev => prev.filter(it => it.id !== id));
+    void deleteImageHistoryItem(id).catch(e =>
+      console.error('[useImage] 删除历史失败', e)
+    );
   }, []);
 
   const clearHistory = useCallback(() => {
     setHistory([]);
+    void clearImageHistory().catch(e =>
+      console.error('[useImage] 清空历史失败', e)
+    );
   }, []);
 
   return {

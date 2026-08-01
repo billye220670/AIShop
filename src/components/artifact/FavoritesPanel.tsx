@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Star, X, ArrowLeft, Loader2, Pencil, Trash2 } from 'lucide-react';
-import type { FavoriteArtifactData } from '../../services/storage';
+import type { FavoriteArtifactData } from '../../db';
 import { haptic } from '../../utils/haptics';
 import PromptModal from '../common/PromptModal';
 import ConfirmModal from '../common/ConfirmModal';
+import BlobImage from '../common/BlobImage';
 
 interface FavoritesPanelProps {
   favorites: FavoriteArtifactData[];
@@ -207,7 +208,8 @@ export default function FavoritesPanel({ favorites, onRemoveFavorite, onRenameFa
                   >
                     {/* 缩略图 - 1:1 */}
                     <div className="aspect-square overflow-hidden bg-gray-800 pointer-events-none">
-                      <img
+                      {/* 缩略图存在 IndexedDB 里，走 BlobImage 解析 aishop-blob: 地址 */}
+                      <BlobImage
                         src={item.thumbnail}
                         alt={item.artifact.title}
                         className="w-full h-full object-cover"

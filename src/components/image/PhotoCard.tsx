@@ -21,6 +21,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { PhotoItem } from './MasonryPhotoWall';
+import { useBlobUrl } from '../../hooks/useBlobUrl';
 
 /* ============ 类型 ============ */
 
@@ -82,8 +83,13 @@ export default function PhotoCard({
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const thumbnailUrl = getThumbnailUrl(item);
-  const originalUrl = getImageUrl(item);
+  // 图片存在 IndexedDB 里时地址是 aishop-blob:<id>，需要换成 object URL。
+  // useBlobUrl 对普通 http 链接原样返回，所以两种来源都能直接套。
+  //
+  // 解析中返回 undefined，此时不能给 <img> 一个空 src——那会立刻触发 onError
+  // 把卡片判成加载失败。下面用 thumbnailUrl 是否存在来决定渲不渲染 <img>。
+  const thumbnailUrl = useBlobUrl(getThumbnailUrl(item));
+  const originalUrl = useBlobUrl(getImageUrl(item));
   const prompt = (item.prompt as string) || '';
   const model = (item.model as string) || '';
 
@@ -124,7 +130,8 @@ export default function PhotoCard({
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
-      const url = originalUrl;
+      // 还没解析出地址就不启动拖拽
+      const url = originalUrl ?? '';
       dragRef.current = { active: false, startX: e.clientX, startY: e.clientY, url, nativeFired: false };
 
       const onWindowMove = (ev: MouseEvent) => {
@@ -167,12 +174,12 @@ export default function PhotoCard({
       onMouseDown={handleMouseDown}
       className={`relative group overflow-hidden bg-gray-800 cursor-grab active:cursor-grabbing select-none w-full h-full ${className}`}
     >
-      {/* 骨架屏/占位背景色 */}
-      {!loaded && !error && (
+      {/* 骨架屏/占位背景色。thumbnailUrl 为空表示还在从库里取地址，也算加载中 */}
+      {(!loaded || !thumbnailUrl) && !error && (
         <div className="absolute inset-0 bg-gray-800 animate-pulse" />
       )}
 
-      {!error && (
+      {!error && thumbnailUrl && (
         <img
           ref={imgRef}
           src={thumbnailUrl}
@@ -281,7 +288,7 @@ export default function PhotoCard({
           }}
         >
           <img
-            src={thumbnailUrl}
+            src={thumbnailUrl ?? undefined}
             alt="drag"
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             draggable={false}

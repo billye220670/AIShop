@@ -16,6 +16,7 @@ import type { ImageHistoryItem, PendingImageTask } from '../../types';
 import MasonryPhotoWall from './MasonryPhotoWall';
 import type { PhotoItem } from './MasonryPhotoWall';
 import PhotoCard, { LoadingCard, ErrorCard } from './PhotoCard';
+import { getBlob, parseBlobRefUrl } from '../../db';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB 宽松上限，防止拖入超大文件卡死浏览器
 
@@ -55,16 +56,39 @@ function getModelLabel(modelId: string): string {
   return IMAGE_MODELS.find(m => m.id === modelId)?.name || modelId;
 }
 
-function triggerDownload(url: string, prompt: string, timestamp: number): void {
-  const a = document.createElement('a');
-  a.href = url;
+/**
+ * 触发下载。
+ *
+ * 图片存在 IndexedDB 里时 url 是 aishop-blob:<id>，浏览器不认这个协议，
+ * 需要先取出 blob 建一个临时 object URL。用完立刻 revoke——这里是一次性
+ * 下载，不像渲染那样需要长期持有。
+ */
+async function triggerDownload(url: string, prompt: string, timestamp: number): Promise<void> {
   const safeName = prompt.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || 'image';
-  a.download = `${safeName}_${timestamp}.png`;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  const blobId = parseBlobRefUrl(url);
+  let href = url;
+  let temporary = false;
+
+  if (blobId) {
+    const record = await getBlob(blobId);
+    if (!record) return;
+    href = URL.createObjectURL(record.blob);
+    temporary = true;
+  }
+
+  try {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = `${safeName}_${timestamp}.png`;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } finally {
+    // 延后 revoke：立刻撤销可能赶在浏览器真正开始读取之前，下载会失败
+    if (temporary) setTimeout(() => URL.revokeObjectURL(href), 60_000);
+  }
 }
 
 /* ============ FloatingSelect 通用浮动面板子组件 ============ */
@@ -605,7 +629,9 @@ export default function ImagePanel() {
   };
 
   const handleDownload = (url: string, p: string, ts: number) => {
-    triggerDownload(url, p, ts);
+    void triggerDownload(url, p, ts).catch(e =>
+      console.error('[ImagePanel] 下载失败', e)
+    );
   };
 
   // 将本地图片 URL 转为 File 并添加为参考图
@@ -616,10 +642,17 @@ export default function ImagePanel() {
     }
     setUploadError(null);
     try {
-      let file: File;
-      const resp = await fetch(url);
-      const blob = await resp.blob();
-      file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
+      // 库里的图片走 aishop-blob:<id>，fetch 认不了这个协议，直接取 blob
+      const blobId = parseBlobRefUrl(url);
+      let blob: Blob;
+      if (blobId) {
+        const record = await getBlob(blobId);
+        if (!record) throw new Error('图片不存在');
+        blob = record.blob;
+      } else {
+        blob = await (await fetch(url)).blob();
+      }
+      const file = new File([blob], 'reference.png', { type: blob.type || 'image/png' });
       const dt = new DataTransfer();
       dt.items.add(file);
       await addImages(dt.files);

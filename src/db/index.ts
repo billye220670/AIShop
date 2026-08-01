@@ -79,3 +79,19 @@ export {
 
 export { searchMessages, tokenize } from './retrievalRepo';
 export type { SearchHit } from './retrievalRepo';
+
+export {
+  listImageHistory,
+  putImageHistoryItem,
+  updateImageDimensions,
+  deleteImageHistoryItem,
+  clearImageHistory,
+} from './imageHistoryRepo';
+
+export {
+  listFavorites,
+  addFavorite,
+  removeFavorite,
+  renameFavorite,
+} from './favoriteRepo';
+export type { FavoriteArtifactData } from './favoriteRepo';

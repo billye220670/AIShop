@@ -4,8 +4,6 @@
  * 会话与消息已迁到 IndexedDB（见 services/conversationStore 与 db/），
  * 这里只留首屏绘制期间就要读的东西——改成异步会闪一下。
  */
-import type { ArtifactBlock } from '../types';
-
 const MODEL_STORAGE_KEY = 'aishop_last_model';
 const WEB_SEARCH_STORAGE_KEY = 'aishop_web_search_enabled';
 
@@ -45,27 +43,4 @@ export function saveTheme(themeId: string): void {
   localStorage.setItem('aishop_theme', themeId);
 }
 
-const FAVORITE_ARTIFACTS_KEY = 'aishop_favorite_artifacts';
-
-export interface FavoriteArtifactData {
-  artifact: ArtifactBlock;
-  thumbnail: string; // base64 data URL (1:1 正方形 JPEG)
-  favoritedAt: number;
-}
-
-export function loadFavoriteArtifacts(): FavoriteArtifactData[] {
-  try {
-    const data = localStorage.getItem(FAVORITE_ARTIFACTS_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveFavoriteArtifacts(artifacts: FavoriteArtifactData[]): void {
-  try {
-    localStorage.setItem(FAVORITE_ARTIFACTS_KEY, JSON.stringify(artifacts));
-  } catch (e) {
-    console.error('Failed to save favorite artifacts:', e);
-  }
-}
+// Artifact 收藏已迁到 IndexedDB，见 db/favoriteRepo。
