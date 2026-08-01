@@ -281,30 +281,26 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             rehypePlugins={[rehypeKatex]}
             urlTransform={(url) => url}
             components={{
-              code({ node, inline, className, children, ...props }) {
-                const match = /language-(\w+)/.exec(className || '');
-                const codeStr = String(children).replace(/\n$/, '');
-
-                // 行内代码：单反引号
-                if (inline) {
-                  return (
-                    <code className="bg-gray-700/40 px-1 py-0.5 rounded text-[0.9em]" {...props}>
-                      {children}
-                    </code>
-                  );
-                }
-
-                // 代码块：三反引号（有语言标识）
-                if (match) {
-                  return <CodeBlock code={codeStr} language={match[1]} />;
-                }
-
-                // 代码块：三反引号（无语言标识）
-                return <CodeBlock code={codeStr} />;
+              // react-markdown v10 起 code 不再收 inline prop，只能靠有没有
+              // pre 父节点来区分：行内代码没有 pre，代码块一定有。
+              // 所以代码块统一在 pre 里处理，code 只负责行内。
+              code({ children }) {
+                // 不展开其余 props：里面带着 react-markdown 的 node 字段，
+                // 传到 DOM 上会触发 React 未知属性警告
+                return (
+                  <code className="bg-gray-700/40 px-1 py-0.5 rounded text-[0.9em]">
+                    {children}
+                  </code>
+                );
               },
               pre({ children }) {
-                // 如果子元素已经是 CodeBlock，直接返回，不再包裹 pre
-                return <>{children}</>;
+                // pre 的子节点是 <code>，语言标识挂在它的 className 上
+                const codeEl = Array.isArray(children) ? children[0] : children;
+                const props = (codeEl as { props?: { className?: string; children?: unknown } })
+                  ?.props;
+                const match = /language-(\w+)/.exec(props?.className || '');
+                const codeStr = String(props?.children ?? '').replace(/\n$/, '');
+                return <CodeBlock code={codeStr} language={match?.[1]} />;
               },
               a({ href, children }) {
                 // 引用标识：cite:N 格式 → 渲染为圆形数字按钮
