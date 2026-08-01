@@ -4,6 +4,7 @@ import ChatPanel from './components/chat/ChatPanel';
 import ImagePanel from './components/image/ImagePanel';
 import SettingsPanel from './components/settings/SettingsPanel';
 import FavoritesPanel from './components/artifact/FavoritesPanel';
+import Toast from './components/common/Toast';
 import { useChat } from './hooks/useChat';
 import { useFavoriteArtifacts } from './hooks/useFavoriteArtifacts';
 import { CHAT_MODELS } from './config/models';
@@ -27,6 +28,24 @@ function App() {
   );
   const conversationTitle = activeConversation?.title ?? '';
 
+  // 顶栏「立即压缩」的结果反馈：toast + 点击「查看」跳到对应摘要面板
+  const [compactToast, setCompactToast] = useState<{ message: string; type: 'success' | 'error'; segmentId?: string } | null>(null);
+  const [openSegmentIdRequest, setOpenSegmentIdRequest] = useState<string | null>(null);
+
+  const handleCompactActive = async () => {
+    if (!chat.activeConversationId) return;
+    const segment = await chat.compactConversation(chat.activeConversationId);
+    if (segment) {
+      setCompactToast({
+        message: `已压缩 ${segment.messageCount} 条消息`,
+        type: 'success',
+        segmentId: segment.id,
+      });
+    } else {
+      setCompactToast({ message: '暂无可压缩内容', type: 'error' });
+    }
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'chat':
@@ -49,6 +68,10 @@ function App() {
             onWebSearchEnabledChange={chat.setWebSearchEnabled}
             isFavorite={chat.streamingArtifact ? false : (() => { const msgs = chat.messages; for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].artifact) return isFavorite(msgs[i].artifact!.id); } return false; })()}
             onToggleFavorite={(thumbnail) => { const msgs = chat.messages; for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].artifact) { toggleFavorite(msgs[i].artifact!, thumbnail); return; } } }}
+            segments={chat.segments}
+            onUpdateSegment={(segmentId, summary) => { if (chat.activeConversationId) chat.updateSegment(chat.activeConversationId, segmentId, summary); }}
+            openSegmentIdRequest={openSegmentIdRequest}
+            onOpenSegmentIdRequestHandled={() => setOpenSegmentIdRequest(null)}
           />
         );
       case 'image':
@@ -75,6 +98,14 @@ function App() {
         onDeleteConversations={chat.deleteConversations}
         onToggleConversationFavorite={chat.toggleConversationFavorite}
         onRenameConversation={chat.renameConversation}
+        realUsage={activeTab === 'chat' ? chat.realUsageTotals : undefined}
+        contextLimit={activeTab === 'chat' ? chat.contextUsage.limit : undefined}
+        isCompacting={chat.isCompacting}
+        isAwaitingUsage={activeTab === 'chat' ? chat.isLoading : false}
+        onCompactActive={handleCompactActive}
+        segments={activeTab === 'chat' ? chat.segments : undefined}
+        onOpenSegment={setOpenSegmentIdRequest}
+        onDeleteSegment={(segmentId) => { if (chat.activeConversationId) chat.revertSegment(chat.activeConversationId, segmentId); }}
         models={activeTab === 'chat' ? CHAT_MODELS : undefined}
         selectedModel={activeTab === 'chat' ? (activeConversation?.selectedModel || CHAT_MODELS[0].id) : undefined}
         onModelChange={activeTab === 'chat' ? chat.setSelectedModel : undefined}
@@ -85,6 +116,19 @@ function App() {
       >
         {renderContent()}
       </MainLayout>
+      {compactToast && (
+        <Toast
+          message={compactToast.message}
+          type={compactToast.type}
+          duration={4000}
+          onClose={() => setCompactToast(null)}
+          action={
+            compactToast.segmentId
+              ? { label: '查看', onClick: () => setOpenSegmentIdRequest(compactToast.segmentId!) }
+              : undefined
+          }
+        />
+      )}
     </>
   );
 }

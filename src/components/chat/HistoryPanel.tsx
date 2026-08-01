@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X, MoreVertical, Download, Pencil, Trash2 } from 'lucide-react';
 import PinyinMatch from 'pinyin-match';
 import type { Conversation } from '../../types';
+import { hasAnyMessage, lastMessagePreviewOf } from '../../utils/conversationView';
 import ConfirmModal from '../common/ConfirmModal';
 
 interface HistoryPanelProps {
@@ -55,7 +56,8 @@ export default function HistoryPanel({
   const filteredConversations = useMemo(() => {
     if (!conversations) return [];
     // 过滤掉没有消息的空会话（无论标题是什么）
-    const nonEmpty = conversations.filter(conv => conv.messages && conv.messages.length > 0);
+    // 消息按需加载，未打开过的会话 messages 为空，不能按长度判空
+    const nonEmpty = conversations.filter(conv => hasAnyMessage(conv));
     const keyword = historySearch.trim();
     if (!keyword) return nonEmpty;
     return nonEmpty.filter(conv => {
@@ -91,14 +93,7 @@ export default function HistoryPanel({
     return groups.filter(g => g.items.length > 0);
   }, [filteredConversations]);
 
-  // 获取会话最后消息预览
-  const getLastMessagePreview = (conv: Conversation): string => {
-    const lastMsg = conv.messages[conv.messages.length - 1];
-    if (!lastMsg) return '';
-    if (typeof lastMsg.content === 'string') return lastMsg.content;
-    const textPart = lastMsg.content.find(p => p.type === 'text');
-    return textPart?.text || '[图片]';
-  };
+  const getLastMessagePreview = lastMessagePreviewOf;
 
   // 导出会话为 JSON
   const exportConversation = (conv: Conversation) => {

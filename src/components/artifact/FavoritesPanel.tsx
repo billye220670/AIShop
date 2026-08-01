@@ -152,8 +152,8 @@ export default function FavoritesPanel({ favorites, onRemoveFavorite, onRenameFa
     <>
       <div className="flex flex-col h-full bg-[var(--color-bg-base)] overflow-hidden">
         {/* 顶部标题 */}
-        <div className="px-4 py-3 border-b border-gray-700/50 bg-[var(--color-bg-primary)]">
-          <h2 className="text-white font-medium text-sm">Artifact 收藏</h2>
+        <div className="px-4 py-3 bg-[var(--color-bg-base)]">
+          <h2 className="text-white font-medium text-lg">我的Artifact</h2>
         </div>
 
         {/* 长按呼出上下文菜单时的背景模糊遮罩 */}

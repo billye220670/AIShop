@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { MessageSquare, Image as ImageIcon, Film, Eye, EyeOff, Check } from 'lucide-react';
-import { settingsService } from '../../services/settingsService';
-import type { ProviderConfig } from '../../services/settingsService';
+import { settingsService, DEFAULT_COMPACT_SETTINGS } from '../../services/settingsService';
+import type { ProviderConfig, CompactSettings } from '../../services/settingsService';
 import { THEMES } from '../../config/themes';
 import { loadTheme, saveTheme } from '../../services/storage';
+import { CHAT_MODELS } from '../../config/models';
 
-type SettingsTab = 'api' | 'appearance';
+type SettingsTab = 'api' | 'context' | 'appearance';
 
 const PROVIDER_OPTIONS: Record<string, { value: string; label: string }[]> = {
   default: [
@@ -39,6 +40,10 @@ export default function SettingsPanel() {
   // 主题状态
   const [selectedTheme, setSelectedTheme] = useState<string>('purple');
 
+  // 上下文压缩设置
+  const [compact, setCompact] = useState<CompactSettings>(DEFAULT_COMPACT_SETTINGS);
+  const [autoCompactEnabled, setAutoCompactEnabled] = useState(true);
+
   // 加载设置
   useEffect(() => {
     settingsService.getAllSettings().then(settings => {
@@ -47,7 +52,34 @@ export default function SettingsPanel() {
     });
     const theme = loadTheme();
     setSelectedTheme(theme);
+    setCompact(settingsService.getCompactSettings());
+    try {
+      const raw = localStorage.getItem('chat-feature-settings');
+      if (raw) setAutoCompactEnabled(JSON.parse(raw).autoCompactEnabled ?? true);
+    } catch { /* 用默认值 */ }
   }, []);
+
+  const handleCompactChange = (patch: Partial<CompactSettings>) => {
+    setCompact(prev => ({ ...prev, ...patch }));
+    settingsService.setCompactSettings(patch);
+    window.dispatchEvent(new CustomEvent('aishop:feature-settings-changed'));
+  };
+
+  // 自动压缩开关存在 featureSettings 里（useChat 消费），这里直接改同一个 key
+  const handleAutoCompactToggle = () => {
+    const next = !autoCompactEnabled;
+    setAutoCompactEnabled(next);
+    try {
+      const raw = localStorage.getItem('chat-feature-settings');
+      const parsed = raw ? JSON.parse(raw) : {};
+      localStorage.setItem(
+        'chat-feature-settings',
+        JSON.stringify({ ...parsed, autoCompactEnabled: next })
+      );
+      // useChat 把 featureSettings 存在 state 里，需要显式通知它重读
+      window.dispatchEvent(new CustomEvent('aishop:feature-settings-changed'));
+    } catch { /* ignore */ }
+  };
 
   // 实时切换主题并自动保存
   const handleThemeChange = (themeId: string) => {
@@ -70,6 +102,7 @@ export default function SettingsPanel() {
 
   const TABS: { key: SettingsTab; label: string }[] = [
     { key: 'api', label: 'API 配置' },
+    { key: 'context', label: '上下文' },
     { key: 'appearance', label: '外观' },
   ];
 
@@ -152,6 +185,103 @@ export default function SettingsPanel() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {activeSettingsTab === 'context' && (
+            <div className="space-y-6">
+              <p className="text-xs text-gray-400 leading-relaxed">
+                对话变长后，较早的消息会被压缩成结构化摘要再发给模型，以此控制成本和延迟。
+                原文始终保留在本地，随时可以查看或恢复。
+              </p>
+
+              {/* 自动压缩开关 */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-white">自动压缩</div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    接近上下文上限时自动执行，不打断输入
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoCompactEnabled}
+                  aria-label="自动压缩"
+                  onClick={handleAutoCompactToggle}
+                  className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${
+                    autoCompactEnabled ? 'bg-[var(--color-accent)]' : 'bg-white/15'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                      autoCompactEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* 压缩模型 */}
+              <div className="space-y-2">
+                <label htmlFor="compact-model" className="block text-sm font-medium text-white">
+                  压缩模型
+                </label>
+                <select
+                  id="compact-model"
+                  value={compact.model}
+                  onChange={e => handleCompactChange({ model: e.target.value })}
+                  className="w-full bg-white/5 border border-[var(--color-border)] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[var(--color-accent)] focus:outline-none transition-colors appearance-none cursor-pointer"
+                >
+                  {CHAT_MODELS.map(m => (
+                    <option key={m.id} value={m.id} className="bg-[var(--color-bg-primary)] text-white">
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500">
+                  摘要质量取决于此模型。小模型足够便宜，但长对话下可能丢细节。
+                </p>
+              </div>
+
+              {/* 触发阈值 */}
+              <div className="space-y-2">
+                <label htmlFor="compact-threshold" className="block text-sm font-medium text-white">
+                  触发阈值：{Math.round(compact.threshold * 100)}%
+                </label>
+                <input
+                  id="compact-threshold"
+                  type="range"
+                  min={30}
+                  max={90}
+                  step={5}
+                  value={Math.round(compact.threshold * 100)}
+                  onChange={e => handleCompactChange({ threshold: Number(e.target.value) / 100 })}
+                  className="w-full accent-[var(--color-accent)]"
+                />
+                <p className="text-xs text-gray-500">
+                  压缩会改写请求前缀、使缓存命中失效，所以阈值不宜太低——攒到较高水位一次压掉一大段更划算。
+                </p>
+              </div>
+
+              {/* 热窗口 */}
+              <div className="space-y-2">
+                <label htmlFor="compact-hot-window" className="block text-sm font-medium text-white">
+                  保留最近消息：{compact.hotWindowSize} 条
+                </label>
+                <input
+                  id="compact-hot-window"
+                  type="range"
+                  min={4}
+                  max={40}
+                  step={2}
+                  value={compact.hotWindowSize}
+                  onChange={e => handleCompactChange({ hotWindowSize: Number(e.target.value) })}
+                  className="w-full accent-[var(--color-accent)]"
+                />
+                <p className="text-xs text-gray-500">
+                  这些消息永远逐字发送，不会被压缩。
+                </p>
+              </div>
             </div>
           )}
 

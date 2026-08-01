@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Message, MessageVersion, Conversation, FileAttachment, MessageContent, ChatFeatureSettings } from '../types';
+import type { Message, MessageVersion, Conversation, FileAttachment, MessageContent, ChatFeatureSettings, ContextSegment, ContextSummary, TokenUsage } from '../types';
 import { streamChat } from '../services/api';
 import { CHAT_MODELS } from '../config/models';
 import { BASE_SYSTEM_PROMPT, ARTIFACT_PROMPT, buildContextInfo } from '../config/prompts';
@@ -10,16 +10,33 @@ import {
   extractStreamingArtifact,
 } from './useArtifact';
 import {
-  loadConversations,
-  saveConversations,
-  createConversation,
   saveLastModel,
   loadLastModel,
   saveWebSearchEnabled,
   loadWebSearchEnabled,
 } from '../services/storage';
+import {
+  loadConversationList,
+  createAndPersistConversation,
+  hydrateConversation,
+  loadOlderMessages,
+  persistConversation,
+  flushPendingWrites,
+} from '../services/conversationStore';
+import {
+  deleteConversation as dbDeleteConversation,
+  newConversationId,
+  getAllMessages,
+} from '../db';
 import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
+import { settingsService } from '../services/settingsService';
+import { compactMessages } from '../services/contextCompactor';
+import { buildApiMessages } from '../utils/buildApiMessages';
+import { planCompaction, getContextUsage, isCompactionViable } from '../utils/compactPlan';
+import { estimateMessagesTokens, estimateSummaryTokens, sumRealUsage } from '../utils/tokenEstimate';
+import { migrateSummary } from '../utils/contextSummary';
+import { messageCountOf } from '../utils/conversationView';
 
 function getLastUsedModel(): string {
   return loadLastModel() || CHAT_MODELS[0].id;
@@ -130,42 +147,172 @@ function getDisplayContent(content: string): string {
 }
 
 export function useChat() {
-  const [conversations, setConversations] = useState<Conversation[]>(() => {
-    const saved = loadConversations();
-    if (saved.length === 0) {
-      const initial = createConversation(getLastUsedModel());
-      return [initial];
-    }
-    return saved;
-  });
-  const [activeId, setActiveId] = useState<string>(() => {
-    const saved = loadConversations();
-    if (saved.length > 0) return saved[0].id;
-    return conversations[0].id;
-  });
+  // IndexedDB 是异步的，所以初始为空，由下面的启动 effect 填充。
+  // 期间 activeConversation 为 undefined，各处已有 ?. 兜底。
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string>('');
+  const [isBooting, setIsBooting] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [webSearchEnabled, setWebSearchEnabledState] = useState<boolean>(() => loadWebSearchEnabled());
   const [streamingArtifact, setStreamingArtifact] = useState<{ title: string; code: string } | null>(null);
   const [featureSettings, setFeatureSettings] = useState<ChatFeatureSettings>(() => {
     const saved = localStorage.getItem('chat-feature-settings');
-    return saved ? JSON.parse(saved) : { artifactEnabled: true };
+    const parsed = saved ? JSON.parse(saved) : {};
+    return {
+      artifactEnabled: parsed.artifactEnabled ?? true,
+      autoCompactEnabled: parsed.autoCompactEnabled ?? true,
+    };
   });
+  const [compactSettings, setCompactSettingsState] = useState(() =>
+    settingsService.getCompactSettings()
+  );
+  const [compactingId, setCompactingId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const activeConversation = conversations.find(c => c.id === activeId) || conversations[0];
   const messages = activeConversation?.messages || [];
   const selectedModel = activeConversation?.selectedModel || CHAT_MODELS[0].id;
 
-  // 持久化到 localStorage
+  // 供 async 回调读取最新会话，避免把 conversations 放进依赖导致回调频繁重建
+  const conversationsRef = useRef(conversations);
+  /** 上一次落盘的版本，用于 diff 出真正变化的消息 */
+  const persistedRef = useRef<Map<string, Conversation>>(new Map());
+
+  /**
+   * 启动：读会话列表（只含元数据），并停在一个空白新会话上。
+   *
+   * 刻意不恢复上次打开的会话——每次进来都是干净的新对话。历史会话不加载消息，
+   * 需要时从侧栏点进去再按需读。
+   *
+   * 复用已有的空会话而不是无脑新建，否则反复启动会攒下一堆空记录。
+   */
   useEffect(() => {
-    saveConversations(conversations);
-  }, [conversations]);
+    let cancelled = false;
+    (async () => {
+      try {
+        let list = await loadConversationList();
+        if (cancelled) return;
+
+        // 列表按 lastMessageAt 倒序，空会话的 lastMessageAt 就是它的创建时间，
+        // 所以真有空会话的话它就在最前面。
+        const reusable = list.find(c => messageCountOf(c) === 0);
+        let activeConv = reusable;
+        if (!activeConv) {
+          activeConv = await createAndPersistConversation(getLastUsedModel());
+          if (cancelled) return;
+          list = [activeConv, ...list];
+        }
+        // 空会话没有消息可读，直接标记为已加载，省掉一次查库
+        const activeId = activeConv.id;
+        list = list.map(c =>
+          c.id === activeId
+            ? { ...c, messages: [], segments: [], hydrated: true, hasMoreMessages: false }
+            : c
+        );
+
+        // 记下初始快照，避免启动后立刻把刚读出来的内容又整体写回一遍
+        persistedRef.current = new Map(list.map(c => [c.id, c]));
+        conversationsRef.current = list;
+        setConversations(list);
+        setActiveId(activeId);
+        // 界面已经可用，先解除 booting 再做补标题这类后台收尾，
+        // 否则持久化 effect 会一直停摆。
+        setIsBooting(false);
+
+        // 补齐漏掉的标题。标题生成本来挂在「离开会话」上，但刷新页面不经过
+        // switchConversation，而刷新又直接进新会话——刚聊完的那个会话再也不会
+        // 被「离开」一次，标题会永久卡在「新对话」。这里扫一遍补上。
+        const needTitle = list.filter(
+          c => !c.isRenamed && c.title === '新对话' && messageCountOf(c) > 0
+        );
+        for (const conv of needTitle) {
+          if (cancelled) return;
+          try {
+            // 历史会话的消息此时还没加载，单独取
+            const msgs = conv.messages.length
+              ? conv.messages
+              : await getAllMessages(conv.id);
+            if (!msgs.length) continue;
+            const title = await generateTitle(
+              msgs.map(m => ({ role: m.role, content: m.content }))
+            );
+            if (cancelled || !title) continue;
+            setConversations(prev =>
+              prev.map(c => (c.id === conv.id && !c.isRenamed ? { ...c, title } : c))
+            );
+          } catch {
+            /* 静默失败，下次启动再试 */
+          }
+        }
+      } catch (e) {
+        console.error('[useChat] 启动加载失败', e);
+        setError('加载对话记录失败');
+      } finally {
+        if (!cancelled) setIsBooting(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  /**
+   * 持久化：diff 出变化的部分定向写入。
+   *
+   * 原实现是每次 state 变化就把所有会话 JSON.stringify 后同步写 localStorage，
+   * 历史一长就在流式输出时卡主线程。
+   */
+  useEffect(() => {
+    conversationsRef.current = conversations;
+    if (isBooting) return;
+
+    for (const conv of conversations) {
+      const prev = persistedRef.current.get(conv.id);
+      if (prev === conv) continue;
+      persistedRef.current.set(conv.id, conv);
+      void persistConversation(prev, conv).catch(e =>
+        console.error('[useChat] 持久化失败', e)
+      );
+    }
+    // 删除的会话由 deleteConversation 直接操作库，这里只需清理快照
+    const alive = new Set(conversations.map(c => c.id));
+    for (const id of persistedRef.current.keys()) {
+      if (!alive.has(id)) persistedRef.current.delete(id);
+    }
+  }, [conversations, isBooting]);
+
+  // 切后台/关页面前把挂起的流式内容立刻写掉，避免安卓上切走应用丢失长回复
+  useEffect(() => {
+    const flush = () => { void flushPendingWrites(); };
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, []);
 
   // 持久化 featureSettings
   useEffect(() => {
     localStorage.setItem('chat-feature-settings', JSON.stringify(featureSettings));
   }, [featureSettings]);
+
+  // 设置面板直接改 localStorage，这里响应它的通知重读
+  useEffect(() => {
+    const reload = () => {
+      try {
+        const raw = localStorage.getItem('chat-feature-settings');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setFeatureSettings(prev => ({ ...prev, ...parsed }));
+        }
+      } catch { /* ignore */ }
+      setCompactSettingsState(settingsService.getCompactSettings());
+    };
+    window.addEventListener('aishop:feature-settings-changed', reload);
+    return () => window.removeEventListener('aishop:feature-settings-changed', reload);
+  }, []);
 
   const updateActiveConversation = useCallback(
     (updater: (conv: Conversation) => Conversation) => {
@@ -205,6 +352,107 @@ export function useChat() {
       .catch(() => { /* 静默失败 */ });
   }, []);
 
+  const setCompactSettings = useCallback((patch: Partial<typeof compactSettings>) => {
+    settingsService.setCompactSettings(patch);
+    setCompactSettingsState(settingsService.getCompactSettings());
+  }, []);
+
+  /**
+   * 压缩指定会话的冷区间。返回是否真的压缩了。
+   * 原文不删除，只打 compressedInto 标记并追加 segment。
+   */
+  const compactConversation = useCallback(
+    async (convId: string): Promise<ContextSegment | null> => {
+      const settings = settingsService.getCompactSettings();
+      const conv = conversationsRef.current.find(c => c.id === convId);
+      if (!conv) return null;
+
+      const target = planCompaction(conv, settings.hotWindowSize);
+      if (!target.length) return null;
+
+      setCompactingId(convId);
+      try {
+        const result = await compactMessages(target, {
+          focusHint: conv.compactFocusHint,
+        });
+        if (!result) return null;
+
+        const segment: ContextSegment = {
+          id: `seg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+          fromMessageId: target[0].id,
+          toMessageId: target[target.length - 1].id,
+          messageCount: target.length,
+          summary: result.summary,
+          tokensBefore: estimateMessagesTokens(target),
+          tokensAfter: estimateSummaryTokens(result.summary),
+          model: result.model,
+          createdAt: Date.now(),
+          userEdited: false,
+        };
+
+        const targetIds = new Set(target.map(m => m.id));
+        setConversations(prev =>
+          prev.map(c => {
+            if (c.id !== convId) return c;
+            return {
+              ...c,
+              messages: c.messages.map(m =>
+                targetIds.has(m.id) ? { ...m, compressedInto: segment.id } : m
+              ),
+              segments: [...(c.segments || []), segment],
+            };
+          })
+        );
+        return segment;
+      } finally {
+        setCompactingId(null);
+      }
+    },
+    []
+  );
+
+  /** 用户手改摘要。改过之后该段不再被自动重压。 */
+  const updateSegment = useCallback(
+    (convId: string, segmentId: string, summary: ContextSummary) => {
+      setConversations(prev =>
+        prev.map(c => {
+          if (c.id !== convId) return c;
+          return {
+            ...c,
+            segments: (c.segments || []).map(s =>
+              s.id === segmentId
+                ? { ...s, summary, tokensAfter: estimateSummaryTokens(summary), userEdited: true }
+                : s
+            ),
+          };
+        })
+      );
+    },
+    []
+  );
+
+  /** 撤销压缩，恢复原文。因为原文一直在，这里只是删标记。 */
+  const revertSegment = useCallback((convId: string, segmentId: string) => {
+    setConversations(prev =>
+      prev.map(c => {
+        if (c.id !== convId) return c;
+        return {
+          ...c,
+          messages: c.messages.map(m =>
+            m.compressedInto === segmentId ? { ...m, compressedInto: undefined } : m
+          ),
+          segments: (c.segments || []).filter(s => s.id !== segmentId),
+        };
+      })
+    );
+  }, []);
+
+  const setCompactFocusHint = useCallback((convId: string, hint: string) => {
+    setConversations(prev =>
+      prev.map(c => (c.id === convId ? { ...c, compactFocusHint: hint || undefined } : c))
+    );
+  }, []);
+
   const sendMessage = useCallback(
     async (
       content:
@@ -213,6 +461,42 @@ export function useChat() {
       attachments?: FileAttachment[]
     ) => {
       setError(null);
+
+      // 发请求前检查水位。压缩失败不阻塞发送——宁可这轮贵一点，也不能卡住用户。
+      // 拿返回的 segment 而不是回读 state：setState 未必已经刷新。
+      let freshSegment: ContextSegment | null = null;
+      if (featureSettings.autoCompactEnabled) {
+        const conv = conversationsRef.current.find(c => c.id === activeId);
+        if (conv) {
+          const usage = getContextUsage(
+            conv,
+            conv.selectedModel,
+            compactSettings.threshold,
+            compactSettings.hotWindowSize
+          );
+
+          // 判断水位优先用上一轮的真实 promptTokens——它精确反映了上下文规模。
+          // 只有还没有任何真实数据时（会话第一轮）才退回估算。
+          const real = sumRealUsage(conv.messages, conv.selectedModel);
+          const overThreshold =
+            real.lastPromptTokens > 0
+              ? real.lastPromptTokens / usage.limit >= compactSettings.threshold
+              : usage.overThreshold;
+
+          // 压完塞不进去就别压：热窗口是逐字发送的硬地板，压缩救不了
+          // 「大上下文切小模型」这种落差，白花调用还毁掉 prompt 缓存。
+          const viable = isCompactionViable(
+            conv,
+            conv.selectedModel,
+            compactSettings.hotWindowSize,
+            compactSettings.threshold
+          );
+
+          if (overThreshold && usage.compactable && viable) {
+            freshSegment = await compactConversation(conv.id);
+          }
+        }
+      }
 
       const userMessage: Message = {
         id: Date.now().toString() + '-user',
@@ -271,7 +555,30 @@ export function useChat() {
         }
 
         const apiUserMessage: Message = { ...userMessage, content: apiContent };
-        const allMessages = [...messages, apiUserMessage];
+
+        // 用压缩视图发送。messages 是本轮渲染的快照（不含刚追加的两条），
+        // 如果刚刚压缩过，就把新 segment 的标记就地应用上去。
+        const convForPayload = conversationsRef.current.find(c => c.id === activeId);
+        const baseSegments = convForPayload?.segments || [];
+        const segmentsForPayload = freshSegment
+          ? [...baseSegments.filter(s => s.id !== freshSegment!.id), freshSegment]
+          : baseSegments;
+
+        const compactedIds = new Set(
+          freshSegment
+            ? messages
+                .slice(
+                  messages.findIndex(m => m.id === freshSegment!.fromMessageId),
+                  messages.findIndex(m => m.id === freshSegment!.toMessageId) + 1
+                )
+                .map(m => m.id)
+            : []
+        );
+        const baseMessages = messages.map(m =>
+          compactedIds.has(m.id) ? { ...m, compressedInto: freshSegment!.id } : m
+        );
+
+        const allMessages = buildApiMessages(baseMessages, segmentsForPayload, [apiUserMessage]);
 
         // 联网搜索（可选）
         let searchContext = '';
@@ -327,12 +634,14 @@ export function useChat() {
         let fullContent = '';
         let artifactStreamStarted = false;
         const systemPrompt = buildSystemPrompt(featureSettings.artifactEnabled, selectedModel);
+        let realUsage: TokenUsage | undefined;
         for await (const chunk of streamChat(
           allMessages,
           selectedModel,
           abortControllerRef.current.signal,
           searchContext || undefined,
-          systemPrompt
+          systemPrompt,
+          u => { realUsage = u; }
         )) {
           fullContent += chunk;
           const displayContent = getDisplayContent(fullContent);
@@ -381,6 +690,7 @@ export function useChat() {
             webSearched: searchSources.length > 0,
             searchResults: searchSources.length > 0 ? searchSources : undefined,
             webSearchFailed: searchFailed,
+            usage: realUsage,
           };
           return { ...conv, messages: updated, updatedAt: Date.now() };
         });
@@ -425,7 +735,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [messages, selectedModel, updateActiveConversation, webSearchEnabled, featureSettings]
+    [messages, selectedModel, updateActiveConversation, webSearchEnabled, featureSettings, activeId, compactSettings, compactConversation]
   );
 
   const stopGeneration = useCallback(() => {
@@ -495,11 +805,12 @@ export function useChat() {
     );
   }, []);
 
-  const newConversation = useCallback(() => {
+  const newConversation = useCallback(async () => {
     const currentConv = conversations.find(c => c.id === activeId);
 
-    // 当前是空会话，不需要新建，保持现状即可
-    if (currentConv && currentConv.messages.length === 0) {
+    // 当前是空会话，不需要新建，保持现状即可。
+    // 未加载的会话 messages 为空但并非真的没消息，用 messageCountOf 兜底。
+    if (currentConv && messageCountOf(currentConv) === 0) {
       return;
     }
 
@@ -508,58 +819,147 @@ export function useChat() {
       triggerTitleGeneration(currentConv);
     }
 
-    const conv = createConversation(getLastUsedModel());
+    const conv = await createAndPersistConversation(getLastUsedModel());
+    // 已经在库里了，记下快照避免持久化 effect 再写一遍
+    persistedRef.current.set(conv.id, conv);
     setConversations(prev => [conv, ...prev]);
     setActiveId(conv.id);
     setError(null);
   }, [conversations, activeId, triggerTitleGeneration]);
 
-  const switchConversation = useCallback((id: string) => {
-    // 离开前触发标题生成（如果满足条件）
-    const currentConv = conversations.find(c => c.id === activeId);
-    if (currentConv && !currentConv.isRenamed && currentConv.messages.length > 0 && currentConv.title === '新对话') {
-      triggerTitleGeneration(currentConv);
+  /** 切换会话。目标未加载过消息时按需从库里读最近若干条。 */
+  const switchConversation = useCallback(
+    async (id: string) => {
+      // 离开前触发标题生成（如果满足条件）
+      const currentConv = conversations.find(c => c.id === activeId);
+      if (currentConv && !currentConv.isRenamed && currentConv.messages.length > 0 && currentConv.title === '新对话') {
+        triggerTitleGeneration(currentConv);
+      }
+
+      setActiveId(id);
+      setError(null);
+
+      const target = conversations.find(c => c.id === id);
+      if (!target || target.hydrated !== false) return;
+
+      try {
+        const { messages, segments, totalMessageCount, hasMore } = await hydrateConversation(id);
+        setConversations(prev =>
+          prev.map(c => {
+            if (c.id !== id) return c;
+            const hydratedConv = {
+              ...c,
+              messages,
+              segments,
+              totalMessageCount,
+              hasMoreMessages: hasMore,
+              hydrated: true,
+            };
+            // 刚从库里读出来的内容不需要再写回去
+            persistedRef.current.set(id, hydratedConv);
+            return hydratedConv;
+          })
+        );
+      } catch (e) {
+        console.error('[useChat] 加载会话失败', e);
+        setError('加载对话记录失败');
+      }
+    },
+    [conversations, activeId, triggerTitleGeneration]
+  );
+
+  /** 向上滚动加载更早的消息 */
+  const loadMoreMessages = useCallback(async () => {
+    const conv = conversationsRef.current.find(c => c.id === activeId);
+    if (!conv || !conv.hasMoreMessages || conv.messages.length === 0) return;
+
+    try {
+      const { messages, hasMore } = await loadOlderMessages(conv.id, conv.messages[0]);
+      if (!messages.length) {
+        setConversations(prev =>
+          prev.map(c => (c.id === conv.id ? { ...c, hasMoreMessages: false } : c))
+        );
+        return;
+      }
+      setConversations(prev =>
+        prev.map(c => {
+          if (c.id !== conv.id) return c;
+          const merged = { ...c, messages: [...messages, ...c.messages], hasMoreMessages: hasMore };
+          // 补进来的都是库里已有的记录，同步快照以免被当成新消息重写
+          const snapshot = persistedRef.current.get(c.id);
+          if (snapshot) {
+            persistedRef.current.set(c.id, { ...snapshot, messages: merged.messages });
+          }
+          return merged;
+        })
+      );
+    } catch (e) {
+      console.error('[useChat] 加载更早消息失败', e);
     }
+  }, [activeId]);
 
-    setActiveId(id);
-    setError(null);
-  }, [conversations, activeId, triggerTitleGeneration]);
+  /**
+   * 删除会话。
+   *
+   * 先删库再改 state：反过来的话持久化 effect 会看到一个「已消失」的会话，
+   * 没法再拿到它的 id 去清理消息和 blob 引用。
+   */
+  const removeConversations = useCallback(
+    async (ids: string[]) => {
+      const idSet = new Set(ids);
+      try {
+        for (const id of ids) await dbDeleteConversation(id);
+      } catch (e) {
+        console.error('[useChat] 删除会话失败', e);
+      }
+      for (const id of ids) persistedRef.current.delete(id);
 
-  const deleteConversation = useCallback(
-    (id: string) => {
-      setConversations(prev => {
-        const filtered = prev.filter(c => c.id !== id);
-        if (filtered.length === 0) {
-          const newConv = createConversation(getLastUsedModel());
-          if (activeId === id) setActiveId(newConv.id);
-          return [newConv];
-        }
-        if (activeId === id) {
-          setActiveId(filtered[0].id);
-        }
-        return filtered;
-      });
+      const remaining = conversationsRef.current.filter(c => !idSet.has(c.id));
+      if (remaining.length === 0) {
+        const conv = await createAndPersistConversation(getLastUsedModel());
+        persistedRef.current.set(conv.id, conv);
+        setConversations([conv]);
+        setActiveId(conv.id);
+        return;
+      }
+
+      setConversations(remaining);
+      if (!idSet.has(activeId)) return;
+
+      // 切到剩下的第一个会话，必要时加载它的消息。
+      // 这里不复用 switchConversation：它闭包里的 conversations 还是删除前的快照。
+      const target = remaining[0];
+      setActiveId(target.id);
+      if (target.hydrated !== false) return;
+      try {
+        const { messages, segments, totalMessageCount, hasMore } =
+          await hydrateConversation(target.id);
+        setConversations(prev =>
+          prev.map(c => {
+            if (c.id !== target.id) return c;
+            const hydratedConv = {
+              ...c, messages, segments, totalMessageCount,
+              hasMoreMessages: hasMore, hydrated: true,
+            };
+            persistedRef.current.set(target.id, hydratedConv);
+            return hydratedConv;
+          })
+        );
+      } catch (e) {
+        console.error('[useChat] 加载会话失败', e);
+      }
     },
     [activeId]
   );
 
+  const deleteConversation = useCallback(
+    (id: string) => removeConversations([id]),
+    [removeConversations]
+  );
+
   const deleteConversations = useCallback(
-    (ids: string[]) => {
-      const idSet = new Set(ids);
-      setConversations(prev => {
-        const filtered = prev.filter(c => !idSet.has(c.id));
-        if (filtered.length === 0) {
-          const newConv = createConversation(getLastUsedModel());
-          if (idSet.has(activeId)) setActiveId(newConv.id);
-          return [newConv];
-        }
-        if (idSet.has(activeId)) {
-          setActiveId(filtered[0].id);
-        }
-        return filtered;
-      });
-    },
-    [activeId]
+    (ids: string[]) => removeConversations(ids),
+    [removeConversations]
   );
 
   const toggleConversationFavorite = useCallback((id: string) => {
@@ -589,7 +989,10 @@ export function useChat() {
       }
       if (userMsgIndex < 0) return;
 
-      const contextMessages = conv.messages.slice(0, msgIndex);
+      const contextMessages = buildApiMessages(
+        conv.messages.slice(0, msgIndex),
+        conv.segments
+      );
 
       // 如果该消息已有 versions，初始化第一个版本
       let existingVersions: MessageVersion[] = conv.messages[msgIndex].versions || [];
@@ -664,12 +1067,14 @@ export function useChat() {
       try {
         const systemPrompt = buildSystemPrompt(featureSettings.artifactEnabled, conv.messages[msgIndex].model || selectedModel);
 
+        let realUsage: TokenUsage | undefined;
         for await (const chunk of streamChat(
           contextMessages,
           conv.messages[msgIndex].model || selectedModel,
           abortControllerRef.current.signal,
           undefined,
-          systemPrompt
+          systemPrompt,
+          u => { realUsage = u; }
         )) {
           fullContent += chunk;
           const displayContent = getDisplayContent(fullContent);
@@ -704,6 +1109,7 @@ export function useChat() {
             isStreaming: false,
             suggestions: suggestions.length > 0 ? suggestions : undefined,
             artifact: artifact || undefined,
+            usage: realUsage,
           };
           updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex };
           return { ...conv, messages: updated, updatedAt: Date.now() };
@@ -764,13 +1170,20 @@ export function useChat() {
     }));
 
     const imported: Conversation = {
-      id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8),
+      id: newConversationId(),
       title: convData.title || '导入的对话',
       messages: sanitizedMessages,
       selectedModel: convData.selectedModel || CHAT_MODELS[0].id,
       createdAt: convData.createdAt || Date.now(),
       updatedAt: Date.now(),
       isRenamed: convData.isRenamed ?? true,
+      hydrated: true,
+      // 一并带上压缩区间，否则 compressedInto 会指向不存在的 segment，
+      // 导致导入后的会话退化成逐字发送全部原文
+      segments: Array.isArray(convData.segments)
+        ? convData.segments.map(seg => ({ ...seg, summary: migrateSummary(seg.summary) }))
+        : undefined,
+      compactFocusHint: convData.compactFocusHint,
     };
 
     setConversations(prev => [imported, ...prev]);
@@ -833,8 +1246,11 @@ export function useChat() {
         return { ...conv, messages: updated, updatedAt: Date.now() };
       });
 
-      // 6. 准备上下文：取该 assistant 消息之前的所有消息
-      const contextMessages = conv.messages.slice(0, msgIndex);
+      // 6. 准备上下文：取该 assistant 消息之前的所有消息（走压缩视图）
+      const contextMessages = buildApiMessages(
+        conv.messages.slice(0, msgIndex),
+        conv.segments
+      );
 
       // 7. 调用流式 API
       setIsLoading(true);
@@ -844,12 +1260,14 @@ export function useChat() {
       try {
         const systemPrompt = buildSystemPrompt(featureSettings.artifactEnabled, targetModelId);
 
+        let realUsage: TokenUsage | undefined;
         for await (const chunk of streamChat(
           contextMessages,
           targetModelId,
           abortControllerRef.current.signal,
           undefined,
-          systemPrompt
+          systemPrompt,
+          u => { realUsage = u; }
         )) {
           fullContent += chunk;
           const displayContent = getDisplayContent(fullContent);
@@ -884,6 +1302,7 @@ export function useChat() {
             isStreaming: false,
             suggestions: suggestions.length > 0 ? suggestions : undefined,
             artifact: artifact || undefined,
+            usage: realUsage,
           };
           updated[msgIndex] = { ...msg, versions, activeVersionIndex: newActiveIndex };
           return { ...conv, messages: updated, updatedAt: Date.now() };
@@ -951,6 +1370,17 @@ export function useChat() {
     [updateActiveConversation]
   );
 
+  // 当前会话的上下文水位。切模型时会自动重算（selectedModel 变化即触发）。
+  const contextUsage = getContextUsage(
+    activeConversation,
+    selectedModel,
+    compactSettings.threshold,
+    compactSettings.hotWindowSize
+  );
+
+  // 真实用量汇总（来自 API 响应，与上面的估算相互独立）
+  const realUsageTotals = sumRealUsage(messages, selectedModel);
+
   return {
     messages,
     isLoading,
@@ -969,8 +1399,12 @@ export function useChat() {
     // 会话管理
     conversations,
     activeConversationId: activeId,
+    isBooting,
     newConversation,
     switchConversation,
+    // 历史分页：长会话只加载最近若干条，向上滚动时按需补齐
+    loadMoreMessages,
+    hasMoreMessages: activeConversation?.hasMoreMessages ?? false,
     deleteConversation,
     deleteConversations,
     toggleConversationFavorite,
@@ -978,5 +1412,18 @@ export function useChat() {
     importConversation,
     compareWithModel,
     switchVersion,
+    // 上下文压缩
+    contextUsage,
+    realUsageTotals,
+    segments: activeConversation?.segments || [],
+    compactSettings,
+    setCompactSettings,
+    compactingId,
+    isCompacting: compactingId !== null,
+    compactConversation,
+    updateSegment,
+    revertSegment,
+    compactFocusHint: activeConversation?.compactFocusHint,
+    setCompactFocusHint,
   };
 }

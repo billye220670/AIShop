@@ -67,7 +67,14 @@ export default function BottomSheet({ isOpen, onClose, children }: BottomSheetPr
   const handleTouchStart = (e: React.TouchEvent) => {
     // 只在拖动手柄区域或非交互元素上启用手势
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('a') || target.closest('[role="button"]')) {
+    if (
+      target.closest('button') ||
+      target.closest('a') ||
+      target.closest('[role="button"]') ||
+      target.closest('textarea') ||
+      target.closest('input') ||
+      target.closest('[data-swipe-ignore]')
+    ) {
       return;
     }
 

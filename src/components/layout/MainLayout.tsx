@@ -2,7 +2,8 @@ import { useEffect, useState, useRef, type ReactNode } from 'react';
 import Sidebar, { SIDEBAR_WIDTH } from './Sidebar';
 import TopNavBar from './TopNavBar';
 import BottomNavBar from './BottomNavBar';
-import type { TabMode, Conversation, Model } from '../../types';
+import type { TabMode, Conversation, Model, ContextSegment } from '../../types';
+import type { UsageTotals } from '../../utils/tokenEstimate';
 import { useDrawerSwipe } from '../../hooks/useDrawerSwipe';
 import { haptic } from '../../utils/haptics';
 
@@ -28,6 +29,15 @@ interface MainLayoutProps {
   // Artifact
   artifactEnabled?: boolean;
   onArtifactToggle?: () => void;
+  // 上下文占用（顶栏环状指示器）
+  realUsage?: UsageTotals;
+  contextLimit?: number;
+  isCompacting?: boolean;
+  isAwaitingUsage?: boolean;
+  onCompactActive?: () => void;
+  segments?: ContextSegment[];
+  onOpenSegment?: (segmentId: string) => void;
+  onDeleteSegment?: (segmentId: string) => void;
 }
 
 export default function MainLayout({
@@ -49,6 +59,14 @@ export default function MainLayout({
   onWebSearchToggle,
   artifactEnabled,
   onArtifactToggle,
+  realUsage,
+  contextLimit,
+  isCompacting,
+  isAwaitingUsage,
+  onCompactActive,
+  segments,
+  onOpenSegment,
+  onDeleteSegment,
 }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -162,6 +180,15 @@ export default function MainLayout({
             onWebSearchToggle={onWebSearchToggle}
             artifactEnabled={artifactEnabled}
             onArtifactToggle={onArtifactToggle}
+            realUsage={realUsage}
+            contextLimit={contextLimit}
+            isCompacting={isCompacting}
+            isAwaitingUsage={isAwaitingUsage}
+            onCompactActive={onCompactActive}
+            segments={segments}
+            onOpenSegment={onOpenSegment}
+            onDeleteSegment={onDeleteSegment}
+            conversationId={activeConversationId}
           />
         )}
         <main className="flex-1 flex flex-col overflow-hidden">{children}</main>

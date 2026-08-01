@@ -5,6 +5,7 @@ import type { Conversation } from '../../types';
 import ConfirmModal from '../common/ConfirmModal';
 import PromptModal from '../common/PromptModal';
 import { haptic } from '../../utils/haptics';
+import { hasAnyMessage, lastMessagePreviewOf } from '../../utils/conversationView';
 
 export interface SidebarProps {
   conversations?: Conversation[];
@@ -140,7 +141,10 @@ export default function Sidebar({
   // Filtered conversations (排除空会话)
   const filteredConversations = useMemo(() => {
     if (!conversations) return [];
-    let nonEmpty = conversations.filter(conv => conv.messages && conv.messages.length > 0);
+    // 不能只看 messages.length：会话消息是按需加载的，未打开过的会话
+    // messages 为空数组，按长度过滤会让全部历史会话消失。
+    // 也不能只看 totalMessageCount：它是 hydrate 时的快照，之后新发的消息不计入。
+    let nonEmpty = conversations.filter(conv => hasAnyMessage(conv));
     if (filterMode === 'favorite') {
       nonEmpty = nonEmpty.filter(conv => conv.isFavorite);
     }
@@ -179,14 +183,7 @@ export default function Sidebar({
     return groups.filter(g => g.items.length > 0);
   }, [filteredConversations]);
 
-  // 获取会话最后消息预览
-  const getLastMessagePreview = (conv: Conversation): string => {
-    const lastMsg = conv.messages[conv.messages.length - 1];
-    if (!lastMsg) return '';
-    if (typeof lastMsg.content === 'string') return lastMsg.content;
-    const textPart = lastMsg.content.find(p => p.type === 'text');
-    return textPart?.text || '[图片]';
-  };
+  const getLastMessagePreview = lastMessagePreviewOf;
 
   // 导出会话为 JSON
   const exportConversation = (conv: Conversation) => {

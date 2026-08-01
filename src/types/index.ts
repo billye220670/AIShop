@@ -2,6 +2,43 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 
 export interface ChatFeatureSettings {
   artifactEnabled: boolean;
+  /** 是否在接近上下文上限时自动压缩历史 */
+  autoCompactEnabled: boolean;
+}
+
+/** 压缩后的上下文摘要文本。用户看到什么、编辑什么，就是喂给模型的内容。 */
+export type ContextSummary = string;
+
+/** 一段被压缩的连续消息区间。原文不删除，这里只是派生视图。 */
+export interface ContextSegment {
+  id: string;
+  fromMessageId: string;
+  toMessageId: string;
+  messageCount: number;
+  summary: ContextSummary;
+  /** 估算值，仅用于展示收益 */
+  tokensBefore: number;
+  tokensAfter: number;
+  /** 执行压缩的模型 */
+  model: string;
+  createdAt: number;
+  /** 用户手改过则不再被自动重压 */
+  userEdited: boolean;
+}
+
+/**
+ * 来自 API 响应的真实 token 用量。
+ * 与 utils/tokenEstimate 的本地估算区分开：估算用于决定何时压缩，
+ * 这里的真实值用于核对成本与缓存命中率。
+ */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  /** 命中缓存的输入 token（约为普通输入价的 10%），网关不返回时为 undefined */
+  cachedTokens?: number;
+  /** 写入缓存的 token，部分网关会单独计费 */
+  cacheWriteTokens?: number;
 }
 
 export interface ArtifactBlock {
@@ -41,6 +78,7 @@ export interface MessageVersion {
   searchResults?: Array<{ name: string; url: string; siteName: string }>;
   artifact?: ArtifactBlock;
   stoppedByUser?: boolean; // 用户是否停止了生成
+  usage?: TokenUsage;
 }
 
 export interface Message {
@@ -64,6 +102,8 @@ export interface Message {
   versions?: MessageVersion[];       // 多模型回答版本列表
   activeVersionIndex?: number;       // 当前展示的版本索引
   stoppedByUser?: boolean; // 用户是否停止了生成
+  compressedInto?: string;  // 所属 ContextSegment 的 id（仅影响 API payload，不影响渲染）
+  usage?: TokenUsage;  // API 返回的真实用量（仅 assistant 消息）
 }
 
 export interface Model {
@@ -109,6 +149,29 @@ export interface Conversation {
   updatedAt: number;
   isRenamed: boolean;
   isFavorite?: boolean;
+  /** 已压缩的历史区间，按 fromMessageId 在 messages 中的顺序排列 */
+  segments?: ContextSegment[];
+  /** 会话级压缩重点提示，填一次长期生效 */
+  compactFocusHint?: string;
+
+  /**
+   * messages 是否已从 IndexedDB 加载。
+   *
+   * 仅存在于内存，不落盘。会话列表启动时只读元数据，此时为 false——
+   * 持久化层据此跳过 diff，否则空的 messages 会被误判为「消息全被删了」。
+   */
+  hydrated?: boolean;
+  /**
+   * 库中该会话的消息总数。
+   *
+   * 侧栏用它判断会话是否为空——不能用 messages.length，因为未加载的会话
+   * messages 是空数组，那样会让所有历史会话从列表里消失。
+   */
+  totalMessageCount?: number;
+  /** 是否还有更早的消息未加载 */
+  hasMoreMessages?: boolean;
+  /** 最后一条消息的预览文本，未加载消息时侧栏靠它显示摘要 */
+  lastMessagePreview?: string;
 }
 
 // 图片生成请求参数

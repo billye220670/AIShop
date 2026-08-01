@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { MessageSquarePlus, Trash2 } from 'lucide-react';
 import PinyinMatch from 'pinyin-match';
 import type { Conversation } from '../../types';
+import { hasAnyMessage } from '../../utils/conversationView';
 import ConfirmModal from '../common/ConfirmModal';
 
 interface ConversationListProps {
@@ -29,7 +30,8 @@ export default function ConversationList({
 
   const filteredConversations = useMemo(() => {
     // 过滤掉没有消息的空会话（无论标题是什么）
-    const nonEmpty = conversations.filter(conv => conv.messages && conv.messages.length > 0);
+    // 消息按需加载，未打开过的会话 messages 为空，不能按长度判空
+    const nonEmpty = conversations.filter(conv => hasAnyMessage(conv));
     const keyword = searchText.trim();
     if (!keyword) return nonEmpty;
     return nonEmpty.filter(conv => {

@@ -8,6 +8,9 @@ import { useStickToBottom } from '../../hooks/useStickToBottom';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
 import ArtifactPanel from '../artifact/ArtifactPanel';
+import CompactionMarker from './CompactionMarker';
+import ContextSummarySheet from './ContextSummarySheet';
+import type { ContextSegment, ContextSummary } from '../../types';
 
 interface ChatPanelProps {
   messages: Message[];
@@ -32,6 +35,12 @@ interface ChatPanelProps {
   onWebSearchEnabledChange?: (enabled: boolean) => void;
   isFavorite?: boolean;
   onToggleFavorite?: (thumbnail?: string) => void;
+  // 上下文压缩（水位指示已移到顶栏，这里只保留区间标记与摘要面板所需）
+  segments?: ContextSegment[];
+  onUpdateSegment?: (segmentId: string, summary: ContextSummary) => void;
+  /** 外部请求打开某个 segment 的摘要面板（例如压缩完成 toast 的"查看"按钮） */
+  openSegmentIdRequest?: string | null;
+  onOpenSegmentIdRequestHandled?: () => void;
 }
 
 export default function ChatPanel({
@@ -51,7 +60,25 @@ export default function ChatPanel({
   onWebSearchEnabledChange,
   isFavorite = false,
   onToggleFavorite,
+  segments,
+  onUpdateSegment,
+  openSegmentIdRequest,
+  onOpenSegmentIdRequestHandled,
 }: ChatPanelProps) {
+  const [openSegmentId, setOpenSegmentId] = useState<string | null>(null);
+
+  // 外部（toast 的"查看"按钮）请求打开某个 segment
+  useEffect(() => {
+    if (openSegmentIdRequest) {
+      setOpenSegmentId(openSegmentIdRequest);
+      onOpenSegmentIdRequestHandled?.();
+    }
+  }, [openSegmentIdRequest, onOpenSegmentIdRequestHandled]);
+  const openSegment = segments?.find(s => s.id === openSegmentId) || null;
+  // segment 区间的最后一条消息 id → segment，用于在正确位置插入标记
+  const segmentByLastMessage = new Map(
+    (segments || []).map(s => [s.toMessageId, s])
+  );
   const lastUserMsgIdRef = useRef<string | null>(null);
   const artifactStreamStartedRef = useRef(false);
   // 吸底滚动：解除靠用户输入事件，恢复靠滚回底部，追内容靠 ResizeObserver + rAF 缓动
@@ -174,9 +201,11 @@ export default function ChatPanel({
                 ? msg.model
                 : conversation?.selectedModel;
             const currentModel = CHAT_MODELS.find(m => m.id === modelId);
+            // 原文照常渲染；压缩区间末尾追加一条标记，说明这段发给模型时用的是摘要
+            const endingSegment = segmentByLastMessage.get(msg.id);
             return (
+              <div key={msg.id}>
               <MessageBubble
-                key={msg.id}
                 message={msg}
                 showSuggestions={isLastAssistant}
                 onSuggestionClick={isLastAssistant ? (text) => sendMessage(text) : undefined}
@@ -189,6 +218,13 @@ export default function ChatPanel({
                 onCompareWithModel={msg.role === 'assistant' ? compareWithModel : undefined}
                 onSwitchVersion={msg.role === 'assistant' ? switchVersion : undefined}
               />
+              {endingSegment && (
+                <CompactionMarker
+                  segment={endingSegment}
+                  onOpen={() => setOpenSegmentId(endingSegment.id)}
+                />
+              )}
+              </div>
             );
           })}
          </div>
@@ -211,6 +247,8 @@ export default function ChatPanel({
             <ChevronDown className="w-5 h-5" />
           </button>
         </div>
+
+        {/* 上下文占用已移到顶栏的环状按钮（见 TopNavBar / ContextRing） */}
 
         {/* Input */}
         <ChatInput
@@ -239,6 +277,16 @@ export default function ChatPanel({
           <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} isFavorite={isFavorite} onToggleFavorite={onToggleFavorite} />
         )}
       </div>
+
+      {/* 上下文摘要查看/编辑 */}
+      <ContextSummarySheet
+        open={openSegment !== null}
+        segment={openSegment}
+        onClose={() => setOpenSegmentId(null)}
+        onSave={summary => {
+          if (openSegment) onUpdateSegment?.(openSegment.id, summary);
+        }}
+      />
     </>
   );
 }

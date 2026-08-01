@@ -1,40 +1,13 @@
-import type { Conversation, ArtifactBlock } from '../types';
+/**
+ * 小体积、需要同步读取的设置项。
+ *
+ * 会话与消息已迁到 IndexedDB（见 services/conversationStore 与 db/），
+ * 这里只留首屏绘制期间就要读的东西——改成异步会闪一下。
+ */
+import type { ArtifactBlock } from '../types';
 
-const STORAGE_KEY = 'aishop_conversations';
 const MODEL_STORAGE_KEY = 'aishop_last_model';
 const WEB_SEARCH_STORAGE_KEY = 'aishop_web_search_enabled';
-
-export function loadConversations(): Conversation[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (!data) return [];
-    const parsed = JSON.parse(data) as Conversation[];
-    // 兼容旧数据：缺失 isRenamed 字段则补默认值 false
-    return parsed.map(c => ({ ...c, isRenamed: c.isRenamed ?? false }));
-  } catch {
-    return [];
-  }
-}
-
-export function saveConversations(conversations: Conversation[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
-  } catch (e) {
-    console.error('Failed to save conversations:', e);
-  }
-}
-
-export function createConversation(modelId: string): Conversation {
-  return {
-    id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8),
-    title: '新对话',
-    messages: [],
-    selectedModel: modelId,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    isRenamed: false,
-  };
-}
 
 export function saveLastModel(modelId: string): void {
   try {

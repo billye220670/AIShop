@@ -6,9 +6,11 @@ interface ToastProps {
   type?: 'success' | 'error';
   onClose: () => void;
   duration?: number;
+  /** 附加操作，例如「查看」跳转链接 */
+  action?: { label: string; onClick: () => void };
 }
 
-export default function Toast({ message, type = 'success', onClose, duration = 2000 }: ToastProps) {
+export default function Toast({ message, type = 'success', onClose, duration = 2000, action }: ToastProps) {
   useEffect(() => {
     const timer = setTimeout(onClose, duration);
     return () => clearTimeout(timer);
@@ -23,6 +25,15 @@ export default function Toast({ message, type = 'success', onClose, duration = 2
           <X className="w-5 h-5" />
         )}
         <span className="text-sm font-medium">{message}</span>
+        {action && (
+          <button
+            type="button"
+            onClick={() => { action.onClick(); onClose(); }}
+            className="text-sm font-medium underline underline-offset-2 hover:opacity-70 transition-opacity"
+          >
+            {action.label}
+          </button>
+        )}
       </div>
     </div>
   );
