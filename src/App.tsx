@@ -9,6 +9,7 @@ import { useChat } from './hooks/useChat';
 import { useFavoriteArtifacts } from './hooks/useFavoriteArtifacts';
 import { CHAT_MODELS } from './config/models';
 import { loadTheme } from './services/storage';
+import { requestPersistentStorage } from './utils/pwa';
 import type { TabMode } from './types';
 
 function App() {
@@ -16,6 +17,13 @@ function App() {
   useEffect(() => {
     const theme = loadTheme();
     document.documentElement.dataset.theme = theme;
+  }, []);
+
+  // 申请持久化存储，降低数据被系统回收的概率。
+  // 安卓/桌面 Chrome 在站点有一定使用度后通常会给；Safari 一律拒绝，
+  // 那不是错误——iOS 上只能靠装到主屏幕和导出备份兜底。
+  useEffect(() => {
+    void requestPersistentStorage();
   }, []);
 
   const [activeTab, setActiveTab] = useState<TabMode>('chat');

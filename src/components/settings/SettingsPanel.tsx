@@ -5,8 +5,9 @@ import type { ProviderConfig, CompactSettings } from '../../services/settingsSer
 import { THEMES } from '../../config/themes';
 import { loadTheme, saveTheme } from '../../services/storage';
 import { CHAT_MODELS } from '../../config/models';
+import DataSettings from './DataSettings';
 
-type SettingsTab = 'api' | 'context' | 'appearance';
+type SettingsTab = 'api' | 'context' | 'data' | 'appearance';
 
 const PROVIDER_OPTIONS: Record<string, { value: string; label: string }[]> = {
   default: [
@@ -103,6 +104,7 @@ export default function SettingsPanel() {
   const TABS: { key: SettingsTab; label: string }[] = [
     { key: 'api', label: 'API 配置' },
     { key: 'context', label: '上下文' },
+    { key: 'data', label: '数据' },
     { key: 'appearance', label: '外观' },
   ];
 
@@ -284,6 +286,8 @@ export default function SettingsPanel() {
               </div>
             </div>
           )}
+
+          {activeSettingsTab === 'data' && <DataSettings />}
 
           {activeSettingsTab === 'appearance' && (
             <div className="space-y-5">

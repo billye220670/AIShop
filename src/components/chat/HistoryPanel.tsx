@@ -3,6 +3,7 @@ import { Search, X, MoreVertical, Download, Pencil, Trash2 } from 'lucide-react'
 import PinyinMatch from 'pinyin-match';
 import type { Conversation } from '../../types';
 import { hasAnyMessage, lastMessagePreviewOf } from '../../utils/conversationView';
+import { exportSingleConversation } from '../../services/backup';
 import ConfirmModal from '../common/ConfirmModal';
 
 interface HistoryPanelProps {
@@ -95,22 +96,10 @@ export default function HistoryPanel({
 
   const getLastMessagePreview = lastMessagePreviewOf;
 
-  // 导出会话为 JSON
   const exportConversation = (conv: Conversation) => {
-    const data = {
-      app: 'PortAI',
-      version: 1,
-      conversation: conv,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${conv.title}.portai.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    void exportSingleConversation(conv.id, conv.title).catch(e =>
+      console.error('[HistoryPanel] 导出会话失败', e)
+    );
   };
 
   // 编辑操作
