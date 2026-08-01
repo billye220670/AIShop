@@ -2,6 +2,7 @@ import type { Message, MessageContent, TokenUsage } from '../types';
 import { getSystemPrompt } from '../config/prompts';
 import { settingsService } from './settingsService';
 import { getProviderConfig } from '../config/providers';
+import { inlineBlobsForApi } from '../db';
 
 interface ChatCompletionMessage {
   role: 'system' | 'user' | 'assistant';
@@ -67,11 +68,17 @@ export async function* streamChat(
 
   // 注意：messages 中可能包含由压缩区间生成的 system 消息（见 utils/buildApiMessages），
   // 这些消息需要保留在原本的时间位置上，不能提前或丢弃。
+  //
+  // 图片存在 IndexedDB 里，消息中是 aishop-blob:<id> 形式的引用，模型读不了，
+  // 所以发送前必须还原成 data URL。放在这里做而不是更早：避免把整段历史的
+  // 图片都提前读进内存。
   apiMessages.push(
-    ...messages.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }))
+    ...(await Promise.all(
+      messages.map(async (msg) => ({
+        role: msg.role,
+        content: await inlineBlobsForApi(msg.content),
+      }))
+    ))
   );
 
   const send = (includeUsage: boolean) =>

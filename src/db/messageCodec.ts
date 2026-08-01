@@ -9,7 +9,7 @@
  */
 import type { Message, MessageContent, MessageVersion } from '../types';
 import { estimateMessageTokens } from '../utils/tokenEstimate';
-import { putBlobFromDataUrl } from './blobRepo';
+import { getBlob, putBlobFromDataUrl } from './blobRepo';
 import type { StoredContentPart, StoredMessage, StoredMessageVersion } from './schema';
 
 const BLOB_URL_PREFIX = 'aishop-blob:';
@@ -36,6 +36,46 @@ export function collectMessageBlobIds(msg: StoredMessage): string[] {
   const ids = collectBlobIds(msg.content);
   for (const v of msg.versions ?? []) ids.push(...collectBlobIds(v.content));
   return ids;
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * 把消息里的 `aishop-blob:<id>` 还原成 data URL，供发送给模型使用。
+ *
+ * 必须做这一步：模型拿到 aishop-blob: 这种自定义协议的地址读不了图。
+ * 只在真正发请求前调用，不要提前展开——那会把整段历史的图片都读进内存。
+ * 取不到的 blob 直接丢掉该分片，宁可少一张图也不要整个请求 400。
+ */
+export async function inlineBlobsForApi(
+  content: Message['content']
+): Promise<Message['content']> {
+  if (typeof content === 'string') return content;
+
+  const out: MessageContent[] = [];
+  for (const part of content) {
+    const blobId =
+      part.type === 'image_url' && part.image_url?.url
+        ? parseBlobRefUrl(part.image_url.url)
+        : null;
+
+    if (!blobId) {
+      out.push(part);
+      continue;
+    }
+
+    const record = await getBlob(blobId);
+    if (!record) continue;
+    out.push({ type: 'image_url', image_url: { url: await blobToDataUrl(record.blob) } });
+  }
+  return out;
 }
 
 async function contentToStored(

@@ -10,6 +10,7 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import type { Message, MessageContent } from '../../types';
 import LoadingDots from './LoadingDots';
+import MessageImage from './MessageImage';
 import VersionNavigator from './VersionNavigator';
 import CompareButton from './CompareButton';
 import Toast from '../common/Toast';
@@ -353,12 +354,13 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             return <p key={idx} className="whitespace-pre-wrap">{part.text}</p>;
           }
           if (part.type === 'image_url' && part.image_url) {
+            // 走 MessageImage 而不是直接 <img>：图片存在 IndexedDB 里，
+            // 地址是 aishop-blob:<id>，需要按需换成 object URL 并在卸载时释放
             return (
-              <img
+              <MessageImage
                 key={idx}
                 src={part.image_url.url}
-                alt="uploaded"
-                className="max-w-full rounded-lg"
+                alt="上传的图片"
               />
             );
           }

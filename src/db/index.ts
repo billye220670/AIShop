@@ -23,6 +23,7 @@ export {
   blobRefUrl,
   parseBlobRefUrl,
   isBlobRefUrl,
+  inlineBlobsForApi,
   toPreview,
   toStored,
   fromStored,
