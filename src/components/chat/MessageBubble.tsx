@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { Globe, TriangleAlert, Copy, Check, FileText, FileDown, RefreshCw, MessageSquareQuote, ChevronDown, ChevronUp } from 'lucide-react';
+import { Globe, TriangleAlert, Copy, Check, FileText, FileDown, RefreshCw, MessageSquareQuote, ChevronDown, ChevronUp, Search, FoldVertical } from 'lucide-react';
 import type { ArtifactBlock } from '../../types';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
@@ -14,6 +15,8 @@ import MessageImage from './MessageImage';
 import VersionNavigator from './VersionNavigator';
 import CompareButton from './CompareButton';
 import Toast from '../common/Toast';
+import { getPlainText, firstLineOf } from '../../utils/messageText';
+import { haptic } from '../../utils/haptics';
 
 /* ─── 打开外部链接辅助函数 ─── */
 function openUrl(url: string) {
@@ -212,6 +215,90 @@ function getProviderIcon(provider: string): string {
   return icon ? `${import.meta.env.BASE_URL}providers/${icon}` : `${import.meta.env.BASE_URL}providers/openai.svg`;
 }
 
+/* ─── 搜索高亮：纯文本分支（用户消息 / 多段内容里的文本段） ─── */
+function renderTextWithHighlight(
+  text: string,
+  query: string,
+  occurrenceStart: number,
+  activeOccurrence?: number
+): { nodes: React.ReactNode; occurrenceCount: number } {
+  const q = query.toLowerCase();
+  const lower = text.toLowerCase();
+  const nodes: React.ReactNode[] = [];
+  let lastIdx = 0;
+  let idx = lower.indexOf(q);
+  let occurrence = occurrenceStart;
+  let count = 0;
+  while (idx !== -1) {
+    if (idx > lastIdx) nodes.push(text.slice(lastIdx, idx));
+    nodes.push(
+      <mark
+        key={`m-${occurrence}`}
+        className={`search-highlight${occurrence === activeOccurrence ? ' search-highlight-active' : ''}`}
+      >
+        {text.slice(idx, idx + query.length)}
+      </mark>
+    );
+    occurrence++;
+    count++;
+    lastIdx = idx + query.length;
+    idx = lower.indexOf(q, lastIdx);
+  }
+  if (lastIdx < text.length) nodes.push(text.slice(lastIdx));
+  return { nodes, occurrenceCount: count };
+}
+
+/* ─── 搜索高亮：markdown 分支 ───
+ * ReactMarkdown 把字符串解析成 AST 再渲染，不能对渲染前的源文本插 <mark> 标签
+ * （会被转义或破坏语法），所以改成渲染完成后用 TreeWalker 遍历文本节点做包裹。
+ * 跳过 code/pre 内部，避免打断代码高亮的 dangerouslySetInnerHTML 结构。
+ */
+function unwrapSearchHighlights(container: HTMLElement) {
+  const marks = container.querySelectorAll('mark.search-highlight');
+  marks.forEach(mark => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    parent.removeChild(mark);
+  });
+  container.normalize();
+}
+
+function highlightTextNodes(container: HTMLElement, query: string, activeOccurrence?: number) {
+  const q = query.toLowerCase();
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const tag = node.parentElement?.tagName;
+      return tag === 'CODE' || tag === 'PRE' ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const textNodes: Text[] = [];
+  let n: Node | null;
+  while ((n = walker.nextNode())) textNodes.push(n as Text);
+
+  let occurrence = 0;
+  for (const textNode of textNodes) {
+    const text = textNode.textContent || '';
+    const lower = text.toLowerCase();
+    if (!lower.includes(q)) continue;
+    const frag = document.createDocumentFragment();
+    let lastIdx = 0;
+    let idx = lower.indexOf(q);
+    while (idx !== -1) {
+      if (idx > lastIdx) frag.appendChild(document.createTextNode(text.slice(lastIdx, idx)));
+      const mark = document.createElement('mark');
+      mark.className = `search-highlight${occurrence === activeOccurrence ? ' search-highlight-active' : ''}`;
+      mark.textContent = text.slice(idx, idx + query.length);
+      frag.appendChild(mark);
+      occurrence++;
+      lastIdx = idx + query.length;
+      idx = lower.indexOf(q, lastIdx);
+    }
+    if (lastIdx < text.length) frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+    textNode.parentNode?.replaceChild(frag, textNode);
+  }
+}
+
 
 interface MessageBubbleProps {
   message: Message;
@@ -225,15 +312,183 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   onCompareWithModel?: (messageId: string, modelId: string) => void;
   onSwitchVersion?: (messageId: string, index: number) => void;
+  /** 折叠浏览模式：AI 回复只显示一行摘要，其余全部隐藏 */
+  collapsed?: boolean;
+  /** 长按菜单里的「查找」入口 */
+  onOpenSearch?: () => void;
+  /** 长按菜单里的「折叠回复」入口，逻辑与上下快速滑动手势触发的折叠相同 */
+  onFold?: () => void;
+  /** 对话内搜索关键词，非空时对本条消息文本做高亮 */
+  searchQuery?: string;
+  /** 当前高亮命中在本条消息内的第几次出现（从 0 开始），无命中或非当前项时为 undefined */
+  activeMatchOccurrence?: number;
 }
 
-export default function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName, modelProvider, onOpenArtifact, onRegenerate, onQuote, isStreaming, onCompareWithModel, onSwitchVersion }: MessageBubbleProps) {
+export default function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName, modelProvider, onOpenArtifact, onRegenerate, onQuote, isStreaming, onCompareWithModel, onSwitchVersion, collapsed, onOpenSearch, onFold, searchQuery, activeMatchOccurrence }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false); // 新增：控制搜索结果展开/折叠
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
+
+  // --- 长按上下文菜单（复用 Sidebar.tsx 的长按检测模式） ---
+  const [menuOpen, setMenuOpen] = useState(false);
+  const LONG_PRESS_MS = 450;
+  const LONG_PRESS_MOVE_TOLERANCE = 10;
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressClickRef = useRef(false);
+  /**
+   * 菜单锚点 = 手指按下的视口坐标。
+   * 之前菜单是 `absolute right-3 top-3`，锚在整条消息的右上角——长回复有好几屏高，
+   * 手指在中段长按时菜单弹在屏幕外或远离手指，看着就像"没弹出来"。
+   */
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const clearPressTimer = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+    pressOriginRef.current = null;
+  };
+
+  const handlePressStart = (e: React.PointerEvent) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    clearPressTimer();
+    pressOriginRef.current = { x: e.clientX, y: e.clientY };
+    const { clientX, clientY } = e;
+    pressTimerRef.current = setTimeout(() => {
+      pressTimerRef.current = null;
+      suppressClickRef.current = true;
+      setMenuPos({ x: clientX, y: clientY });
+      setMenuOpen(true);
+      window.getSelection?.()?.removeAllRanges();
+      haptic();
+    }, LONG_PRESS_MS);
+  };
+
+  const handlePressMove = (e: React.PointerEvent) => {
+    const origin = pressOriginRef.current;
+    if (!origin || !pressTimerRef.current) return;
+    const dx = Math.abs(e.clientX - origin.x);
+    const dy = Math.abs(e.clientY - origin.y);
+    if (dx > LONG_PRESS_MOVE_TOLERANCE || dy > LONG_PRESS_MOVE_TOLERANCE) {
+      clearPressTimer();
+    }
+  };
+
+  useEffect(() => () => clearPressTimer(), []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = () => setMenuOpen(false);
+    document.addEventListener('click', handleClick);
+    document.addEventListener('pointerdown', handleClick);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('pointerdown', handleClick);
+    };
+  }, [menuOpen]);
+
+  /**
+   * 菜单弹出后锁住背后的滚动。
+   * 长按是在手指没抬起时触发的，此刻原生滚动手势已经"归属"给了消息容器，
+   * 后续 touchmove 由合成器线程直接滚，JS 拦不住——除非把容器本身变成不可滚。
+   * 所以直接改 overflow，并把 scrollTop 还原（overflow 切换会让浏览器夹一次位置）。
+   */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const scroller = document.querySelector<HTMLElement>('[data-messages-container]');
+    if (!scroller) return;
+    const prevOverflow = scroller.style.overflowY;
+    const prevTouch = scroller.style.touchAction;
+    const frozenTop = scroller.scrollTop;
+    scroller.style.overflowY = 'hidden';
+    scroller.style.touchAction = 'none';
+    if (scroller.scrollTop !== frozenTop) scroller.scrollTop = frozenTop;
+    return () => {
+      scroller.style.overflowY = prevOverflow;
+      scroller.style.touchAction = prevTouch;
+      scroller.scrollTop = frozenTop;
+    };
+  }, [menuOpen]);
+
+  /**
+   * 菜单开出来后按实际尺寸自适应位置：优先在手指右下方展开，
+   * 贴到视口边缘就翻到另一侧，最后再统一夹进安全边距内。
+   * 用 useLayoutEffect 在绘制前落位，避免先闪一下错位。
+   */
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!menuOpen || !el || !menuPos) return;
+    const MARGIN = 8;
+    const GAP = 6;
+
+    // 高度得先解开：菜单可能已经被上一次的 maxHeight 压过，
+    // 不清掉就会一直沿用那个更小的值。
+    el.style.maxHeight = '';
+    el.style.overflowY = '';
+    /* 用 offsetWidth/Height 而不是 getBoundingClientRect：
+       弹出动画 context-menu-pop 从 scale(0.92) 起步，此刻 rect 量到的是被缩小
+       8% 的尺寸，据此判断"下方放得下"就会少算十几像素，菜单底部正好被切一条。
+       offset* 是布局尺寸，不受 transform 影响。 */
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
+
+    /* 移动端必须用 visualViewport：window.innerHeight 是"大视口"，
+       含浏览器工具栏占掉的那一条，按它算出来的底边在屏幕外，
+       菜单就被截断。visualViewport 才是真正可见的那块。 */
+    const vv = window.visualViewport;
+    const vw = vv?.width ?? window.innerWidth;
+    const vh = vv?.height ?? window.innerHeight;
+    // visualViewport 的坐标原点跟着页面缩放/平移走，clientX/Y 是相对它的，
+    // 所以边界也要换算到同一套坐标里
+    // position:fixed 的原点是布局视口，clientX/Y 却相对可见视口，
+    // 页面被推上去（比如键盘弹起）时两者差一个 offset，必须补上
+    const offsetX = vv?.offsetLeft ?? 0;
+    const offsetY = vv?.offsetTop ?? 0;
+    const minX = offsetX + MARGIN;
+    const maxX = offsetX + vw - MARGIN;
+    const minY = offsetY + MARGIN;
+    const maxY = offsetY + vh - MARGIN;
+
+    // 手指坐标换算到 fixed 用的那套坐标里
+    const anchorX = menuPos.x + offsetX;
+    const anchorY = menuPos.y + offsetY;
+
+    let left = anchorX + GAP;
+    if (left + width > maxX) left = anchorX - GAP - width; // 右侧放不下 → 翻到左边
+    left = Math.min(Math.max(left, minX), Math.max(minX, maxX - width));
+
+    // 上下都塞不进整个菜单时，选空间更大的一侧并让它内部滚动，
+    // 而不是硬塞出去被截断
+    let top = anchorY + GAP;
+    const spaceBelow = maxY - (anchorY + GAP);
+    const spaceAbove = anchorY - GAP - minY;
+    if (height > spaceBelow) {
+      if (height <= spaceAbove) {
+        top = anchorY - GAP - height; // 上方放得下 → 翻到上边
+      } else {
+        const usable = Math.max(spaceBelow, spaceAbove);
+        el.style.maxHeight = `${Math.max(120, usable)}px`;
+        el.style.overflowY = 'auto';
+        top = spaceAbove > spaceBelow ? minY : anchorY + GAP;
+      }
+    }
+    const finalHeight = el.offsetHeight;
+    top = Math.min(Math.max(top, minY), Math.max(minY, maxY - finalHeight));
+
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    // 展开方向跟着翻，动画的起点才对得上手指
+    el.style.transformOrigin = `${top > anchorY ? 'top' : 'bottom'} ${
+      left >= anchorX ? 'left' : 'right'
+    }`;
+    el.style.visibility = 'visible';
+  }, [menuOpen, menuPos]);
 
   // 多版本相关
   const hasMultipleVersions = message.versions && message.versions.length > 1;
@@ -268,14 +523,30 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     });
   }, [displaySearchResults]);
 
+  // AI 消息 markdown 容器：搜索高亮在渲染完成后对它做 DOM 后处理
+  const markdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = markdownRef.current;
+    if (!el) return;
+    unwrapSearchHighlights(el);
+    if (searchQuery && searchQuery.trim()) {
+      highlightTextNodes(el, searchQuery.trim(), activeMatchOccurrence);
+    }
+  }, [searchQuery, displayContent, activeMatchOccurrence]);
+
   const renderContent = () => {
     if (typeof displayContent === 'string') {
       if (isUser) {
+        if (searchQuery && searchQuery.trim()) {
+          const { nodes } = renderTextWithHighlight(displayContent, searchQuery.trim(), 0, activeMatchOccurrence);
+          return <p className="whitespace-pre-wrap">{nodes}</p>;
+        }
         return <p className="whitespace-pre-wrap">{displayContent}</p>;
       }
       const processedContent = preprocessCitations(displayContent);
       return (
-        <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
+        <div ref={markdownRef} className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeKatex]}
@@ -343,10 +614,16 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
 
     // Multi-part content (text + images)
     const parts = displayContent as MessageContent[];
+    let occurrenceCursor = 0;
     return (
       <div className="space-y-2">
         {parts.map((part, idx) => {
           if (part.type === 'text' && part.text) {
+            if (searchQuery && searchQuery.trim()) {
+              const { nodes, occurrenceCount } = renderTextWithHighlight(part.text, searchQuery.trim(), occurrenceCursor, activeMatchOccurrence);
+              occurrenceCursor += occurrenceCount;
+              return <p key={idx} className="whitespace-pre-wrap">{nodes}</p>;
+            }
             return <p key={idx} className="whitespace-pre-wrap">{part.text}</p>;
           }
           if (part.type === 'image_url' && part.image_url) {
@@ -392,6 +669,28 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     );
   }
 
+  // 折叠浏览模式：AI 回复只显示原文第一行（超宽省略），其余全部隐藏
+  // 不做寒暄过滤/智能摘要 —— 用户自己发的消息本来就没被折叠，是天然的定位锚点
+  if (collapsed && !displayIsStreaming) {
+    return (
+      <div className="flex justify-start mb-3 fold-line-in">
+        {/* 折叠态给个气泡外形（和用户气泡镜像：左下方角是直角），
+            用户才知道这一行是一个可点开的整体，而不是一段被截断的文字 */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="展开这条回复"
+          className="fold-collapsed-bubble group flex items-center gap-2.5 max-w-[85%] px-4 py-4 rounded-tl-2xl rounded-tr-2xl rounded-br-2xl rounded-bl-none bg-[var(--color-bg-secondary)] text-left cursor-pointer transition-colors hover:bg-[var(--color-bg-elevated)] active:bg-[var(--color-bg-elevated)]"
+        >
+          <span className="flex-1 min-w-0 truncate whitespace-nowrap text-sm text-gray-300">
+            {firstLineOf(displayContent) || '（空）'}
+          </span>
+          <ChevronDown className="flex-shrink-0 w-4 h-4 text-gray-500 group-hover:text-gray-300" />
+        </div>
+      </div>
+    );
+  }
+
   // AI消息：无背景、无边框、撑满宽度
   return (
     <>
@@ -402,7 +701,35 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
           onClose={() => setShowToast(false)}
         />
       )}
-      <div className="flex justify-start mb-4">
+      {menuOpen && createPortal(
+        /* 同样要 portal + touch-none：留在原地会被消息容器裁掉，
+           而 touch-action:none 保证落在遮罩上的手势不会传成背景滚动 */
+        <div
+          className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay touch-none overscroll-none"
+          onClick={() => setMenuOpen(false)}
+          onPointerDown={() => setMenuOpen(false)}
+          onTouchMove={e => e.preventDefault()}
+        />,
+        document.body
+      )}
+      <div
+        /* 菜单打开时只把这条消息抬到遮罩之上，绝不能加 transform 类
+           （比如 context-menu-pop 的 scale）：一是整条回复被缩放看着像"内容被放大"，
+           二是带 transform 的祖先会成为 position:fixed 的包含块，把菜单从
+           手指坐标拽回这条消息的角上 */
+        className={`relative flex justify-start mb-4 select-none [-webkit-touch-callout:none] ${menuOpen ? 'z-[201]' : ''}`}
+        onPointerDown={!displayIsStreaming && !isStreaming ? handlePressStart : undefined}
+        onPointerMove={handlePressMove}
+        onPointerUp={clearPressTimer}
+        onPointerCancel={clearPressTimer}
+        onPointerLeave={clearPressTimer}
+        onContextMenu={e => e.preventDefault()}
+        onClick={() => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+          }
+        }}
+      >
         <div className="w-full px-4 py-3 text-gray-100">
         {/* 模型图标 + 名称 / 版本导航 */}
         <div className="flex items-center gap-2 mb-4">
@@ -570,90 +897,113 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                   ))}
                 </div>
               )}
-            {/* 消息操作按钮组 - 仅 AI 消息且非流式生成中 */}
-            {!displayIsStreaming && !isStreaming && (
-              <div className="mt-6 pt-6 border-t border-gray-700/30">
-                {/* 多模型比较按钮 - 独立一行 */}
-                {onCompareWithModel && (
-                  <div className="mb-2">
-                    <CompareButton
-                      messageModelId={activeVersion?.model || message.model || ''}
-                      usedModelIds={message.versions?.map(v => v.model) || (message.model ? [message.model] : [])}
-                      onCompare={(modelId) => onCompareWithModel(message.id, modelId)}
-                      disabled={isStreaming || displayIsStreaming || (message.versions?.some(v => v.isStreaming) ?? false)}
-                    />
-                  </div>
-                )}
-                <div className="flex items-center gap-1">
-                  {/* 复制 */}
-                  <button
-                    onClick={async () => {
-                      const text = typeof displayContent === 'string'
-                        ? displayContent
-                        : (displayContent as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('\n');
-                      const success = await copyToClipboard(text);
-                      if (success) {
-                        setCopied(true);
-                        setToastMessage('已复制到剪贴板');
-                        setToastType('success');
-                        setShowToast(true);
-                        setTimeout(() => setCopied(false), 1500);
-                      } else {
-                        setToastMessage('复制失败，请重试');
-                        setToastType('error');
-                        setShowToast(true);
-                      }
-                    }}
-                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
-                    title="复制"
-                  >
-                    {copied ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
-                  </button>
-                  {/* 保存为 Markdown */}
-                  <button
-                    onClick={async () => {
-                      const content = typeof displayContent === 'string'
-                        ? displayContent
-                        : (displayContent as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('\n');
-                      const defaultName = content.slice(0, 20).replace(/[\\/:*?"<>|\n]/g, '_').trim() || 'message';
-                      const fileName = `${defaultName}.md`;
-
-                      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = fileName;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
-                    title="保存为 Markdown"
-                  >
-                    <FileDown className="w-5 h-5" />
-                  </button>
-                  {/* 重新生成 */}
-                  <button
-                    onClick={() => onRegenerate?.(message.id)}
-                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
-                    title="重新生成"
-                  >
-                    <RefreshCw className="w-5 h-5" />
-                  </button>
-                  {/* 引用 */}
-                  <button
-                    onClick={() => onQuote?.(message)}
-                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
-                    title="引用"
-                  >
-                    <MessageSquareQuote className="w-5 h-5" />
-                  </button>
-                </div>
+            {/* 多模型比较按钮 - 独立一行，其余消息级操作已收进长按菜单 */}
+            {!displayIsStreaming && !isStreaming && onCompareWithModel && (
+              <div className="mt-6">
+                <CompareButton
+                  messageModelId={activeVersion?.model || message.model || ''}
+                  usedModelIds={message.versions?.map(v => v.model) || (message.model ? [message.model] : [])}
+                  onCompare={(modelId) => onCompareWithModel(message.id, modelId)}
+                  disabled={isStreaming || displayIsStreaming || (message.versions?.some(v => v.isStreaming) ?? false)}
+                />
               </div>
             )}
           </>
         )}
+        </div>
+
+        {/* 长按上下文菜单：全局操作（查找）+ 消息级操作（复制/保存/重新生成/引用）
+            用 portal 挂到 body：position:fixed 仍会被带 transform / overflow / filter
+            的祖先当成包含块并裁剪（消息区是 overflow-y-auto，外层还有
+            MainLayout 的 translateX），只有脱离整棵子树才彻底不受影响 */}
+        {menuOpen && createPortal(
+          <div
+            ref={menuRef}
+            style={{ position: 'fixed', left: 0, top: 0, visibility: 'hidden' }}
+            className="z-[200] w-52 bg-[var(--color-bg-elevated)] border border-white/10 rounded-2xl shadow-2xl py-2 select-none context-menu-pop"
+            onClick={e => e.stopPropagation()}
+            onPointerDown={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => { setMenuOpen(false); onOpenSearch?.(); }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+            >
+              <Search className="w-5 h-5 flex-shrink-0" />
+              <span>查找</span>
+            </button>
+            {onFold && (
+              <button
+                onClick={() => { setMenuOpen(false); onFold(); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+              >
+                <FoldVertical className="w-5 h-5 flex-shrink-0" />
+                <span>折叠回复</span>
+              </button>
+            )}
+            <div className="my-1 border-t border-white/10" />
+            <button
+              onClick={async () => {
+                setMenuOpen(false);
+                const text = getPlainText(displayContent);
+                const success = await copyToClipboard(text);
+                if (success) {
+                  setCopied(true);
+                  setToastMessage('已复制到剪贴板');
+                  setToastType('success');
+                  setShowToast(true);
+                  setTimeout(() => setCopied(false), 1500);
+                } else {
+                  setToastMessage('复制失败，请重试');
+                  setToastType('error');
+                  setShowToast(true);
+                }
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+            >
+              {copied ? <Check className="w-5 h-5 flex-shrink-0 text-green-400" /> : <Copy className="w-5 h-5 flex-shrink-0" />}
+              <span>复制</span>
+            </button>
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                const content = getPlainText(displayContent);
+                const defaultName = content.slice(0, 20).replace(/[\\/:*?"<>|\n]/g, '_').trim() || 'message';
+                const fileName = `${defaultName}.md`;
+                const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+            >
+              <FileDown className="w-5 h-5 flex-shrink-0" />
+              <span>保存为 Markdown</span>
+            </button>
+            {onRegenerate && (
+              <button
+                onClick={() => { setMenuOpen(false); onRegenerate(message.id); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+              >
+                <RefreshCw className="w-5 h-5 flex-shrink-0" />
+                <span>重新生成</span>
+              </button>
+            )}
+            {onQuote && (
+              <button
+                onClick={() => { setMenuOpen(false); onQuote(message); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+              >
+                <MessageSquareQuote className="w-5 h-5 flex-shrink-0" />
+                <span>引用</span>
+              </button>
+            )}
+          </div>,
+          document.body
+        )}
       </div>
-    </div>
     </>
   );
 }

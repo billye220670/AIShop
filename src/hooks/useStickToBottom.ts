@@ -7,7 +7,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * 1. "解除吸底" 只由用户输入事件触发（wheel / touchmove / 按键），
  *    绝不根据 scroll 事件的位置来解除 —— 程序滚动产生的 scroll 事件是
  *    异步派发的，用时间窗口屏蔽不可靠，会导致自动追滚随机中断。
- * 2. "恢复吸底" 只由 scroll 事件触发：滚回底部阈值内即恢复。
+ * 2. "恢复吸底" 只由 scroll 事件触发，且必须同时满足：
+ *    - 滚动方向是向下（否则在底部附近往上小幅滑动会立刻被重新吸底，
+ *      rAF 缓动与用户手势互相抢 scrollTop，表现为抽搐 / 松手后弹回底部）
+ *    - 没有正在进行的触摸手势（避免拖动过程中程序去抢位置）
  * 3. 驱动源是内容高度变化（ResizeObserver），而不是 React 数据变化，
  *    保证在 DOM 真正布局完成之后才追。
  * 4. 平滑由 rAF 缓动实现，追一个持续移动的目标，不会互相打断。
@@ -22,10 +25,13 @@ export function useStickToBottom<T extends HTMLElement>(options?: {
    * 1 = 距底部超过一个屏高，此时值得给用户一个“回到底部”的入口。
    */
   farScreens?: number;
+  /** false 时整体挂起（不绑定监听器、不追滚），用于折叠浏览等需要独占滚动的场景 */
+  enabled?: boolean;
 }) {
   const threshold = options?.threshold ?? 32;
   const ease = options?.ease ?? 0.28;
   const farScreens = options?.farScreens ?? 1;
+  const enabled = options?.enabled ?? true;
 
   const containerRef = useRef<T | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -110,15 +116,23 @@ export function useStickToBottom<T extends HTMLElement>(options?: {
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el || !enabled) return;
+
+    // 重新启用时（例如退出折叠浏览）按当前真实位置重算吸底状态。
+    // 挂起期间内容高度可能已经天翻地覆，沿用旧的 pinned 会让下面的
+    // ResizeObserver 一上来就把用户拽到底部，跟外部的滚动复位抢 scrollTop。
+    pinnedRef.current = distanceFromBottom(el) <= threshold;
+    setIsPinned(pinnedRef.current);
 
     // --- 解除吸底：仅来自用户输入 ---
     const onWheel = (e: WheelEvent) => {
       if (e.deltaY < 0) setPinned(false);
     };
     let touchY: number | null = null;
+    let touching = false;
     const onTouchStart = (e: TouchEvent) => {
       touchY = e.touches[0]?.clientY ?? null;
+      touching = true;
     };
     const onTouchMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY;
@@ -127,31 +141,52 @@ export function useStickToBottom<T extends HTMLElement>(options?: {
       if (y - touchY > 2) setPinned(false);
       touchY = y;
     };
+    const onTouchEnd = () => {
+      touching = false;
+      touchY = null;
+      // 手势结束后补一次判定：惯性滚动仍会继续派发 scroll 事件
+      onScroll();
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (['ArrowUp', 'PageUp', 'Home'].includes(e.key)) setPinned(false);
     };
 
-    // --- 恢复吸底：仅根据是否滚回底部 ---
-    const onScroll = () => {
+    // --- 恢复吸底：滚回底部 + 方向向下 + 无进行中的手势 ---
+    // 用 function 声明以便 onTouchEnd 里提前引用（提升）
+    let lastScrollTop = el.scrollTop;
+    function onScroll() {
+      const top = el!.scrollTop;
+      const scrolledDown = top > lastScrollTop;
+      lastScrollTop = top;
       syncFar();
-      if (distanceFromBottom(el) <= threshold) {
-        if (!pinnedRef.current) {
-          setPinned(true);
-          startFollow();
-        }
+      if (pinnedRef.current || touching) return;
+      // 只有明确向下滚动（或已被程序贴到底）才恢复吸底
+      if (!scrolledDown) return;
+      if (distanceFromBottom(el!) <= threshold) {
+        setPinned(true);
+        startFollow();
       }
-    };
+    }
 
     el.addEventListener('wheel', onWheel, { passive: true });
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
     el.addEventListener('keydown', onKeyDown);
     el.addEventListener('scroll', onScroll, { passive: true });
 
     // --- 驱动源：内容高度变化 ---
     const observed = contentRef.current ?? el;
     const ro = new ResizeObserver(() => {
-      if (pinnedRef.current) startFollow();
+      if (pinnedRef.current) {
+        startFollow();
+      } else {
+        // 内容变矮时（折叠、删除消息、图片加载失败塌陷）浏览器不一定会立刻
+        // 回收越界的 scrollTop，惯性滚动中尤其明显——停在内容之外就是整屏空白。
+        const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        if (el.scrollTop > maxTop) el.scrollTop = maxTop;
+      }
       syncFar();
     });
     ro.observe(observed);
@@ -162,13 +197,15 @@ export function useStickToBottom<T extends HTMLElement>(options?: {
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
       el.removeEventListener('keydown', onKeyDown);
       el.removeEventListener('scroll', onScroll);
       ro.disconnect();
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [setPinned, startFollow, syncFar, threshold]);
+  }, [setPinned, startFollow, syncFar, threshold, enabled]);
 
   return { containerRef, contentRef, isPinned, isFarFromBottom, scrollToBottom };
 }

@@ -14,28 +14,6 @@ export const CHAT_MODELS: Model[] = [
     price: { input: '$1.5/百万tokens', output: '$7.5/百万tokens' },
   },
   {
-    id: 'claude-opus-4-8',
-    name: 'Claude Opus 4.8',
-    provider: 'Anthropic',
-    type: 'chat',
-    maxTokens: 128000,
-    contextLength: 1000000,
-    inputCapabilities: ['text', 'image'],
-    outputCapabilities: ['text'],
-    price: { input: '$5/百万tokens', output: '$25/百万tokens' },
-  },
-  {
-    id: 'claude-opus-4-7',
-    name: 'Claude Sonnet 4.7',
-    provider: 'Anthropic',
-    type: 'chat',
-    maxTokens: 128000,
-    contextLength: 1000000,
-    inputCapabilities: ['text', 'image'],
-    outputCapabilities: ['text'],
-    price: { input: '$2.85/百万tokens', output: '$14.25/百万tokens' },
-  },
-  {
     id: 'claude-haiku-4-5-20251001',
     name: 'Claude Haiku 4.5',
     provider: 'Anthropic',
@@ -46,19 +24,29 @@ export const CHAT_MODELS: Model[] = [
     outputCapabilities: ['text'],
     price: { input: '$1/百万tokens', output: '$5/百万tokens' },
   },
-  // OpenAI
   {
-    id: 'gpt-5.5',
-    name: 'GPT 5.5',
-    provider: 'OpenAI',
+    id: 'claude-opus-5',
+    name: 'Claude Opus 5',
+    provider: 'Anthropic',
     type: 'chat',
     maxTokens: 128000,
-    contextLength: 1050000,
+    contextLength: 1000000,
     inputCapabilities: ['text', 'image'],
     outputCapabilities: ['text'],
-
-    price: { input: '$5/百万tokens', output: '$30/百万tokens' },
+    price: { input: '$5/百万tokens', output: '$25/百万tokens' },
   },
+  {
+    id: 'claude-sonnet-5',
+    name: 'Claude Sonnet 5',
+    provider: 'Anthropic',
+    type: 'chat',
+    maxTokens: 128000,
+    contextLength: 1000000,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['text'],
+    price: { input: '$2/百万tokens', output: '$10/百万tokens' },
+  },
+  // OpenAI
   {
     id: 'gpt-5.4-nano',
     name: 'GPT-5.4-Nano',
@@ -70,6 +58,39 @@ export const CHAT_MODELS: Model[] = [
     outputCapabilities: ['text'],
 
     price: { input: '$0.19/百万tokens', output: '$1.1875/百万tokens' },
+  },
+  {
+    id: 'gpt-5.6-sol',
+    name: 'GPT-5.6-Sol',
+    provider: 'OpenAI',
+    type: 'chat',
+    maxTokens: 128000,
+    contextLength: 1050000,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['text'],
+    price: { input: '$5/百万tokens', output: '$30/百万tokens' },
+  },
+  {
+    id: 'gpt-5.6-terra',
+    name: 'GPT-5.6-Terra',
+    provider: 'OpenAI',
+    type: 'chat',
+    maxTokens: 128000,
+    contextLength: 1050000,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['text'],
+    price: { input: '$2.5/百万tokens', output: '$15/百万tokens' },
+  },
+  {
+    id: 'gpt-5.6-luna',
+    name: 'GPT-5.6-Luna',
+    provider: 'OpenAI',
+    type: 'chat',
+    maxTokens: 128000,
+    contextLength: 1050000,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['text'],
+    price: { input: '$1/百万tokens', output: '$6/百万tokens' },
   },
   // Google
   {
@@ -85,8 +106,8 @@ export const CHAT_MODELS: Model[] = [
     price: { input: '$1.9/百万tokens', output: '$11.4/百万tokens' },
   },
   {
-    id: 'gemini-3.1-flash-lite-preview',
-    name: 'Gemini 3.1 Flash Lite',
+    id: 'gemini-3.5-flash',
+    name: 'Gemini 3.5 Flash',
     provider: 'Google',
     type: 'chat',
     maxTokens: 65536,
@@ -94,7 +115,7 @@ export const CHAT_MODELS: Model[] = [
     inputCapabilities: ['text', 'image', 'video', 'audio'],
     outputCapabilities: ['text'],
 
-    price: { input: '$0.2375/百万tokens', output: '$1.425/百万tokens' },
+    price: { input: '$1.425/百万tokens', output: '$8.55/百万tokens' },
   },
   // xAI
   {
@@ -134,6 +155,18 @@ export const CHAT_MODELS: Model[] = [
 
     price: { input: '$1.74/百万tokens', output: '$3.48/百万tokens' },
   },
+  {
+    id: 'deepseek/deepseek-v4-flash-0731',
+    name: 'DeepSeek V4 Flash 0731',
+    provider: 'DeepSeek',
+    type: 'chat',
+    maxTokens: 393216,
+    contextLength: 1048576,
+    inputCapabilities: ['text'],
+    outputCapabilities: ['text'],
+
+    price: { input: '$0.14/百万tokens', output: '$0.28/百万tokens' },
+  },
   // 智谱 GLM
   {
     id: 'zai-org/glm-5-turbo',
@@ -149,16 +182,16 @@ export const CHAT_MODELS: Model[] = [
   },
   // Moonshot
   {
-    id: 'moonshotai/kimi-k2.5',
-    name: 'Kimi K2.5',
+    id: 'moonshotai/kimi-k3',
+    name: 'Kimi K3',
     provider: 'Moonshot',
     type: 'chat',
-    maxTokens: 262144,
-    contextLength: 262144,
+    maxTokens: 1048576,
+    contextLength: 1048576,
     inputCapabilities: ['text', 'image', 'video'],
     outputCapabilities: ['text'],
 
-    price: { input: '$0.6/百万tokens', output: '$3/百万tokens' },
+    price: { input: '$3/百万tokens', output: '$15/百万tokens' },
   },
   // Alibaba Qwen
   {

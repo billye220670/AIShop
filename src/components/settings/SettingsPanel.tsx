@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { MessageSquare, Image as ImageIcon, Film, Eye, EyeOff, Check } from 'lucide-react';
+import { MessageSquare, Image as ImageIcon, Film, Eye, EyeOff, Check, ChevronLeft, ChevronRight, KeyRound, MessageCircle, Database, Palette } from 'lucide-react';
 import { settingsService, DEFAULT_COMPACT_SETTINGS } from '../../services/settingsService';
 import type { ProviderConfig, CompactSettings } from '../../services/settingsService';
 import { THEMES } from '../../config/themes';
 import { loadTheme, saveTheme } from '../../services/storage';
 import { CHAT_MODELS } from '../../config/models';
 import DataSettings from './DataSettings';
+import CustomSelect from '../common/CustomSelect';
 
 type SettingsTab = 'api' | 'context' | 'data' | 'appearance';
 
@@ -101,44 +102,70 @@ export default function SettingsPanel() {
     settingsService.setApiKey(provider, value);
   };
 
-  const TABS: { key: SettingsTab; label: string }[] = [
-    { key: 'api', label: 'API 配置' },
-    { key: 'context', label: '上下文' },
-    { key: 'data', label: '数据' },
-    { key: 'appearance', label: '外观' },
+  const TABS: { key: SettingsTab; label: string; desc: string; Icon: typeof MessageSquare }[] = [
+    { key: 'api', label: 'API 配置', desc: 'LLM、图片、视频与搜索提供商', Icon: KeyRound },
+    { key: 'context', label: '上下文', desc: '自动压缩与摘要设置', Icon: MessageCircle },
+    { key: 'data', label: '数据', desc: '备份、恢复与存储用量', Icon: Database },
+    { key: 'appearance', label: '外观', desc: '主题色', Icon: Palette },
   ];
+  const [activeTabMeta, setActiveTabMeta] = useState<(typeof TABS)[number] | null>(null);
+
+  const openTab = (tab: (typeof TABS)[number]) => {
+    setActiveSettingsTab(tab.key);
+    setActiveTabMeta(tab);
+  };
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-bg-primary)]">
       {/* 顶部标题 */}
-      <div className="flex items-center px-4 py-3 shrink-0">
-        <h2 className="text-white text-lg font-semibold">设置</h2>
+      <div className="flex items-center gap-2 px-4 py-3 shrink-0">
+        {activeTabMeta && (
+          <button
+            type="button"
+            onClick={() => setActiveTabMeta(null)}
+            className="p-1 -ml-1 text-gray-400 hover:text-white transition-colors"
+            aria-label="返回"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+        )}
+        <h2 className="text-white text-lg font-semibold">
+          {activeTabMeta ? activeTabMeta.label : '设置'}
+        </h2>
       </div>
 
-      {/* 左右分栏主体 */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* 左侧 Tab 栏 */}
-        <div className="w-[120px] shrink-0 bg-[var(--color-bg-base)] py-4 flex flex-col gap-1">
-          {TABS.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveSettingsTab(tab.key)}
-              className={`relative text-left px-4 py-2.5 text-sm transition-colors ${
-                activeSettingsTab === tab.key
-                  ? 'bg-[var(--color-bg-primary)] text-white font-medium'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              {activeSettingsTab === tab.key && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r bg-[var(--color-accent)]" />
-              )}
-              {tab.label}
-            </button>
-          ))}
+      {/* 一级/二级页面容器：横向滑动切换 */}
+      <div className="relative flex-1 min-h-0 overflow-hidden">
+        {/* 一级列表：分类入口 */}
+        <div
+          className={`absolute inset-0 overflow-y-auto px-4 py-2 transition-transform duration-300 ease-out ${
+            activeTabMeta ? '-translate-x-full pointer-events-none' : 'translate-x-0'
+          }`}
+        >
+          <div className="rounded-xl overflow-hidden bg-white/5 divide-y divide-[var(--color-border)]">
+            {TABS.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => openTab(tab)}
+                className="w-full flex items-center gap-3 px-4 py-5 text-left hover:bg-white/5 transition-colors"
+              >
+                <tab.Icon className="w-5 h-5 text-[var(--color-accent)] shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-white">{tab.label}</div>
+                  <div className="text-xs text-gray-400 mt-0.5 truncate">{tab.desc}</div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* 右侧内容区域 */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5">
+        {/* 二级页面：分类详情 */}
+        <div
+          className={`absolute inset-0 overflow-y-auto px-4 py-5 transition-transform duration-300 ease-out ${
+            activeTabMeta ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
           {activeSettingsTab === 'api' && (
             <div className="space-y-6">
               {CATEGORIES.map(({ key, label, Icon }) => {
@@ -155,17 +182,11 @@ export default function SettingsPanel() {
                     </div>
 
                     {/* 提供商选择 */}
-                    <select
+                    <CustomSelect
                       value={provider}
-                      onChange={e => handleProviderChange(key, e.target.value)}
-                      className="w-full bg-white/5 border border-[var(--color-border)] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[var(--color-accent)] focus:outline-none transition-colors appearance-none cursor-pointer"
-                    >
-                      {(PROVIDER_OPTIONS[key] || PROVIDER_OPTIONS.default).map(opt => (
-                        <option key={opt.value} value={opt.value} className="bg-[var(--color-bg-primary)] text-white">
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={value => handleProviderChange(key, value)}
+                      options={PROVIDER_OPTIONS[key] || PROVIDER_OPTIONS.default}
+                    />
 
                     {/* API Key 输入 */}
                     <div className="relative">
@@ -174,7 +195,7 @@ export default function SettingsPanel() {
                         value={apiKey}
                         onChange={e => handleApiKeyChange(provider, e.target.value)}
                         placeholder="输入 API Key"
-                        className="w-full bg-white/5 border border-[var(--color-border)] rounded-lg px-3 py-2.5 pr-10 text-sm text-white placeholder-gray-500 focus:border-[var(--color-accent)] focus:outline-none transition-colors"
+                        className="w-full bg-white/5 border border-[var(--color-border)] rounded-lg px-3 py-3.5 pr-10 text-sm text-white placeholder-gray-500 focus:border-[var(--color-accent)] focus:outline-none transition-colors"
                       />
                       <button
                         type="button"
@@ -216,8 +237,8 @@ export default function SettingsPanel() {
                   }`}
                 >
                   <span
-                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                      autoCompactEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                    className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                      autoCompactEnabled ? 'translate-x-5' : 'translate-x-0'
                     }`}
                   />
                 </button>
@@ -228,18 +249,12 @@ export default function SettingsPanel() {
                 <label htmlFor="compact-model" className="block text-sm font-medium text-white">
                   压缩模型
                 </label>
-                <select
+                <CustomSelect
                   id="compact-model"
                   value={compact.model}
-                  onChange={e => handleCompactChange({ model: e.target.value })}
-                  className="w-full bg-white/5 border border-[var(--color-border)] rounded-lg px-3 py-2.5 text-sm text-white focus:border-[var(--color-accent)] focus:outline-none transition-colors appearance-none cursor-pointer"
-                >
-                  {CHAT_MODELS.map(m => (
-                    <option key={m.id} value={m.id} className="bg-[var(--color-bg-primary)] text-white">
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={value => handleCompactChange({ model: value })}
+                  options={CHAT_MODELS.map(m => ({ value: m.id, label: m.name }))}
+                />
                 <p className="text-xs text-gray-500">
                   摘要质量取决于此模型。小模型足够便宜，但长对话下可能丢细节。
                 </p>

@@ -14,23 +14,28 @@ interface CompareButtonProps {
 // 模型竞争力分层推荐表：键为当前使用的模型ID，值为推荐比较的模型ID列表（按优先级排序）
 const COMPARE_RECOMMENDATIONS: Record<string, string[]> = {
   // 顶级旗舰模型互相推荐
-  'claude-fable-5': ['gpt-5.5', 'gemini-3.1-pro-preview', 'grok-4.20-0309-reasoning'],
-  'claude-opus-4-8': ['claude-fable-5', 'gpt-5.5', 'gemini-3.1-pro-preview'],
-  'gpt-5.5': ['claude-fable-5', 'claude-opus-4-8', 'gemini-3.1-pro-preview'],
-  'gemini-3.1-pro-preview': ['claude-fable-5', 'gpt-5.5', 'grok-4.20-0309-reasoning'],
-  'grok-4.20-0309-reasoning': ['claude-fable-5', 'gpt-5.5', 'gemini-3.1-pro-preview'],
+  'claude-fable-5': ['claude-opus-5', 'gpt-5.6-sol', 'gemini-3.1-pro-preview'],
+  'claude-opus-5': ['claude-fable-5', 'gpt-5.6-sol', 'grok-4.20-0309-reasoning'],
+  'gpt-5.6-sol': ['claude-opus-5', 'claude-fable-5', 'gemini-3.1-pro-preview'],
+  'gemini-3.1-pro-preview': ['claude-opus-5', 'gpt-5.6-sol', 'grok-4.20-0309-reasoning'],
+  'grok-4.20-0309-reasoning': ['claude-opus-5', 'gpt-5.6-sol', 'gemini-3.1-pro-preview'],
 
-  // 中端模型互相推荐
-  'claude-haiku-4-5-20251001': ['claude-opus-4-7', 'gemini-3.1-flash-lite-preview', 'gpt-5.4-nano'],
-  'claude-opus-4-7': ['claude-haiku-4-5-20251001', 'gemini-3.1-flash-lite-preview', 'gpt-5.4-nano'],
-  'gemini-3.1-flash-lite-preview': ['claude-haiku-4-5-20251001', 'claude-opus-4-7', 'gpt-5.4-nano'],
-  'gpt-5.4-nano': ['claude-haiku-4-5-20251001', 'claude-opus-4-7', 'gemini-3.1-flash-lite-preview'],
+  // 均衡型模型互相推荐
+  'claude-sonnet-5': ['gpt-5.6-terra', 'gemini-3.5-flash', 'grok-4.3'],
+  'gpt-5.6-terra': ['claude-sonnet-5', 'gemini-3.5-flash', 'grok-4.3'],
+  'gemini-3.5-flash': ['claude-sonnet-5', 'gpt-5.6-terra', 'grok-4.3'],
+  'grok-4.3': ['claude-sonnet-5', 'gpt-5.6-terra', 'gemini-3.5-flash'],
+
+  // 轻量/经济型模型互相推荐
+  'claude-haiku-4-5-20251001': ['gpt-5.6-luna', 'gpt-5.4-nano'],
+  'gpt-5.6-luna': ['claude-haiku-4-5-20251001', 'gpt-5.4-nano'],
+  'gpt-5.4-nano': ['claude-haiku-4-5-20251001', 'gpt-5.6-luna'],
 
   // 国内模型互相推荐 + 推荐一个国际旗舰
-  'deepseek/deepseek-v4-pro': ['moonshotai/kimi-k2.5', 'qwen/qwen3.5-27b', 'zai-org/glm-5-turbo'],
-  'zai-org/glm-5-turbo': ['deepseek/deepseek-v4-pro', 'moonshotai/kimi-k2.5', 'qwen/qwen3.5-27b'],
-  'moonshotai/kimi-k2.5': ['deepseek/deepseek-v4-pro', 'qwen/qwen3.5-27b', 'zai-org/glm-5-turbo'],
-  'qwen/qwen3.5-27b': ['deepseek/deepseek-v4-pro', 'moonshotai/kimi-k2.5', 'zai-org/glm-5-turbo'],
+  'deepseek/deepseek-v4-pro': ['moonshotai/kimi-k3', 'qwen/qwen3.5-27b', 'zai-org/glm-5-turbo'],
+  'zai-org/glm-5-turbo': ['deepseek/deepseek-v4-pro', 'moonshotai/kimi-k3', 'qwen/qwen3.5-27b'],
+  'moonshotai/kimi-k3': ['deepseek/deepseek-v4-pro', 'qwen/qwen3.5-27b', 'zai-org/glm-5-turbo'],
+  'qwen/qwen3.5-27b': ['deepseek/deepseek-v4-pro', 'moonshotai/kimi-k3', 'zai-org/glm-5-turbo'],
   'doubao-1-5-pro-32k-250115': ['deepseek/deepseek-v4-pro', 'qwen/qwen3.5-27b', 'zai-org/glm-5-turbo'],
   'xiaomimimo/mimo-v2-flash': ['deepseek/deepseek-v4-pro', 'qwen/qwen3.5-27b', 'doubao-1-5-pro-32k-250115'],
 };

@@ -55,12 +55,12 @@ function getProviderIcon(provider: string): string | null {
 }
 
 // 推荐模型列表（按顺序）
-// 用户要求的推荐模型：Sonnet 4.7, Opus 5, Gemini 3 pro, gpt 5.5, Grok 4.3
+// 推荐模型：Sonnet 5, Opus 5, Gemini 3.1 Pro, GPT-5.6-Sol, Grok 4.3
 const RECOMMENDED_MODEL_IDS = [
-  'claude-opus-4-7',        // Claude Sonnet 4.7
-  'claude-opus-4-8',        // Claude Opus 4.8
+  'claude-sonnet-5',        // Claude Sonnet 5
+  'claude-opus-5',          // Claude Opus 5
   'gemini-3.1-pro-preview', // Gemini 3.1 Pro
-  'gpt-5.5',                // GPT 5.5
+  'gpt-5.6-sol',            // GPT-5.6-Sol
   'grok-4.3',               // Grok 4.3
 ];
 
@@ -68,17 +68,19 @@ const RECOMMENDED_MODEL_IDS = [
 const MODEL_DESCRIPTIONS: Record<string, string> = {
   // Anthropic
   'claude-fable-5': 'Anthropic 最新旗舰模型，拥有卓越的推理能力和创造力，适合复杂任务处理',
-  'claude-opus-4-8': 'Anthropic 最强大的模型，100 万 token 上下文，适合处理超长文档和复杂推理',
-  'claude-opus-4-7': 'Anthropic 高性能模型，平衡了速度与能力，支持多模态输入，适合日常对话',
   'claude-haiku-4-5': 'Anthropic 快速响应模型，轻量高效，适合简单任务和快速交互',
+  'claude-opus-5': 'Anthropic 新一代旗舰模型，100 万 token 上下文，推理与创作能力进一步提升',
+  'claude-sonnet-5': 'Anthropic 新一代均衡模型，100 万 token 上下文，兼顾能力与响应速度',
 
   // OpenAI
-  'gpt-5.5': 'OpenAI 最新旗舰模型，强大的推理和创造能力，支持复杂任务和长上下文理解',
   'gpt-5.4-nano': 'OpenAI 轻量级模型，高性价比，适合大规模部署和快速响应场景',
+  'gpt-5.6-sol': 'OpenAI 新一代旗舰模型，105 万 token 上下文，适合最复杂的推理和创作任务',
+  'gpt-5.6-terra': 'OpenAI 新一代均衡模型，105 万 token 上下文，性能与成本兼顾',
+  'gpt-5.6-luna': 'OpenAI 新一代轻量模型，105 万 token 上下文，响应快速、性价比高',
 
   // Google
   'gemini-3.1-pro-preview': 'Google 最强多模态模型，支持文本、图像、视频、音频输入，擅长分析和理解',
-  'gemini-3.1-flash-lite-preview': 'Google 快速模型，多模态支持，性价比高，适合高频调用场景',
+  'gemini-3.5-flash': 'Google 新一代快速多模态模型，支持文本、图像、视频、音频输入，性价比高',
 
   // xAI
   'grok-4.20-0309-reasoning': 'xAI 推理增强模型，200 万 token 超长上下文，擅长复杂逻辑推理',
@@ -86,12 +88,13 @@ const MODEL_DESCRIPTIONS: Record<string, string> = {
 
   // DeepSeek
   'deepseek/deepseek-v4-pro': 'DeepSeek 旗舰模型，强大的中文理解能力，超长上下文，适合中文场景',
+  'deepseek/deepseek-v4-flash-0731': 'DeepSeek 快速模型，超长上下文，极高性价比，适合大规模调用',
 
   // 智谱 GLM
   'zai-org/glm-5-turbo': '智谱 AI 高性能模型，优秀的中文能力，支持长文本处理',
 
   // Moonshot
-  'moonshotai/kimi-k2.5': 'Moonshot AI 旗舰模型，26 万 token 长上下文，支持多模态，适合文档分析',
+  'moonshotai/kimi-k3': 'Moonshot AI 新一代旗舰模型，105 万 token 超长上下文，支持多模态，能力全面升级',
 
   // Alibaba Qwen
   'qwen/qwen3.5-27b': '阿里云通义千问模型，优秀的中文能力，支持多模态输入',

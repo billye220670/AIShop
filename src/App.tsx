@@ -10,6 +10,7 @@ import { useFavoriteArtifacts } from './hooks/useFavoriteArtifacts';
 import { CHAT_MODELS } from './config/models';
 import { loadTheme } from './services/storage';
 import { requestPersistentStorage } from './utils/pwa';
+import { messageCountOf } from './utils/conversationView';
 import type { TabMode } from './types';
 
 function App() {
@@ -102,6 +103,7 @@ function App() {
         activeConversationId={chat.activeConversationId}
         onSwitchConversation={chat.switchConversation}
         onNewConversation={chat.newConversation}
+        canCreateNewConversation={activeConversation ? messageCountOf(activeConversation) > 0 : true}
         onDeleteConversation={chat.deleteConversation}
         onDeleteConversations={chat.deleteConversations}
         onToggleConversationFavorite={chat.toggleConversationFavorite}

@@ -12,6 +12,8 @@ interface TopNavBarProps {
   selectedModel: string;
   onModelChange: (modelId: string) => void;
   onNewConversation?: () => void;
+  /** 当前会话是否已有消息；没有时新建按钮置灰禁用 */
+  canCreateNewConversation?: boolean;
   webSearchEnabled?: boolean;
   onWebSearchToggle?: () => void;
   artifactEnabled?: boolean;
@@ -35,6 +37,7 @@ export default function TopNavBar({
   selectedModel,
   onModelChange,
   onNewConversation,
+  canCreateNewConversation = true,
   webSearchEnabled = false,
   onWebSearchToggle,
   artifactEnabled = false,
@@ -118,8 +121,13 @@ export default function TopNavBar({
       {/* 右侧：新建对话 */}
       <div className="flex items-center gap-1">
         <button
-          onClick={() => onNewConversation?.()}
-          className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg"
+          onClick={() => canCreateNewConversation && onNewConversation?.()}
+          disabled={!canCreateNewConversation}
+          className={`p-2 rounded-lg transition-colors ${
+            canCreateNewConversation
+              ? 'text-gray-400 hover:text-white'
+              : 'text-neutral-800 cursor-not-allowed'
+          }`}
           title="新建对话"
         >
           <MessageSquarePlus className="w-5 h-5" />

@@ -15,6 +15,8 @@ interface MainLayoutProps {
   activeConversationId?: string;
   onSwitchConversation?: (id: string) => void;
   onNewConversation?: () => void;
+  /** 当前会话是否已有消息；没有时新建按钮置灰禁用 */
+  canCreateNewConversation?: boolean;
   onDeleteConversation?: (id: string) => void;
   onDeleteConversations?: (ids: string[]) => void;
   onToggleConversationFavorite?: (id: string) => void;
@@ -48,6 +50,7 @@ export default function MainLayout({
   activeConversationId,
   onSwitchConversation,
   onNewConversation,
+  canCreateNewConversation = true,
   onDeleteConversation,
   onDeleteConversations,
   onToggleConversationFavorite,
@@ -176,6 +179,7 @@ export default function MainLayout({
             selectedModel={selectedModel}
             onModelChange={onModelChange}
             onNewConversation={onNewConversation}
+            canCreateNewConversation={canCreateNewConversation}
             webSearchEnabled={webSearchEnabled}
             onWebSearchToggle={onWebSearchToggle}
             artifactEnabled={artifactEnabled}
@@ -191,7 +195,7 @@ export default function MainLayout({
             conversationId={activeConversationId}
           />
         )}
-        <main className="flex-1 flex flex-col overflow-hidden">{children}</main>
+        <main className="flex-1 flex flex-col overflow-hidden" data-swipe-ignore={(activeTab === 'me' || activeTab === 'favorites') ? true : undefined}>{children}</main>
         {/* 底部导航栏 */}
         {!inputFocused && <BottomNavBar activeTab={activeTab} onTabChange={onTabChange} />}
       </div>
