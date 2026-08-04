@@ -54,7 +54,7 @@ export default function ContextPanel({
 
   return (
     <div
-      className="absolute left-3 right-3 top-14 sm:right-auto sm:w-80 bg-[var(--color-bg-elevated)] rounded-2xl shadow-2xl z-[200] context-menu-pop"
+      className="absolute left-3 right-3 top-full mt-2 sm:right-auto sm:w-80 bg-[var(--color-bg-elevated)] rounded-2xl shadow-2xl z-[200] context-menu-pop"
       onClick={e => e.stopPropagation()}
       onPointerDown={e => e.stopPropagation()}
     >

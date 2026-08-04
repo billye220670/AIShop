@@ -107,44 +107,19 @@ export default function MainLayout({
   }, [sidebarOpen]);
 
   /**
-   * 键盘弹起时视口 dvh 会跟着收缩，导致整页跳动——弹起瞬间锁存当次
-   * innerHeight 顶住，收起后放开还原成 --app-height（见下方 effect）。
+   * 键盘弹起时视口会跟着收缩，导致整页跳动——弹起瞬间锁存当次
+   * innerHeight 顶住固定高度，收起后放开，交还给 fixed top-0 bottom-0
+   * 自适应真实视口。
    *
-   * 之前是挂载时用 `useState(() => window.innerHeight)` 锁一次焊死一整个
-   * 会话生命周期：iOS 上以 PWA 方式（standalone）冷启动时，launch 动画还没
-   * 结算完，这个时间点读到的 innerHeight 并不可靠，焊死后整页会跟着错位
-   * （顶部顶栏钻进状态栏下面、底部导航栏被裁掉一截）。改成默认跟随实时视口，
-   * 只在真正需要顶住 dvh 收缩的场景——输入框聚焦弹出键盘那一刻——才锁存，
-   * 此时读到的值才是准的。
+   * 之前尝试过挂载时焊死一次 innerHeight、以及用 JS 写 CSS 变量模拟
+   * 100dvh，两种猜测视口高度数值的方式在 iOS standalone 模式下都不可靠：
+   * 量出来的值和系统实际渲染的可视区域对不上，会导致顶栏局部错位、或者
+   * 底部露出一截容器外的系统背景色。真正准的做法是不猜测数值，直接用
+   * fixed + inset-x-0 top-0 bottom-0 让浏览器引擎自己贴满可视区域——只有
+   * 键盘弹起这种需要"顶住不让页面跟着收缩"的场景，才临时切到显式锁存的
+   * 像素高度。
    */
   const [frozenHeight, setFrozenHeight] = useState<number | null>(null);
-
-  /**
-   * 基准高度用 JS 实时校正，不单纯依赖 CSS 100dvh。
-   *
-   * 纯 100dvh 在部分 iOS 版本的 standalone 模式下有过结算不准的问题（尤其是
-   * 冷启动那一下）。这里挂载时先算一次，再在 resize/orientationchange 时
-   * 重新校正，并且额外用 rAF + 短延时兜底几次——standalone 冷启动的 launch
-   * 动画结束后不一定总会触发 resize 事件，但这几次补测能兜住那个窗口。
-   */
-  useEffect(() => {
-    const setAppHeight = () => {
-      document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
-    };
-    setAppHeight();
-    const raf = requestAnimationFrame(setAppHeight);
-    const t1 = setTimeout(setAppHeight, 100);
-    const t2 = setTimeout(setAppHeight, 400);
-    window.addEventListener('resize', setAppHeight);
-    window.addEventListener('orientationchange', setAppHeight);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(t1);
-      clearTimeout(t2);
-      window.removeEventListener('resize', setAppHeight);
-      window.removeEventListener('orientationchange', setAppHeight);
-    };
-  }, []);
 
   // 横向滑动手势：任意位置右滑拉出侧边栏、左滑收回
   const { ref: swipeRef, dragging, dragOffset, shouldSuppressClick } = useDrawerSwipe({
@@ -161,8 +136,8 @@ export default function MainLayout({
   return (
     <div
       ref={swipeRef}
-      className="bg-[#121211] text-white overflow-hidden fixed inset-x-0 top-0 h-[100dvh]"
-      style={{ height: frozenHeight ? `${frozenHeight}px` : 'var(--app-height, 100dvh)', touchAction: 'manipulation' }}
+      className="bg-[#121211] text-white overflow-hidden fixed inset-x-0 top-0 bottom-0"
+      style={{ height: frozenHeight ? `${frozenHeight}px` : undefined, touchAction: 'manipulation' }}
     >
       {/* 侧边栏 - 绝对定位左侧底层，平时收起在屏幕外 */}
       <div
