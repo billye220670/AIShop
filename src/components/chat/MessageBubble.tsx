@@ -897,22 +897,91 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                   ))}
                 </div>
               )}
-            {/* 多模型比较按钮 - 独立一行，其余消息级操作已收进长按菜单 */}
-            {!displayIsStreaming && !isStreaming && onCompareWithModel && (
-              <div className="mt-6">
-                <CompareButton
-                  messageModelId={activeVersion?.model || message.model || ''}
-                  usedModelIds={message.versions?.map(v => v.model) || (message.model ? [message.model] : [])}
-                  onCompare={(modelId) => onCompareWithModel(message.id, modelId)}
-                  disabled={isStreaming || displayIsStreaming || (message.versions?.some(v => v.isStreaming) ?? false)}
-                />
+            {/* 消息操作按钮组 - 仅 AI 消息且非流式生成中 */}
+            {!displayIsStreaming && !isStreaming && (
+              <div className="mt-6 pt-6 border-t border-gray-700/30">
+                {/* 多模型比较按钮 - 独立一行 */}
+                {onCompareWithModel && (
+                  <div className="mb-2">
+                    <CompareButton
+                      messageModelId={activeVersion?.model || message.model || ''}
+                      usedModelIds={message.versions?.map(v => v.model) || (message.model ? [message.model] : [])}
+                      onCompare={(modelId) => onCompareWithModel(message.id, modelId)}
+                      disabled={isStreaming || displayIsStreaming || (message.versions?.some(v => v.isStreaming) ?? false)}
+                    />
+                  </div>
+                )}
+                <div className="flex items-center gap-1">
+                  {/* 复制 */}
+                  <button
+                    onClick={async () => {
+                      const text = getPlainText(displayContent);
+                      const success = await copyToClipboard(text);
+                      if (success) {
+                        setCopied(true);
+                        setToastMessage('已复制到剪贴板');
+                        setToastType('success');
+                        setShowToast(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      } else {
+                        setToastMessage('复制失败，请重试');
+                        setToastType('error');
+                        setShowToast(true);
+                      }
+                    }}
+                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
+                    title="复制"
+                  >
+                    {copied ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
+                  </button>
+                  {/* 保存为 Markdown */}
+                  <button
+                    onClick={() => {
+                      const content = getPlainText(displayContent);
+                      const defaultName = content.slice(0, 20).replace(/[\\/:*?"<>|\n]/g, '_').trim() || 'message';
+                      const fileName = `${defaultName}.md`;
+                      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = fileName;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
+                    title="保存为 Markdown"
+                  >
+                    <FileDown className="w-5 h-5" />
+                  </button>
+                  {/* 重新生成 */}
+                  {onRegenerate && (
+                    <button
+                      onClick={() => onRegenerate(message.id)}
+                      className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
+                      title="重新生成"
+                    >
+                      <RefreshCw className="w-5 h-5" />
+                    </button>
+                  )}
+                  {/* 引用 */}
+                  {onQuote && (
+                    <button
+                      onClick={() => onQuote(message)}
+                      className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
+                      title="引用"
+                    >
+                      <MessageSquareQuote className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </>
         )}
         </div>
 
-        {/* 长按上下文菜单：全局操作（查找）+ 消息级操作（复制/保存/重新生成/引用）
+        {/* 长按上下文菜单：全局操作（查找）+ 折叠
+            消息级操作（复制/保存/重新生成/引用）已恢复为下方常驻按钮行，此处不再重复
             用 portal 挂到 body：position:fixed 仍会被带 transform / overflow / filter
             的祖先当成包含块并裁剪（消息区是 overflow-y-auto，外层还有
             MainLayout 的 translateX），只有脱离整棵子树才彻底不受影响 */}
@@ -938,66 +1007,6 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
               >
                 <FoldVertical className="w-5 h-5 flex-shrink-0" />
                 <span>折叠回复</span>
-              </button>
-            )}
-            <div className="my-1 border-t border-white/10" />
-            <button
-              onClick={async () => {
-                setMenuOpen(false);
-                const text = getPlainText(displayContent);
-                const success = await copyToClipboard(text);
-                if (success) {
-                  setCopied(true);
-                  setToastMessage('已复制到剪贴板');
-                  setToastType('success');
-                  setShowToast(true);
-                  setTimeout(() => setCopied(false), 1500);
-                } else {
-                  setToastMessage('复制失败，请重试');
-                  setToastType('error');
-                  setShowToast(true);
-                }
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
-            >
-              {copied ? <Check className="w-5 h-5 flex-shrink-0 text-green-400" /> : <Copy className="w-5 h-5 flex-shrink-0" />}
-              <span>复制</span>
-            </button>
-            <button
-              onClick={() => {
-                setMenuOpen(false);
-                const content = getPlainText(displayContent);
-                const defaultName = content.slice(0, 20).replace(/[\\/:*?"<>|\n]/g, '_').trim() || 'message';
-                const fileName = `${defaultName}.md`;
-                const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
-            >
-              <FileDown className="w-5 h-5 flex-shrink-0" />
-              <span>保存为 Markdown</span>
-            </button>
-            {onRegenerate && (
-              <button
-                onClick={() => { setMenuOpen(false); onRegenerate(message.id); }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
-              >
-                <RefreshCw className="w-5 h-5 flex-shrink-0" />
-                <span>重新生成</span>
-              </button>
-            )}
-            {onQuote && (
-              <button
-                onClick={() => { setMenuOpen(false); onQuote(message); }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
-              >
-                <MessageSquareQuote className="w-5 h-5 flex-shrink-0" />
-                <span>引用</span>
               </button>
             )}
           </div>,

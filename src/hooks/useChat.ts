@@ -14,6 +14,8 @@ import {
   loadLastModel,
   saveWebSearchEnabled,
   loadWebSearchEnabled,
+  saveLastActiveConversationId,
+  loadLastActiveConversationId,
 } from '../services/storage';
 import {
   loadConversationList,
@@ -180,10 +182,12 @@ export function useChat() {
   const persistedRef = useRef<Map<string, Conversation>>(new Map());
 
   /**
-   * 启动：读会话列表（只含元数据），并停在一个空白新会话上。
+   * 启动：读会话列表（只含元数据），优先恢复上次停留的会话。
    *
-   * 刻意不恢复上次打开的会话——每次进来都是干净的新对话。历史会话不加载消息，
-   * 需要时从侧栏点进去再按需读。
+   * 手机上切后台一段时间后系统很可能直接杀掉进程，下次打开其实是冷启动，
+   * 会重新跑一遍这个 effect——所以这里要能把用户拉回切出去前的那个会话，
+   * 而不是每次都扔进一个新对话。找不到（比如那个会话被删了）才回退到
+   * 复用空会话/新建的老逻辑。
    *
    * 复用已有的空会话而不是无脑新建，否则反复启动会攒下一堆空记录。
    */
@@ -194,22 +198,49 @@ export function useChat() {
         let list = await loadConversationList();
         if (cancelled) return;
 
-        // 列表按 lastMessageAt 倒序，空会话的 lastMessageAt 就是它的创建时间，
-        // 所以真有空会话的话它就在最前面。
-        const reusable = list.find(c => messageCountOf(c) === 0);
-        let activeConv = reusable;
-        if (!activeConv) {
-          activeConv = await createAndPersistConversation(getLastUsedModel());
-          if (cancelled) return;
-          list = [activeConv, ...list];
+        const lastId = loadLastActiveConversationId();
+        let activeConv = lastId ? list.find(c => c.id === lastId) : undefined;
+
+        // 上次那个会话有实际内容才值得恢复，加载它最近的消息
+        if (activeConv && messageCountOf(activeConv) > 0) {
+          try {
+            const { messages, segments, totalMessageCount, hasMore } =
+              await hydrateConversation(activeConv.id);
+            if (cancelled) return;
+            activeConv = {
+              ...activeConv,
+              messages,
+              segments,
+              totalMessageCount,
+              hasMoreMessages: hasMore,
+              hydrated: true,
+            };
+          } catch (e) {
+            console.error('[useChat] 恢复上次会话失败，回退到新对话', e);
+            activeConv = undefined;
+          }
+        } else {
+          activeConv = undefined; // 不是有效目标（没找到 / 是空会话），走下面的兜底逻辑重新选
         }
-        // 空会话没有消息可读，直接标记为已加载，省掉一次查库
+
+        if (!activeConv) {
+          // 列表按 lastMessageAt 倒序，空会话的 lastMessageAt 就是它的创建时间，
+          // 所以真有空会话的话它就在最前面。
+          const reusable = list.find(c => messageCountOf(c) === 0);
+          activeConv = reusable;
+          if (!activeConv) {
+            activeConv = await createAndPersistConversation(getLastUsedModel());
+            if (cancelled) return;
+            list = [activeConv, ...list];
+          }
+        }
+        // 未加载消息的兜底会话（新建的/复用的空会话）直接标记为已加载，省掉一次查库
+        if (!activeConv.hydrated) {
+          activeConv = { ...activeConv, messages: [], segments: [], hydrated: true, hasMoreMessages: false };
+        }
+
         const activeId = activeConv.id;
-        list = list.map(c =>
-          c.id === activeId
-            ? { ...c, messages: [], segments: [], hydrated: true, hasMoreMessages: false }
-            : c
-        );
+        list = list.map(c => (c.id === activeId ? activeConv : c));
 
         // 记下初始快照，避免启动后立刻把刚读出来的内容又整体写回一遍
         persistedRef.current = new Map(list.map(c => [c.id, c]));
@@ -220,9 +251,9 @@ export function useChat() {
         // 否则持久化 effect 会一直停摆。
         setIsBooting(false);
 
-        // 补齐漏掉的标题。标题生成本来挂在「离开会话」上，但刷新页面不经过
-        // switchConversation，而刷新又直接进新会话——刚聊完的那个会话再也不会
-        // 被「离开」一次，标题会永久卡在「新对话」。这里扫一遍补上。
+        // 补齐漏掉的标题。标题生成本来挂在「离开会话」上，但刷新页面/冷启动不经过
+        // switchConversation，如果刚好停在一个还没生成过标题的会话上，它就永远
+        // 不会被「离开」一次，标题会永久卡在「新对话」。这里扫一遍补上。
         const needTitle = list.filter(
           c => !c.isRenamed && c.title === '新对话' && messageCountOf(c) > 0
         );
@@ -279,6 +310,12 @@ export function useChat() {
       if (!alive.has(id)) persistedRef.current.delete(id);
     }
   }, [conversations, isBooting]);
+
+  // 记住当前停留的会话，切后台被系统杀掉进程后冷启动也能恢复回来
+  useEffect(() => {
+    if (isBooting || !activeId) return;
+    saveLastActiveConversationId(activeId);
+  }, [activeId, isBooting]);
 
   // 切后台/关页面前把挂起的流式内容立刻写掉，避免安卓上切走应用丢失长回复
   useEffect(() => {

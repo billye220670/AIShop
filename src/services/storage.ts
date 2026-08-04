@@ -6,6 +6,7 @@
  */
 const MODEL_STORAGE_KEY = 'aishop_last_model';
 const WEB_SEARCH_STORAGE_KEY = 'aishop_web_search_enabled';
+const LAST_ACTIVE_CONVERSATION_KEY = 'aishop_last_active_conversation_id';
 
 export function saveLastModel(modelId: string): void {
   try {
@@ -16,6 +17,21 @@ export function saveLastModel(modelId: string): void {
 export function loadLastModel(): string | null {
   try {
     return localStorage.getItem(MODEL_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** 记住最后一次停留的会话 id，方便切后台/被系统杀进程后重新打开时能恢复原样 */
+export function saveLastActiveConversationId(id: string): void {
+  try {
+    localStorage.setItem(LAST_ACTIVE_CONVERSATION_KEY, id);
+  } catch { /* ignore */ }
+}
+
+export function loadLastActiveConversationId(): string | null {
+  try {
+    return localStorage.getItem(LAST_ACTIVE_CONVERSATION_KEY);
   } catch {
     return null;
   }

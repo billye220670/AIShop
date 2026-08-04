@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, Download, Pencil, Trash2, MessageSquare, Star, X, Check } from 'lucide-react';
 import PinyinMatch from 'pinyin-match';
 import type { Conversation } from '../../types';
@@ -90,6 +91,12 @@ export default function Sidebar({
   const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
   /** 长按已触发，用于吞掉紧随其后的 click，避免顺带切换会话 */
   const suppressClickRef = useRef(false);
+  /**
+   * 菜单锚点 = 手指按下的视口坐标。
+   * 菜单本身要 portal 到 body 才能定位，不能再沿用列表项的 absolute 定位。
+   */
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const clearPressTimer = () => {
     if (pressTimerRef.current) {
@@ -104,9 +111,11 @@ export default function Sidebar({
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     clearPressTimer();
     pressOriginRef.current = { x: e.clientX, y: e.clientY };
+    const { clientX, clientY } = e;
     pressTimerRef.current = setTimeout(() => {
       pressTimerRef.current = null;
       suppressClickRef.current = true;
+      setMenuPos({ x: clientX, y: clientY });
       setMenuOpenId(id);
       // 长按已选中的文本会残留，主动清掉
       window.getSelection?.()?.removeAllRanges();
@@ -125,6 +134,75 @@ export default function Sidebar({
   };
 
   useEffect(() => () => clearPressTimer(), []);
+
+  /**
+   * 菜单开出来后按实际尺寸自适应位置：优先在手指右下方展开，
+   * 贴到视口边缘就翻到另一侧，最后再统一夹进安全边距内。
+   * 用 useLayoutEffect 在绘制前落位，避免先闪一下错位。
+   *
+   * 之前菜单是列表项内部的 `absolute right-3 top-1/2`：列表容器是
+   * overflow-y-auto，项目本身又套在带 translateX 的侧边栏抽屉里，
+   * 菜单一旦超出列表可视区域底部就被裁掉。这里改成 portal 到 body +
+   * fixed 定位，彻底脱离这些会裁剪内容的祖先。
+   */
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!menuOpenId || !el || !menuPos) return;
+    const MARGIN = 8;
+    const GAP = 6;
+
+    // 高度得先解开：菜单可能已经被上一次的 maxHeight 压过，
+    // 不清掉就会一直沿用那个更小的值。
+    el.style.maxHeight = '';
+    el.style.overflowY = '';
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
+
+    /* 移动端必须用 visualViewport：window.innerHeight 是"大视口"，
+       含浏览器工具栏占掉的那一条，按它算出来的底边在屏幕外，
+       菜单就被截断。visualViewport 才是真正可见的那块。 */
+    const vv = window.visualViewport;
+    const vw = vv?.width ?? window.innerWidth;
+    const vh = vv?.height ?? window.innerHeight;
+    const offsetX = vv?.offsetLeft ?? 0;
+    const offsetY = vv?.offsetTop ?? 0;
+    const minX = offsetX + MARGIN;
+    const maxX = offsetX + vw - MARGIN;
+    const minY = offsetY + MARGIN;
+    const maxY = offsetY + vh - MARGIN;
+
+    const anchorX = menuPos.x + offsetX;
+    const anchorY = menuPos.y + offsetY;
+
+    let left = anchorX + GAP;
+    if (left + width > maxX) left = anchorX - GAP - width; // 右侧放不下 → 翻到左边
+    left = Math.min(Math.max(left, minX), Math.max(minX, maxX - width));
+
+    // 上下都塞不进整个菜单时，选空间更大的一侧并让它内部滚动，
+    // 而不是硬塞出去被截断
+    let top = anchorY + GAP;
+    const spaceBelow = maxY - (anchorY + GAP);
+    const spaceAbove = anchorY - GAP - minY;
+    if (height > spaceBelow) {
+      if (height <= spaceAbove) {
+        top = anchorY - GAP - height; // 上方放得下 → 翻到上边
+      } else {
+        const usable = Math.max(spaceBelow, spaceAbove);
+        el.style.maxHeight = `${Math.max(120, usable)}px`;
+        el.style.overflowY = 'auto';
+        top = spaceAbove > spaceBelow ? minY : anchorY + GAP;
+      }
+    }
+    const finalHeight = el.offsetHeight;
+    top = Math.min(Math.max(top, minY), Math.max(minY, maxY - finalHeight));
+
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.transformOrigin = `${top > anchorY ? 'top' : 'bottom'} ${
+      left >= anchorX ? 'left' : 'right'
+    }`;
+    el.style.visibility = 'visible';
+  }, [menuOpenId, menuPos]);
 
   // 点击/触摸外部关闭菜单
   useEffect(() => {
@@ -198,6 +276,9 @@ export default function Sidebar({
     setMenuOpenId(null);
     setRenameTarget(conv);
   };
+
+  // 当前呼出菜单对应的会话（菜单已 portal 到 body，不再挂在列表项下面）
+  const menuConv = menuOpenId ? conversations?.find(c => c.id === menuOpenId) ?? null : null;
 
   return (
     <aside className="h-full bg-transparent flex flex-col overflow-hidden">
@@ -281,15 +362,6 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* 长按呼出上下文菜单时的背景模糊遮罩：只模糊背景，不拦截列表本身的定位 */}
-      {menuOpenId && (
-        <div
-          className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay"
-          onClick={() => setMenuOpenId(null)}
-          onPointerDown={() => setMenuOpenId(null)}
-        />
-      )}
-
       {/* 会话列表 */}
       <div className="flex-1 overflow-y-auto overflow-x-visible px-2 pt-2">
         {filteredConversations.length === 0 && historySearch && (
@@ -312,7 +384,7 @@ export default function Sidebar({
                       : isMenuOpen
                         ? 'bg-white/10'
                         : 'hover:bg-white/5'
-                  } ${isMenuOpen ? 'relative z-[201] context-menu-pop' : ''}`}
+                  }`}
                   onPointerDown={e => { if (!selectMode) handlePressStart(conv.id, e); }}
                   onPointerMove={handlePressMove}
                   onPointerUp={clearPressTimer}
@@ -358,59 +430,73 @@ export default function Sidebar({
                       {getLastMessagePreview(conv)}
                     </div>
                   </div>
-
-                  {/* 浮动菜单 */}
-                  {isMenuOpen && (
-                    <div
-                      className="absolute right-3 top-1/2 z-[200] w-48 bg-[var(--color-bg-elevated)] border border-white/10 rounded-2xl shadow-2xl py-2 select-none context-menu-pop"
-                      onClick={e => e.stopPropagation()}
-                      onPointerDown={e => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={() => {
-                          exportConversation(conv);
-                          setMenuOpenId(null);
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
-                      >
-                        <Download className="w-5 h-5 flex-shrink-0" />
-                        <span>导出</span>
-                      </button>
-                      <button
-                        onClick={() => enterEdit(conv)}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
-                      >
-                        <Pencil className="w-5 h-5 flex-shrink-0" />
-                        <span>编辑标题</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          onToggleConversationFavorite?.(conv.id);
-                          setMenuOpenId(null);
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
-                      >
-                        <Star className="w-5 h-5 flex-shrink-0" fill={conv.isFavorite ? 'currentColor' : 'none'} />
-                        <span>{conv.isFavorite ? '取消收藏' : '收藏'}</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDeleteTarget(conv.id);
-                          setMenuOpenId(null);
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-base text-red-400 active:bg-white/10 hover:bg-white/10 transition-colors"
-                      >
-                        <Trash2 className="w-5 h-5 flex-shrink-0" />
-                        <span>删除</span>
-                      </button>
-                    </div>
-                  )}
                 </div>
               );
             })}
           </div>
         ))}
       </div>
+
+      {/* 长按呼出上下文菜单：遮罩 + 菜单本体都 portal 到 body。
+          原先菜单挂在列表项下面用 absolute 定位，会被 overflow-y-auto 的列表容器、
+          以及外层带 translateX 的侧边栏抽屉裁掉底部；portal 出去后彻底脱离这些
+          会裁剪内容的祖先，位置改用 useLayoutEffect 按手指坐标现算。 */}
+      {menuOpenId && createPortal(
+        <div
+          className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay"
+          onClick={() => setMenuOpenId(null)}
+          onPointerDown={() => setMenuOpenId(null)}
+        />,
+        document.body
+      )}
+      {menuOpenId && menuConv && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', left: 0, top: 0, visibility: 'hidden' }}
+          className="z-[200] w-48 bg-[var(--color-bg-elevated)] border border-white/10 rounded-2xl shadow-2xl py-2 select-none context-menu-pop"
+          onClick={e => e.stopPropagation()}
+          onPointerDown={e => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              exportConversation(menuConv);
+              setMenuOpenId(null);
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+          >
+            <Download className="w-5 h-5 flex-shrink-0" />
+            <span>导出</span>
+          </button>
+          <button
+            onClick={() => enterEdit(menuConv)}
+            className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+          >
+            <Pencil className="w-5 h-5 flex-shrink-0" />
+            <span>编辑标题</span>
+          </button>
+          <button
+            onClick={() => {
+              onToggleConversationFavorite?.(menuConv.id);
+              setMenuOpenId(null);
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+          >
+            <Star className="w-5 h-5 flex-shrink-0" fill={menuConv.isFavorite ? 'currentColor' : 'none'} />
+            <span>{menuConv.isFavorite ? '取消收藏' : '收藏'}</span>
+          </button>
+          <button
+            onClick={() => {
+              setDeleteTarget(menuConv.id);
+              setMenuOpenId(null);
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 text-base text-red-400 active:bg-white/10 hover:bg-white/10 transition-colors"
+          >
+            <Trash2 className="w-5 h-5 flex-shrink-0" />
+            <span>删除</span>
+          </button>
+        </div>,
+        document.body
+      )}
 
       {/* 底部版本号 */}
       <div className="px-4 pb-3 pt-2 mt-auto">
