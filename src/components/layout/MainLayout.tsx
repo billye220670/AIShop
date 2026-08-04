@@ -75,12 +75,13 @@ export default function MainLayout({
   const [inputFocused, setInputFocused] = useState(false);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 检测输入框聚焦，隐藏底部菜单栏
+  // 检测输入框聚焦，隐藏底部菜单栏，同时锁存视口高度（见下方 frozenHeight 注释）
   const handleFocusIn = (e: React.FocusEvent) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'TEXTAREA') {
       if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
       setInputFocused(true);
+      setFrozenHeight(window.innerHeight);
     }
   };
 
@@ -88,7 +89,10 @@ export default function MainLayout({
     const target = e.target as HTMLElement;
     if (target.tagName === 'TEXTAREA') {
       // 延迟隐藏，避免切换到同区域其他元素时闪烁
-      blurTimerRef.current = setTimeout(() => setInputFocused(false), 100);
+      blurTimerRef.current = setTimeout(() => {
+        setInputFocused(false);
+        setFrozenHeight(null);
+      }, 100);
     }
   };
 
@@ -102,8 +106,18 @@ export default function MainLayout({
     return () => document.removeEventListener('keydown', onKey);
   }, [sidebarOpen]);
 
-  // 冻结初始视口高度，防止键盘弹起时 dvh 变化导致整页收缩
-  const [frozenHeight] = useState(() => window.innerHeight);
+  /**
+   * 键盘弹起时视口 dvh 会跟着收缩，导致整页跳动——弹起瞬间锁存当次
+   * innerHeight 顶住，收起后放开还原成 100dvh。
+   *
+   * 之前是挂载时用 `useState(() => window.innerHeight)` 锁一次焊死一整个
+   * 会话生命周期：iOS 上以 PWA 方式（standalone）冷启动时，launch 动画还没
+   * 结算完，这个时间点读到的 innerHeight 并不可靠，焊死后整页会跟着错位
+   * （顶部顶栏钻进状态栏下面、底部导航栏被裁掉一截）。改成默认用 CSS
+   * 100dvh（随时反映真实视口，包含安全区），只在真正需要顶住 dvh 收缩的
+   * 场景——输入框聚焦弹出键盘那一刻——才锁存，此时读到的值才是准的。
+   */
+  const [frozenHeight, setFrozenHeight] = useState<number | null>(null);
 
   // 横向滑动手势：任意位置右滑拉出侧边栏、左滑收回
   const { ref: swipeRef, dragging, dragOffset, shouldSuppressClick } = useDrawerSwipe({
@@ -120,8 +134,8 @@ export default function MainLayout({
   return (
     <div
       ref={swipeRef}
-      className="bg-[#121211] text-white overflow-hidden fixed inset-x-0 top-0"
-      style={{ height: frozenHeight, touchAction: 'manipulation' }}
+      className="bg-[#121211] text-white overflow-hidden fixed inset-x-0 top-0 h-[100dvh]"
+      style={{ height: frozenHeight ?? undefined, touchAction: 'manipulation' }}
     >
       {/* 侧边栏 - 绝对定位左侧底层，平时收起在屏幕外 */}
       <div
