@@ -75,7 +75,7 @@ export default function TopNavBar({
   const showRing = Boolean(realUsage && contextLimit);
 
   return (
-    <div className="relative flex items-center justify-between px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] shrink-0">
+    <div className="relative flex items-center justify-between px-3 py-2 shrink-0">
       {/* 左侧：汉堡菜单 + 模型选择器 + 上下文环 */}
       <div className="flex items-center gap-2">
         <button

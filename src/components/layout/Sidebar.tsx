@@ -283,14 +283,10 @@ export default function Sidebar({
   return (
     <aside className="h-full bg-transparent flex flex-col overflow-hidden">
       {/* 搜索框
-          顶部内边距与 TopNavBar 用同一套 max(0.5rem, safe-area-inset-top) 公式，
-          保证侧边栏拉出来时这一行和主内容区的汉堡菜单行在同一水平线上——
-          否则两栏各自的安全区内边距不一致，视觉上就像整页错位了一截。
+          外层 54px 对齐 TopNavBar 行高：py-2(16) + 最高子元素 ModelSelector 38px
+          （text-sm 20 + py-2 16 + border 2）；汉堡按钮 36px 在该行内居中。
           配合 items-center，搜索框与右侧汉堡图标处于同一水平中线 */}
-      <div
-        className="px-4 pb-2 flex items-center shrink-0"
-        style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
-      >
+      <div className="px-4 h-[54px] flex items-center shrink-0">
         <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
