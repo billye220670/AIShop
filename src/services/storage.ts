@@ -52,11 +52,33 @@ export function loadWebSearchEnabled(): boolean {
 }
 
 export function loadTheme(): string {
-  return localStorage.getItem('aishop_theme') || 'green';
+  try {
+    return localStorage.getItem('aishop_theme') || 'green';
+  } catch {
+    return 'green';
+  }
 }
 
 export function saveTheme(themeId: string): void {
-  localStorage.setItem('aishop_theme', themeId);
+  try {
+    localStorage.setItem('aishop_theme', themeId);
+  } catch { /* ignore */ }
+}
+
+export type ColorMode = 'light' | 'dark';
+
+export function loadMode(): ColorMode {
+  try {
+    const v = localStorage.getItem('aishop_mode');
+    if (v === 'light' || v === 'dark') return v;
+  } catch { /* ignore */ }
+  return 'dark'; // 向后兼容：旧版无此 key 默认暗色
+}
+
+export function saveMode(mode: ColorMode): void {
+  try {
+    localStorage.setItem('aishop_mode', mode);
+  } catch { /* ignore */ }
 }
 
 // Artifact 收藏已迁到 IndexedDB，见 db/favoriteRepo。

@@ -8,16 +8,24 @@ import Toast from './components/common/Toast';
 import { useChat } from './hooks/useChat';
 import { useFavoriteArtifacts } from './hooks/useFavoriteArtifacts';
 import { CHAT_MODELS } from './config/models';
-import { loadTheme } from './services/storage';
+import { loadTheme, loadMode } from './services/storage';
 import { requestPersistentStorage } from './utils/pwa';
 import { messageCountOf } from './utils/conversationView';
 import type { TabMode } from './types';
 
 function App() {
-  // 应用启动时加载主题
+  // 应用启动时加载主题与亮/暗模式
   useEffect(() => {
     const theme = loadTheme();
+    const mode = loadMode();
     document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.mode = mode;
+    // 同步浏览器工具栏颜色（需要适配颜色主题）
+    const meta = document.getElementById('meta-theme-color') as HTMLMetaElement | null;
+    if (meta) {
+      const darkColor = theme === 'purple' ? '#0d0a1a' : '#121211';
+      meta.content = mode === 'light' ? '#f5f5f7' : darkColor;
+    }
   }, []);
 
   // 申请持久化存储，降低数据被系统回收的概率。

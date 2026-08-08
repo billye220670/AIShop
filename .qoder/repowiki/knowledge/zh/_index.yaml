@@ -1,0 +1,51 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: master
+nodes_managed: true
+exported_at: "2026-08-08T10:01:33Z"
+modules:
+    "":
+        dir_name: AIShop 前端应用根工程
+        title: AIShop 前端应用根工程
+        scope:
+            - README.md
+            - .gitignore
+            - package.json
+            - package-lock.json
+            - vite.config.ts
+            - tsconfig.json
+            - tsconfig.app.json
+            - tsconfig.node.json
+            - eslint.config.js
+            - index.html
+            - docs/
+            - ImageGenAPI/
+            - .env.example
+            - .npmrc
+            - COPY_FIX.md
+            - STOP_BEHAVIOR_CHANGES.md
+            - logs.zip
+            - logs2.zip
+            - test-image-local.mjs
+            - 博查调用示例.txt
+            - 总结标题小模型.txt
+            - 追加LLM.md
+            - 需求文档.md
+        source_files: []
+        children:
+            - app_shell
+        depends_on: []
+        related_to: []
+    app_shell:
+        dir_name: 应用启动与根布局壳层
+        title: 应用启动与根布局壳层
+        scope:
+            - src/App.tsx
+            - src/main.tsx
+            - src/index.css
+            - src/vite-env.d.ts
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

@@ -381,7 +381,7 @@ export default function ChatInput({
                       onClick={handleSubmit}
                       disabled={!hasContent}
                       className={`p-1.5 rounded-full transition-colors ${hasContent ? 'hover:opacity-90 cursor-pointer' : 'cursor-not-allowed'}`}
-                      style={{ backgroundColor: hasContent ? 'var(--color-accent)' : '#4b4b4b' }}
+                      style={{ backgroundColor: hasContent ? 'var(--color-accent)' : 'var(--color-bg-button)' }}
                       title="发送"
                     >
                       <ArrowUp className={`w-4 h-4 ${hasContent ? 'text-black' : 'text-gray-400'}`} strokeWidth={2.5} />
@@ -438,7 +438,7 @@ export default function ChatInput({
                     onClick={handleSubmit}
                     disabled={!hasContent}
                     className={`p-1.5 rounded-full transition-colors ${hasContent ? 'hover:opacity-90 cursor-pointer' : 'cursor-not-allowed'}`}
-                    style={{ backgroundColor: hasContent ? 'var(--color-accent)' : '#4b4b4b' }}
+                    style={{ backgroundColor: hasContent ? 'var(--color-accent)' : 'var(--color-bg-button)' }}
                     title="发送"
                   >
                     <ArrowUp className={`w-4 h-4 ${hasContent ? 'text-black' : 'text-gray-400'}`} strokeWidth={2.5} />

@@ -1,7 +1,33 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-[data-theme="purple"], :root {
+/* :root 必须是中性默认值，不能默认成某个主题色。
+ * 否则在 data-theme 设置之前（CSS 先于 React 生效），html 背景会被染成该主题色；
+ * iOS Safari 在首帧时读取状态栏颜色后不会重新读取，导致状态栏颜色与主题错位。
+ * 默认值取绿色主题暗色（近黑、不偏色），紫色/绿色主题各自覆盖。 */
+:root {
+  --color-bg-base: rgb(18, 18, 17);
+  --color-bg-primary: rgb(23, 23, 22);
+  --color-bg-secondary: rgb(32, 32, 30);
+  --color-bg-hover: rgb(42, 42, 39);
+  --color-bg-elevated: rgb(38, 38, 36);
+  --color-bg-button: rgb(30, 30, 28);
+  --color-accent: rgb(42, 219, 92);
+  --color-accent-hover: rgb(32, 189, 72);
+  --color-accent-soft: rgba(42, 219, 92, 0.15);
+  --color-accent-foreground: #000000;
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  --color-text-tertiary: rgb(120, 120, 115);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(42, 219, 92, 0.2);
+  --color-scrollbar-thumb: rgb(64, 64, 60);
+  --color-scrollbar-hover: rgb(88, 88, 83);
+  --color-code-bg: rgb(18, 18, 17);
+}
+
+[data-theme="purple"] {
   --color-bg-base: #0d0a1a;
   --color-bg-primary: #1a1a2e;
   --color-bg-secondary: #1e1e36;
@@ -47,6 +73,130 @@
   --color-code-bg: rgb(18, 18, 17);
 }
 
+/* ================================================================
+ * 亮色模式（独立于 data-theme 颜色主题，叠加覆盖暗色变量）
+ * ================================================================ */
+[data-mode="light"] {
+  /* --- 背景 --- */
+  --color-bg-base: #f5f5f7;
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f9f9fb;
+  --color-bg-hover: #f0f0f5;
+  --color-bg-elevated: #f3f3f8;
+  --color-bg-button: #ebebf0;
+
+  /* --- 强调色相关（保留原主题 accent 色值不动，这里只调软色与前景）--- */
+  --color-accent-foreground: #ffffff;
+
+  /* --- 文字 --- */
+  --color-text-primary: #1a1a2e;
+  --color-text-secondary: #5b5b6e;
+  --color-text-muted: #8e8e9e;
+  --color-text-tertiary: #7c7c8e;
+
+  /* --- 边框 --- */
+  --color-border: rgba(0, 0, 0, 0.08);
+
+  /* --- 滚动条 --- */
+  --color-scrollbar-thumb: #c4c4cc;
+  --color-scrollbar-hover: #a0a0ac;
+
+  /* --- 代码块背景 --- */
+  --color-code-bg: #f1f1f4;
+
+  /* ======== 覆盖组件中残留的硬编码 Tailwind 暗色类 ======== */
+
+  /* 文字 —— text-white 暗色模式下是白色，亮色下应变成主文字色 */
+  & .text-white {
+    color: var(--color-text-primary);
+  }
+
+  /* text-gray-200 / 300 → 接近主文字 */
+  & .text-gray-200,
+  & .text-gray-300 {
+    color: var(--color-text-primary);
+  }
+
+  /* text-gray-400 → 次级文字 */
+  & .text-gray-400 {
+    color: var(--color-text-secondary);
+  }
+
+  /* text-gray-500 → 弱化文字 */
+  & .text-gray-500 {
+    color: var(--color-text-muted);
+  }
+
+  /* text-gray-600 → 最弱 / 禁用态文字 */
+  & .text-gray-600 {
+    color: var(--color-text-tertiary);
+  }
+
+  /* placeholder */
+  & .placeholder-gray-500::placeholder {
+    color: var(--color-text-muted);
+  }
+
+  /* 背景 bg-white/N → 使用黑色半透 */
+  & .bg-white\/5  { background-color: rgba(0, 0, 0, 0.04); }
+  & .bg-white\/10 { background-color: rgba(0, 0, 0, 0.06); }
+  & .bg-white\/15 { background-color: rgba(0, 0, 0, 0.08); }
+  & .bg-white\/20 { background-color: rgba(0, 0, 0, 0.10); }
+  & .bg-white\/70 { background-color: rgba(0, 0, 0, 0.50); }
+
+  /* hover:bg-white/N */
+  & .hover\:bg-white\/5:hover  { background-color: rgba(0, 0, 0, 0.04); }
+  & .hover\:bg-white\/10:hover { background-color: rgba(0, 0, 0, 0.06); }
+  & .hover\:bg-white\/20:hover { background-color: rgba(0, 0, 0, 0.10); }
+
+  /* active:bg-white/N */
+  & .active\:bg-white\/10:active { background-color: rgba(0, 0, 0, 0.06); }
+
+  /* Markdown 排版：暗色模式用 prose-invert，亮色下移除反转 */
+  & .prose-invert {
+    --tw-prose-body: var(--color-text-primary);
+    --tw-prose-headings: var(--color-text-primary);
+    --tw-prose-lead: var(--color-text-secondary);
+    --tw-prose-links: var(--color-accent);
+    --tw-prose-bold: var(--color-text-primary);
+    --tw-prose-counters: var(--color-text-muted);
+    --tw-prose-bullets: var(--color-text-muted);
+    --tw-prose-hr: var(--color-border);
+    --tw-prose-quotes: var(--color-text-primary);
+    --tw-prose-quote-borders: var(--color-accent);
+    --tw-prose-captions: var(--color-text-secondary);
+    --tw-prose-code: var(--color-text-primary);
+    --tw-prose-pre-code: var(--color-text-primary);
+    --tw-prose-pre-bg: var(--color-code-bg);
+    --tw-prose-th-borders: var(--color-border);
+    --tw-prose-td-borders: var(--color-border);
+  }
+
+  /* 覆盖硬编码的 prose 内联样式（组件中作为 className 传入的部分） */
+  & .prose-headings\:text-gray-100 { color: var(--color-text-primary); }
+  & .prose-p\:text-gray-200 { color: var(--color-text-primary); }
+  & .prose-strong\:text-white { color: var(--color-text-primary); }
+  & .prose-li\:text-gray-200 { color: var(--color-text-primary); }
+  & .prose-th\:text-gray-200 { color: var(--color-text-primary); }
+  & .prose-td\:text-gray-300 { color: var(--color-text-primary); }
+  & .prose-blockquote\:border-gray-600 { border-color: var(--color-border); }
+  & .prose-blockquote\:text-gray-300 { color: var(--color-text-secondary); }
+  & .prose-hr\:border-gray-700 { border-color: var(--color-border); }
+
+  /* 边框覆盖 */
+  & .border-white\/5  { border-color: rgba(0, 0, 0, 0.06); }
+  & .border-white\/10 { border-color: rgba(0, 0, 0, 0.08); }
+  & .ring-white\/10  { --tw-ring-color: rgba(0, 0, 0, 0.08); }
+
+  /* 原来硬编码的深灰背景 → 浅灰 */
+  & .bg-gray-800              { background-color: #e5e5ea; }
+  & .hover\:bg-gray-800\/50:hover { background-color: rgba(0, 0, 0, 0.04); }
+
+  /* bg-black/5 dark:bg-white/5 这类模式：data-mode 亮色时按浅色处理 */
+  & .bg-black\/5  { background-color: rgba(0, 0, 0, 0.04); }
+  & .bg-black\/10 { background-color: rgba(0, 0, 0, 0.06); }
+}
+
 /* 全局：禁止页面级滚动与下拉刷新/橡皮筋效果，禁止缩放 */
 html,
 body,
@@ -56,6 +206,7 @@ body,
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: manipulation;
+  background-color: var(--color-bg-base);
 }
 
 /* 防止文本被选中（输入框除外） */

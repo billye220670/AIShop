@@ -1,21 +1,14 @@
 # API 集成
 
 <cite>
-**本文档引用的文件**
-- [api/chat.ts](file://api/chat.ts)
-- [api/image.ts](file://api/image.ts)
-- [api/search.ts](file://api/search.ts)
-- [api/verify.ts](file://api/verify.ts)
-- [api/_lib/access.ts](file://api/_lib/access.ts)
+**本文引用的文件**
 - [src/services/api.ts](file://src/services/api.ts)
-- [src/hooks/useChat.ts](file://src/hooks/useChat.ts)
-- [src/hooks/useImage.ts](file://src/hooks/useImage.ts)
 - [src/services/webSearch.ts](file://src/services/webSearch.ts)
-- [src/components/auth/AccessGate.tsx](file://src/components/auth/AccessGate.tsx)
-- [src/services/accessCode.ts](file://src/services/accessCode.ts)
 - [src/services/imageApi.ts](file://src/services/imageApi.ts)
+- [src/services/settingsService.ts](file://src/services/settingsService.ts)
+- [src/config/providers.ts](file://src/config/providers.ts)
+- [src/config/prompts.ts](file://src/config/prompts.ts)
 - [src/types/index.ts](file://src/types/index.ts)
-- [package.json](file://package.json)
 </cite>
 
 ## 目录
@@ -25,372 +18,465 @@
 4. [架构总览](#架构总览)
 5. [详细组件分析](#详细组件分析)
 6. [依赖关系分析](#依赖关系分析)
-7. [性能考量](#性能考量)
+7. [性能考虑](#性能考虑)
 8. [故障排查指南](#故障排查指南)
 9. [结论](#结论)
 10. [附录](#附录)
 
 ## 简介
-本文件面向 AIShop 的 API 集成系统，系统由前端 React + TypeScript 应用与后端 Vercel 边缘/服务器函数组成，提供聊天、图片生成、网络搜索与访问控制等能力。文档重点涵盖：
-- 前端 API 服务封装：请求处理、响应解析、错误管理与流式处理
-- 网络搜索集成：搜索结果获取、格式化与上下文注入
-- 后端 API 层设计：访问控制、代理转发、安全验证
-- 各端点功能与使用：/api/chat、/api/image、/api/search、/api/verify
-- 流式 API 处理：AsyncGenerator 与实时数据传输
-- 最佳实践与性能优化建议
+本文件为 AIShop 前端 API 集成层的全面文档，聚焦于：
+- 聊天流式请求封装、错误处理与重试机制
+- Web 搜索服务集成（博查/Tavily）与结果格式化
+- 图片生成服务的模型路由、参数构建与响应解析
+- 设置服务（Provider 与 API Key）的配置管理与动态更新
+- 后端接口调用约定（基于 OpenAI 兼容协议）
+- 认证授权与安全注意事项
+- 第三方服务集成方式与配置方法
+- 调用示例与错误处理最佳实践
 
 ## 项目结构
-整体采用“前端应用 + 后端边缘/服务器函数”的分层架构：
-- 前端位于 src/，包含页面组件、业务 Hook、服务层与类型定义
-- 后端位于 api/，封装了聊天、图片、搜索与访问校验的边缘/服务器函数
-- 服务端密钥通过环境变量管理，前端仅通过受控的代理端点访问上游服务
+前端通过 services 层统一封装对外部服务的调用，config 层管理提供商端点与系统提示词，types 层定义数据契约。
 
 ```mermaid
 graph TB
-subgraph "前端应用"
-FE_App["React 应用<br/>src/*"]
-FE_Hooks["业务 Hook<br/>useChat / useImage"]
-FE_Services["服务层<br/>api.ts / imageApi.ts / webSearch.ts / accessCode.ts"]
-FE_Components["UI 组件<br/>AccessGate 等"]
+subgraph "服务层"
+A["api.ts<br/>聊天流式请求"]
+B["imageApi.ts<br/>图片生成"]
+C["webSearch.ts<br/>Web 搜索"]
+D["settingsService.ts<br/>设置/密钥管理"]
 end
-subgraph "后端 APIVercel"
-BE_Chat["/api/chat<br/>Edge Runtime"]
-BE_Image["/api/image<br/>Serverless Runtime"]
-BE_Search["/api/search<br/>Edge Runtime"]
-BE_Verify["/api/verify<br/>Edge Runtime"]
-BE_Access["_lib/access.ts<br/>访问控制工具"]
+subgraph "配置层"
+E["providers.ts<br/>提供商端点"]
+F["prompts.ts<br/>系统提示词"]
 end
-subgraph "上游服务"
-U_Highway["Highway API<br/>OpenAI 兼容 / jiekou 协议"]
-U_Bocha["Bocha Web Search"]
+subgraph "类型层"
+G["types/index.ts<br/>消息/用量/参数等"]
 end
-FE_App --> FE_Hooks
-FE_Hooks --> FE_Services
-FE_Services --> BE_Chat
-FE_Services --> BE_Image
-FE_Services --> BE_Search
-FE_Services --> BE_Verify
-BE_Chat --> BE_Access
-BE_Image --> BE_Access
-BE_Search --> BE_Access
-BE_Chat --> U_Highway
-BE_Image --> U_Highway
-BE_Search --> U_Bocha
+A --> D
+A --> E
+A --> F
+A --> G
+B --> D
+B --> E
+B --> G
+C --> D
+C --> G
 ```
 
 图表来源
-- [api/chat.ts:1-50](file://api/chat.ts#L1-L50)
-- [api/image.ts:1-310](file://api/image.ts#L1-L310)
-- [api/search.ts:1-66](file://api/search.ts#L1-L66)
-- [api/verify.ts:1-33](file://api/verify.ts#L1-L33)
-- [api/_lib/access.ts:1-156](file://api/_lib/access.ts#L1-L156)
+- [src/services/api.ts:44-173](file://src/services/api.ts#L44-L173)
+- [src/services/imageApi.ts:149-243](file://src/services/imageApi.ts#L149-L243)
+- [src/services/webSearch.ts:23-117](file://src/services/webSearch.ts#L23-L117)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+- [src/config/providers.ts:7-18](file://src/config/providers.ts#L7-L18)
+- [src/config/prompts.ts:47-53](file://src/config/prompts.ts#L47-L53)
+- [src/types/index.ts:34-42](file://src/types/index.ts#L34-L42)
 
 章节来源
-- [package.json:1-40](file://package.json#L1-L40)
+- [src/services/api.ts:44-173](file://src/services/api.ts#L44-L173)
+- [src/services/imageApi.ts:149-243](file://src/services/imageApi.ts#L149-L243)
+- [src/services/webSearch.ts:23-117](file://src/services/webSearch.ts#L23-L117)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+- [src/config/providers.ts:7-18](file://src/config/providers.ts#L7-L18)
+- [src/config/prompts.ts:47-53](file://src/config/prompts.ts#L47-L53)
+- [src/types/index.ts:34-42](file://src/types/index.ts#L34-L42)
 
 ## 核心组件
-- 前端 API 封装
-  - 流式聊天：通过 AsyncGenerator 逐块解析 SSE 数据，前端按原逻辑解析增量内容
-  - 图片生成：统一封装请求参数与错误处理，返回图片 URL 列表
-  - 网络搜索：调用 /api/search，解析 Bocha 返回的网页条目并格式化为上下文
-  - 访问控制：统一注入 X-Access-Code 头，处理 401 事件并自动锁回登录界面
-- 后端 API 层
-  - /api/chat：代理 Highway API 的 OpenAI 兼容接口，支持流式与非流式
-  - /api/image：代理 Highway API 的图片生成接口，兼容 GPT Image 2 与 Gemini 系列
-  - /api/search：代理博查网络搜索，透传上游 JSON
-  - /api/verify：访问码校验探针，返回服务端是否启用访问码及本地码有效性
-  - 访问控制：恒定时间比较、内存级 IP 限速、失败延迟与跨实例弱一致性
+- 聊天流式服务：提供流式对话能力，自动注入系统提示词与联网搜索结果上下文，支持用量统计与失败回退重试。
+- 图片生成服务：按模型路由到不同上游端点，统一构建请求体并解析多种响应格式，内置超时与取消控制。
+- Web 搜索服务：根据设置选择博查或 Tavily，统一返回结构化结果并提供上下文格式化。
+- 设置服务：持久化 Provider 与 API Key，支持动态切换与读取。
+- 提供商配置：集中维护各提供商的聊天与图片基础地址。
+- 类型定义：消息、用量、图片生成参数等统一契约。
 
 章节来源
-- [src/services/api.ts:1-83](file://src/services/api.ts#L1-L83)
-- [src/services/imageApi.ts:1-41](file://src/services/imageApi.ts#L1-L41)
-- [src/services/webSearch.ts:1-58](file://src/services/webSearch.ts#L1-L58)
-- [src/services/accessCode.ts:1-113](file://src/services/accessCode.ts#L1-L113)
-- [api/chat.ts:1-50](file://api/chat.ts#L1-L50)
-- [api/image.ts:1-310](file://api/image.ts#L1-L310)
-- [api/search.ts:1-66](file://api/search.ts#L1-L66)
-- [api/verify.ts:1-33](file://api/verify.ts#L1-L33)
-- [api/_lib/access.ts:1-156](file://api/_lib/access.ts#L1-L156)
+- [src/services/api.ts:44-173](file://src/services/api.ts#L44-L173)
+- [src/services/imageApi.ts:149-243](file://src/services/imageApi.ts#L149-L243)
+- [src/services/webSearch.ts:23-117](file://src/services/webSearch.ts#L23-L117)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+- [src/config/providers.ts:7-18](file://src/config/providers.ts#L7-L18)
+- [src/types/index.ts:34-42](file://src/types/index.ts#L34-L42)
 
 ## 架构总览
-前端通过受控代理端点访问上游服务，后端负责密钥管理、访问控制与上游适配。访问控制在 Edge Runtime 中统一实现，图片生成使用更长超时的 Serverless Runtime。
+下图展示从 UI 到外部服务的调用路径与关键职责分工。
 
 ```mermaid
 sequenceDiagram
-participant Client as "浏览器"
-participant FE as "前端服务层"
-participant ChatAPI as "/api/chat"
-participant ImgAPI as "/api/image"
-participant SearchAPI as "/api/search"
-participant VerifyAPI as "/api/verify"
-participant Access as "_lib/access.ts"
-participant Highway as "Highway API"
-participant Bocha as "Bocha 搜索"
-Client->>FE : 发送聊天/图片/搜索请求
-FE->>VerifyAPI : POST /api/verify探测
-VerifyAPI->>Access : 校验 ACCESS_CODE
-Access-->>VerifyAPI : {required, valid}
-VerifyAPI-->>FE : {ok, required}
-FE->>ChatAPI : POST /api/chat流式
-ChatAPI->>Access : 校验 ACCESS_CODE
-Access-->>ChatAPI : 通过/拒绝
-ChatAPI->>Highway : 转发 chat/completions
-Highway-->>ChatAPI : SSE 流
-ChatAPI-->>FE : 透传 SSE 流
-FE-->>Client : 逐步渲染增量内容
-FE->>ImgAPI : POST /api/image图片生成
-ImgAPI->>Access : 校验 ACCESS_CODE
-Access-->>ImgAPI : 通过/拒绝
-ImgAPI->>Highway : 转发对应模型端点
-Highway-->>ImgAPI : JSON 响应
-ImgAPI-->>FE : {urls : string[]}
-FE->>SearchAPI : POST /api/search联网搜索
-SearchAPI->>Access : 校验 ACCESS_CODE
-Access-->>SearchAPI : 通过/拒绝
-SearchAPI->>Bocha : 转发搜索请求
-Bocha-->>SearchAPI : JSON 结果
-SearchAPI-->>FE : 透传 JSON
+participant UI as "界面/业务逻辑"
+participant Chat as "api.ts<br/>streamChat"
+participant Img as "imageApi.ts<br/>generateImage"
+participant Search as "webSearch.ts<br/>searchWeb"
+participant Settings as "settingsService.ts"
+participant Prov as "providers.ts"
+participant Upstream as "上游服务"
+UI->>Settings : 获取 Provider / API Key
+UI->>Prov : 获取基础 URL
+UI->>Chat : 发起流式对话
+Chat->>Upstream : POST /chat/completions (SSE)
+Upstream-->>Chat : 增量内容 + 用量
+Chat-->>UI : 逐字推送 + 最终用量回调
+UI->>Img : 生成图片
+Img->>Upstream : POST /v3/* (带鉴权)
+Upstream-->>Img : 图片URL列表
+Img-->>UI : 返回URL数组
+UI->>Search : 联网搜索
+Search->>Upstream : 博查/Tavily 搜索
+Upstream-->>Search : 搜索结果
+Search-->>UI : 结构化结果 + 上下文文本
 ```
 
 图表来源
-- [src/services/api.ts:13-82](file://src/services/api.ts#L13-L82)
-- [src/services/imageApi.ts:8-40](file://src/services/imageApi.ts#L8-L40)
-- [src/services/webSearch.ts:20-46](file://src/services/webSearch.ts#L20-L46)
-- [src/services/accessCode.ts:37-57](file://src/services/accessCode.ts#L37-L57)
-- [api/chat.ts:11-49](file://api/chat.ts#L11-L49)
-- [api/image.ts:104-309](file://api/image.ts#L104-L309)
-- [api/search.ts:11-65](file://api/search.ts#L11-L65)
-- [api/verify.ts:11-32](file://api/verify.ts#L11-L32)
-- [api/_lib/access.ts:120-155](file://api/_lib/access.ts#L120-L155)
+- [src/services/api.ts:44-173](file://src/services/api.ts#L44-L173)
+- [src/services/imageApi.ts:149-243](file://src/services/imageApi.ts#L149-L243)
+- [src/services/webSearch.ts:23-117](file://src/services/webSearch.ts#L23-L117)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+- [src/config/providers.ts:7-18](file://src/config/providers.ts#L7-L18)
 
 ## 详细组件分析
 
-### 前端 API 服务封装
-- 流式聊天（AsyncGenerator）
-  - 构造系统提示与消息数组，开启 stream=true
-  - 读取 Response.body 的 ReadableStream，按行解析 data: 块
-  - 提取 choices[0].delta.content 的增量片段并 yield
-  - 错误时抛出包含状态码与错误文本的异常
-- 图片生成
-  - 统一参数结构，支持 GPT 与 Gemini 的差异化字段
-  - 对上游错误进行解析，优先展示 detail 字段，其次 status 文本
-  - 返回图片 URL 数组，供 UI 展示
-- 网络搜索
-  - 调用 /api/search，解析 Bocha 的 data.webPages.value
-  - 格式化为上下文文本，注入到系统消息中参与后续对话
-- 访问控制
-  - 自动注入 X-Access-Code 头
-  - 401 时清除本地码并广播事件，AccessGate 锁回登录界面
-
-章节来源
-- [src/services/api.ts:13-82](file://src/services/api.ts#L13-L82)
-- [src/services/imageApi.ts:8-40](file://src/services/imageApi.ts#L8-L40)
-- [src/services/webSearch.ts:20-58](file://src/services/webSearch.ts#L20-L58)
-- [src/services/accessCode.ts:37-113](file://src/services/accessCode.ts#L37-L113)
-
-### 后端 API 层设计
-- /api/chat（Edge Runtime）
-  - 方法校验：仅允许 POST
-  - 访问控制：checkAccessEdge 校验 ACCESS_CODE，支持 IP 锁定与恒定时间比较
-  - 密钥校验：HIGHWAY_API_KEY 存在性检查
-  - 透传请求体至上游 OpenAI 兼容端点，直接透传上游响应（含 SSE）
-- /api/image（Serverless Runtime）
-  - 方法校验：仅允许 POST
-  - 访问控制：checkAccessEdge 校验 ACCESS_CODE（Node 版本）
-  - 密钥校验：HIGHWAY_API_KEY 存在性检查
-  - 请求体解析与参数校验：model/prompt 必填，images 可选
-  - 模型路由与请求体适配：GPT Image 2 与 Gemini 系列差异化处理
-  - 上游响应解析：extractUrls 统一抽取 URL 列表（支持 base64/data URI）
-  - 错误透传：上游非 2xx 时透传状态码与 JSON/文本
-- /api/search（Edge Runtime）
-  - 方法校验：仅允许 POST
-  - 访问控制：checkAccessEdge 校验 ACCESS_CODE
-  - 密钥校验：BOCHA_API_KEY 存在性检查
-  - 请求体解析与参数校验：query 必填
-  - 透传请求至 Bocha，透传响应（JSON）
-- /api/verify（Edge Runtime）
-  - 方法校验：允许 GET/POST
-  - 未配置 ACCESS_CODE：直接放行，返回 required=false
-  - 已配置 ACCESS_CODE：checkAccessEdge 校验，通过返回 required=true，失败返回 429/401
-
-章节来源
-- [api/chat.ts:11-49](file://api/chat.ts#L11-L49)
-- [api/image.ts:104-309](file://api/image.ts#L104-L309)
-- [api/search.ts:11-65](file://api/search.ts#L11-L65)
-- [api/verify.ts:11-32](file://api/verify.ts#L11-L32)
-- [api/_lib/access.ts:120-155](file://api/_lib/access.ts#L120-L155)
-
-### 访问控制机制
-- 恒定时间字符串比较：避免时序侧信道
-- 内存级 IP 限速：单实例内强一致，失败计数窗口与锁定时长可控
-- 失败延迟：每次失败固定延迟，提升暴力破解成本
-- Edge 与 Node 版本：分别提供 getEdgeClientIp/getNodeClientIp 与 checkAccessEdge
-- 前端联动：authedFetch 自动注入头并在 401 时触发全局事件
-
-章节来源
-- [api/_lib/access.ts:25-34](file://api/_lib/access.ts#L25-L34)
-- [api/_lib/access.ts:40-57](file://api/_lib/access.ts#L40-L57)
-- [api/_lib/access.ts:63-97](file://api/_lib/access.ts#L63-L97)
-- [api/_lib/access.ts:120-155](file://api/_lib/access.ts#L120-L155)
-- [src/services/accessCode.ts:37-57](file://src/services/accessCode.ts#L37-L57)
-
-### 网络搜索集成
-- 前端：searchWeb 调用 /api/search，解析 Bocha 的 data.webPages.value
-- 格式化：formatSearchResultsForContext 生成带来源标注的上下文文本
-- 集成：useChat 在发送消息前可选执行搜索并将上下文注入系统消息
-
-章节来源
-- [src/services/webSearch.ts:20-58](file://src/services/webSearch.ts#L20-L58)
-- [src/hooks/useChat.ts:170-197](file://src/hooks/useChat.ts#L170-L197)
-
-### 流式 API 处理
-- 前端：streamChat 使用 AsyncGenerator 读取 SSE，按行解析 data 块，yield 增量内容
-- 后端：/api/chat 直接透传上游 SSE 流，前端无需额外解析
-- 错误处理：response.ok 校验失败时抛出包含状态码与错误文本的异常
-
-章节来源
-- [src/services/api.ts:13-82](file://src/services/api.ts#L13-L82)
-- [api/chat.ts:31-48](file://api/chat.ts#L31-L48)
-
-## 依赖关系分析
-
-```mermaid
-graph LR
-A["src/services/api.ts"] --> B["src/services/accessCode.ts"]
-C["src/hooks/useChat.ts"] --> A
-D["src/services/webSearch.ts"] --> B
-E["src/hooks/useImage.ts"] --> F["src/services/imageApi.ts"]
-F --> B
-G["src/components/auth/AccessGate.tsx"] --> B
-H["api/chat.ts"] --> I["api/_lib/access.ts"]
-J["api/image.ts"] --> I
-K["api/search.ts"] --> I
-L["api/verify.ts"] --> I
-```
-
-图表来源
-- [src/services/api.ts:1-83](file://src/services/api.ts#L1-L83)
-- [src/services/accessCode.ts:1-113](file://src/services/accessCode.ts#L1-L113)
-- [src/hooks/useChat.ts:1-370](file://src/hooks/useChat.ts#L1-L370)
-- [src/services/webSearch.ts:1-58](file://src/services/webSearch.ts#L1-L58)
-- [src/hooks/useImage.ts:1-393](file://src/hooks/useImage.ts#L1-L393)
-- [src/services/imageApi.ts:1-41](file://src/services/imageApi.ts#L1-L41)
-- [src/components/auth/AccessGate.tsx:1-150](file://src/components/auth/AccessGate.tsx#L1-L150)
-- [api/chat.ts:1-50](file://api/chat.ts#L1-L50)
-- [api/image.ts:1-310](file://api/image.ts#L1-L310)
-- [api/search.ts:1-66](file://api/search.ts#L1-L66)
-- [api/verify.ts:1-33](file://api/verify.ts#L1-L33)
-- [api/_lib/access.ts:1-156](file://api/_lib/access.ts#L1-L156)
-
-## 性能考量
-- 流式传输
-  - 前端使用 ReadableStream + TextDecoder 逐步解码，降低首包延迟与内存占用
-  - 后端直接透传上游 SSE，减少中间层编码/解码开销
-- 访问控制
-  - Edge Runtime 中实现恒定时间比较与内存级限速，避免外部依赖
-  - 跨实例严格限速建议使用 Vercel KV/Upstash Redis
-- 图片生成
-  - Serverless Runtime 提供更长超时（60s），适合图片生成场景
-  - 前端对 base64 进行压缩，减少传输体积
-- 前端缓存与状态
-  - localStorage 持久化访问码与会话，减少重复登录与请求
-  - 并发队列与超时控制，避免 UI 卡顿与资源浪费
-
-## 故障排查指南
-- 401 未授权
-  - 现象：前端收到 401，自动锁回登录界面
-  - 处理：确认 ACCESS_CODE 配置与前端 X-Access-Code 头是否正确
-- 429 限速
-  - 现象：返回 Retry-After 或服务端锁定
-  - 处理：等待锁定时间结束后重试，或联系管理员
-- 500/502 上游错误
-  - 现象：后端返回上游错误详情
-  - 处理：检查密钥配置与上游服务可用性
-- 流式解析异常
-  - 现象：前端解析 data: 行失败
-  - 处理：确认后端透传 SSE 且前端按行解析逻辑正常
-- 图片生成为空
-  - 现象：返回空 URL 列表
-  - 处理：检查上游响应结构与 extractUrls 逻辑
-
-章节来源
-- [src/services/accessCode.ts:49-54](file://src/services/accessCode.ts#L49-L54)
-- [api/_lib/access.ts:120-155](file://api/_lib/access.ts#L120-L155)
-- [api/image.ts:274-308](file://api/image.ts#L274-L308)
-- [src/services/api.ts:48-51](file://src/services/api.ts#L48-L51)
-- [src/services/imageApi.ts:19-39](file://src/services/imageApi.ts#L19-L39)
-
-## 结论
-本系统通过清晰的前后端职责划分与统一的访问控制策略，实现了安全、可扩展的 API 集成。前端以流式与异步方式高效消费后端代理，后端以最小适配成本对接多上游服务。建议在生产环境中结合缓存与限速策略进一步优化性能与安全性。
-
-## 附录
-
-### API 端点一览与使用说明
-
-- /api/chat
-  - 方法：POST
-  - 请求头：Content-Type: application/json
-  - 请求体字段：
-    - model: 模型标识（如 highway 的兼容模型）
-    - messages: 消息数组（包含 system/user/assistant）
-    - stream: 是否启用流式（true/false）
-    - temperature: 采样温度
-  - 响应：SSE 流（choices[0].delta.content 增量片段）
-  - 错误：401 未授权；405 方法不允许；500/502 上游错误
-  - 参考实现：[api/chat.ts:11-49](file://api/chat.ts#L11-L49)，[src/services/api.ts:13-82](file://src/services/api.ts#L13-L82)
-
-- /api/image
-  - 方法：POST
-  - 请求头：Content-Type: application/json
-  - 请求体字段：
-    - model: gpt-image-2 / gemini-3.1-flash / gemini-3-pro
-    - prompt: 文本提示词（必填）
-    - images: 编辑模式下的参考图（URL/base64，可选）
-    - aspectRatio/size/quality/outputFormat/n: 模型相关参数
-  - 响应：{ urls: string[] }
-  - 错误：400 参数缺失；401/429 访问控制；500/502 上游错误
-  - 参考实现：[api/image.ts:104-309](file://api/image.ts#L104-L309)，[src/services/imageApi.ts:8-40](file://src/services/imageApi.ts#L8-L40)
-
-- /api/search
-  - 方法：POST
-  - 请求头：Content-Type: application/json
-  - 请求体字段：query（必填）
-  - 响应：透传 Bocha 的 JSON（包含 data.webPages.value）
-  - 错误：400/401/429/500/502
-  - 参考实现：[api/search.ts:11-65](file://api/search.ts#L11-L65)，[src/services/webSearch.ts:20-46](file://src/services/webSearch.ts#L20-L46)
-
-- /api/verify
-  - 方法：POST/GET
-  - 请求头：可选 X-Access-Code（本地码）
-  - 响应：{ ok: boolean, required: boolean }
-  - 错误：401/429（当 ACCESS_CODE 已配置且校验失败）
-  - 参考实现：[api/verify.ts:11-32](file://api/verify.ts#L11-L32)，[src/services/accessCode.ts:66-79](file://src/services/accessCode.ts#L66-L79)
-
-### 类型定义与参数说明
-- Message 与 MessageContent：支持文本与图片混合内容
-- ImageGenerationParams：图片生成请求参数集合
-- Conversation/TabMode：会话与标签页模式类型
-- 参考实现：[src/types/index.ts:1-103](file://src/types/index.ts#L1-L103)
-
-### 流程图：前端流式聊天处理
+### 聊天流式服务（streamChat）
+- 功能要点
+  - 动态注入系统提示词与可选的联网搜索结果上下文
+  - 将本地存储的图片引用转换为 data URL 后发送
+  - 使用 SSE 流式接收增量内容与用量信息
+  - 对不支持 stream_options 的上游进行自动回退重试
+  - 在 finally 中回调真实用量，便于成本统计与缓存命中率分析
+- 错误处理
+  - 4xx 且包含特定关键字时去掉 include_usage 重试一次
+  - 其他 4xx/5xx 直接抛出错误
+  - 无响应体时抛出明确错误
+- 复杂度与性能
+  - 流式解析采用缓冲+行切分，避免全量加载
+  - usage 解析兼容多字段命名，降低网关差异影响
 
 ```mermaid
 flowchart TD
-Start(["进入 streamChat"]) --> BuildMsgs["构造系统提示与消息数组"]
-BuildMsgs --> SendReq["authedFetch 发送 POST /api/chat"]
-SendReq --> RespOK{"response.ok ?"}
-RespOK --> |否| ThrowErr["抛出包含状态码与错误文本的异常"]
-RespOK --> |是| GetReader["获取 ReadableStream Reader"]
-GetReader --> Loop["循环读取并解码"]
-Loop --> ParseLine["按行解析 data: 块"]
-ParseLine --> YieldChunk{"存在增量内容？"}
-YieldChunk --> |是| Yield["yield 内容片段"]
-Yield --> Loop
-YieldChunk --> |否| Loop
-Loop --> Done{"读取完成？"}
-Done --> |否| Loop
-Done --> |是| End(["结束"])
+Start(["进入 streamChat"]) --> BuildMsg["组装消息<br/>system + searchContext + 历史"]
+BuildMsg --> SendReq{"首次请求含 include_usage?"}
+SendReq --> |是| Post1["POST /chat/completions<br/>带 stream_options.include_usage"]
+Post1 --> Check1{"是否 4xx 且包含不支持关键字?"}
+Check1 --> |是| Post2["重试不带 include_usage"]
+Check1 --> |否| ReadStream["读取 SSE 流"]
+Post2 --> ReadStream
+ReadStream --> ParseChunk{"解析 chunk"}
+ParseChunk --> |content| Yield["yield 增量内容"]
+ParseChunk --> |usage| SaveUsage["保存 lastUsage"]
+ParseChunk --> |done| End(["结束并回调用量"])
+Yield --> ParseChunk
+SaveUsage --> ParseChunk
 ```
 
 图表来源
-- [src/services/api.ts:13-82](file://src/services/api.ts#L13-L82)
+- [src/services/api.ts:44-173](file://src/services/api.ts#L44-L173)
+- [src/config/prompts.ts:47-53](file://src/config/prompts.ts#L47-L53)
+
+章节来源
+- [src/services/api.ts:44-173](file://src/services/api.ts#L44-L173)
+- [src/config/prompts.ts:47-53](file://src/config/prompts.ts#L47-L53)
+- [src/types/index.ts:34-42](file://src/types/index.ts#L34-L42)
+
+### Web 搜索服务（searchWeb）
+- 功能要点
+  - 根据设置选择博查或 Tavily
+  - 统一返回 SearchResult 结构
+  - 提供 formatSearchResultsForContext 将结果拼接为系统提示上下文
+- 错误处理
+  - 任一提供商未配置 API Key 时输出警告并返回空结果
+  - 网络或上游错误捕获并返回空结果，保证上层流程不中断
+- 结果格式化
+  - 博查：name/url/snippet/siteName
+  - Tavily：title/url/content → siteName 由 URL 主机名推导
+
+```mermaid
+sequenceDiagram
+participant UI as "调用方"
+participant WS as "webSearch.ts"
+participant Set as "settingsService.ts"
+participant Bocha as "博查API"
+participant Tavily as "TavilyAPI"
+UI->>WS : searchWeb(query)
+WS->>Set : getProvider('search')
+alt provider === 'tavily'
+WS->>Tavily : POST /search (携带 api_key)
+Tavily-->>WS : results[]
+else provider === 'bocha'
+WS->>Bocha : POST /v1/web-search (Bearer)
+Bocha-->>WS : webPages.value[]
+end
+WS-->>UI : SearchResult[]
+UI->>WS : formatSearchResultsForContext(results)
+WS-->>UI : 上下文字符串
+```
+
+图表来源
+- [src/services/webSearch.ts:23-117](file://src/services/webSearch.ts#L23-L117)
+- [src/services/settingsService.ts:59-74](file://src/services/settingsService.ts#L59-L74)
+
+章节来源
+- [src/services/webSearch.ts:23-117](file://src/services/webSearch.ts#L23-L117)
+- [src/services/settingsService.ts:59-74](file://src/services/settingsService.ts#L59-L74)
+
+### 图片生成服务（generateImage）
+- 功能要点
+  - 按模型映射到具体端点（gpt-image-2、gemini-3.1-flash、gemini-3-pro）
+  - 构建请求体：区分文生图与编辑模式；处理 base64/data URI/URL 输入
+  - 合并外部取消信号与内部超时信号（默认 120s）
+  - 统一解析多种上游响应结构，提取图片 URL 列表
+- 错误处理
+  - 缺失必填参数抛错
+  - 非 2xx 响应尝试解析 detail/error 并抛出友好错误
+  - AbortError 区分“用户取消”和“上游超时”
+- 性能与安全
+  - 超时保护避免长连接挂起
+  - 仅传递必要参数，减少无效负载
+
+```mermaid
+flowchart TD
+S(["进入 generateImage"]) --> V["校验 model/prompt"]
+V --> Map["映射模型→端点"]
+Map --> Build["构建请求体<br/>文生图/编辑分支"]
+Build --> Signal["创建超时信号并合并外部signal"]
+Signal --> Fetch["POST 图片生成端点"]
+Fetch --> Ok{"响应是否 ok?"}
+Ok --> |否| Err["解析错误并抛错"]
+Ok --> |是| Parse["解析响应提取URL列表"]
+Parse --> Empty{"是否有URL?"}
+Empty --> |否| Throw["抛错：未返回图片地址"]
+Empty --> |是| Ret["返回URL数组"]
+```
+
+图表来源
+- [src/services/imageApi.ts:6-19](file://src/services/imageApi.ts#L6-L19)
+- [src/services/imageApi.ts:66-143](file://src/services/imageApi.ts#L66-L143)
+- [src/services/imageApi.ts:149-243](file://src/services/imageApi.ts#L149-L243)
+
+章节来源
+- [src/services/imageApi.ts:6-19](file://src/services/imageApi.ts#L6-L19)
+- [src/services/imageApi.ts:66-143](file://src/services/imageApi.ts#L66-L143)
+- [src/services/imageApi.ts:149-243](file://src/services/imageApi.ts#L149-L243)
+
+### 设置服务（settingsService）
+- 功能要点
+  - 以 localStorage 持久化 providers 与 apiKeys
+  - 提供 get/set Provider 与 API Key 的异步接口
+  - 提供 compact 压缩相关设置的默认值与合并策略
+- 动态更新
+  - 任意时刻修改 Provider 或 API Key 后立即生效
+  - 所有服务通过 settingsService 读取最新配置
+
+```mermaid
+classDiagram
+class SettingsService {
++getProvider(category) Promise<string>
++setProvider(category, provider) Promise<void>
++getApiKey(provider) Promise<string>
++setApiKey(provider, key) Promise<void>
++getAllSettings() Promise<AppSettings>
++getCompactSettings() CompactSettings
++setCompactSettings(patch) void
+}
+class AppSettings {
++providers : ProviderConfig
++apiKeys : Record<string,string>
++compact? : CompactSettings
+}
+class ProviderConfig {
++llm : string
++image : string
++video : string
++search : string
+}
+SettingsService --> AppSettings : "读写"
+AppSettings --> ProviderConfig : "包含"
+```
+
+图表来源
+- [src/services/settingsService.ts:5-25](file://src/services/settingsService.ts#L5-L25)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+
+章节来源
+- [src/services/settingsService.ts:5-25](file://src/services/settingsService.ts#L5-L25)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+
+### 提供商配置（providers.ts）
+- 集中维护 chatBaseUrl 与 imageBaseUrl
+- 当前默认 fastapi 提供商指向统一网关地址
+- 新增提供商只需扩展 PROVIDERS 并暴露 getProviderConfig
+
+章节来源
+- [src/config/providers.ts:1-18](file://src/config/providers.ts#L1-L18)
+
+### 类型定义（types/index.ts）
+- 消息、用量、图片生成参数、账单等统一契约
+- 用量 TokenUsage 用于记录 prompt/completion/total/cached/cacheWrite 等
+- 图片生成参数 ImageGenerationParams 覆盖 prompt/model/images/aspectRatio/size/quality/outputFormat/n
+
+章节来源
+- [src/types/index.ts:34-42](file://src/types/index.ts#L34-L42)
+- [src/types/index.ts:177-187](file://src/types/index.ts#L177-L187)
+
+## 依赖关系分析
+- 聊天流式服务依赖：
+  - settingsService 获取 llm Provider 与 API Key
+  - providers 获取 chatBaseUrl
+  - prompts 获取系统提示词
+  - types 中的 Message、TokenUsage
+- 图片生成服务依赖：
+  - settingsService 获取 image Provider 与 API Key
+  - providers 获取 imageBaseUrl
+  - types 中的 ImageGenerationParams
+- Web 搜索服务依赖：
+  - settingsService 获取 search Provider 与各引擎 API Key
+  - 直接调用上游搜索 API
+
+```mermaid
+graph LR
+Api["api.ts"] --> Set["settingsService.ts"]
+Api --> Prov["providers.ts"]
+Api --> Prompts["prompts.ts"]
+Api --> Types["types/index.ts"]
+Img["imageApi.ts"] --> Set
+Img --> Prov
+Img --> Types
+Search["webSearch.ts"] --> Set
+```
+
+图表来源
+- [src/services/api.ts:44-173](file://src/services/api.ts#L44-L173)
+- [src/services/imageApi.ts:149-243](file://src/services/imageApi.ts#L149-L243)
+- [src/services/webSearch.ts:23-117](file://src/services/webSearch.ts#L23-L117)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+- [src/config/providers.ts:7-18](file://src/config/providers.ts#L7-L18)
+- [src/config/prompts.ts:47-53](file://src/config/prompts.ts#L47-L53)
+- [src/types/index.ts:34-42](file://src/types/index.ts#L34-L42)
+
+章节来源
+- [src/services/api.ts:44-173](file://src/services/api.ts#L44-L173)
+- [src/services/imageApi.ts:149-243](file://src/services/imageApi.ts#L149-L243)
+- [src/services/webSearch.ts:23-117](file://src/services/webSearch.ts#L23-L117)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+- [src/config/providers.ts:7-18](file://src/config/providers.ts#L7-L18)
+- [src/config/prompts.ts:47-53](file://src/config/prompts.ts#L47-L53)
+- [src/types/index.ts:34-42](file://src/types/index.ts#L34-L42)
+
+## 性能考虑
+- 聊天流式
+  - 使用 TextDecoder 与缓冲行切分，避免大对象内存占用
+  - 对不支持的 stream_options 做最小化重试，减少失败开销
+- 图片生成
+  - 120s 超时保护，防止长连接阻塞
+  - 合并外部取消信号，及时释放资源
+- Web 搜索
+  - 失败时返回空结果，避免阻断主流程
+  - 结果格式化仅在需要时执行，减少不必要计算
+
+[本节为通用指导，无需特定文件来源]
+
+## 故障排查指南
+- 聊天流式
+  - 现象：首次请求 4xx 且包含 stream_options/include_usage/unknown/unsupported/invalid
+    - 处理：自动去掉 include_usage 重试一次
+  - 现象：无响应体
+    - 处理：抛出“No response body”，检查网络与上游状态
+  - 现象：用量未回调
+    - 处理：确认上游是否返回 usage 字段；若未返回则不会触发回调
+- 图片生成
+  - 现象：AbortError
+    - 区分：用户主动取消 vs 上游超时（120s），分别抛出不同错误
+  - 现象：非 2xx
+    - 处理：优先取 detail/error.message，否则使用 status 描述
+  - 现象：未返回图片地址
+    - 处理：检查上游响应结构与 extractUrls 解析逻辑
+- Web 搜索
+  - 现象：返回空数组
+    - 可能原因：未配置对应 Provider 的 API Key；上游错误或网络异常
+- 设置服务
+  - 现象：切换 Provider 后未生效
+    - 检查是否正确调用 setProvider/getProvider；确认 localStorage 写入成功
+
+章节来源
+- [src/services/api.ts:102-118](file://src/services/api.ts#L102-L118)
+- [src/services/imageApi.ts:183-243](file://src/services/imageApi.ts#L183-L243)
+- [src/services/webSearch.ts:23-36](file://src/services/webSearch.ts#L23-L36)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+
+## 结论
+本集成层通过统一的设置与提供商配置，将聊天、图片与搜索三类能力解耦并标准化：
+- 聊天流式具备健壮的错误回退与用量统计
+- 图片生成支持多模型与多上游响应格式，具备超时与取消保护
+- Web 搜索可插拔切换提供商，并提供上下文格式化
+- 设置服务提供动态配置能力，确保运行时灵活调整
+建议在生产环境结合网关限流、重试与监控指标，进一步提升稳定性与可观测性。
+
+[本节为总结性内容，无需特定文件来源]
+
+## 附录
+
+### 后端 API 接口说明（OpenAI 兼容）
+- 聊天接口
+  - 路径：{chatBaseUrl}/chat/completions
+  - 方法：POST
+  - 请求头：Content-Type: application/json；Authorization: Bearer {apiKey}
+  - 请求体关键字段：model、messages、stream=true、temperature=0.7；可选 stream_options.include_usage
+  - 响应：SSE 流，包含 choices[].delta.content 增量；最后可能包含 usage 的额外 chunk
+- 图片接口
+  - 路径：{imageBaseUrl}/v3/*（按模型映射到具体端点）
+  - 方法：POST
+  - 请求头：Content-Type: application/json；Authorization: Bearer {apiKey}
+  - 请求体：按模型与模式（文生图/编辑）构建，支持 size/quality/output_format/n/aspect_ratio 等
+  - 响应：兼容多种结构，提取图片 URL 列表
+- Web 搜索接口
+  - 博查：POST https://api.bochaai.com/v1/web-search（Bearer）
+  - Tavily：POST https://api.tavily.com/search（body 中 api_key）
+
+章节来源
+- [src/services/api.ts:84-100](file://src/services/api.ts#L84-L100)
+- [src/services/imageApi.ts:6-19](file://src/services/imageApi.ts#L6-L19)
+- [src/services/webSearch.ts:3-4](file://src/services/webSearch.ts#L3-L4)
+
+### 认证授权与安全
+- 鉴权方式
+  - 聊天与图片：Authorization: Bearer {apiKey}
+  - Web 搜索：博查使用 Bearer；Tavily 在请求体中传递 api_key
+- 安全建议
+  - 不在日志中打印完整 API Key
+  - 限制前端可访问的域名与跨域策略
+  - 对敏感操作增加二次确认与权限校验
+
+章节来源
+- [src/services/api.ts:84-100](file://src/services/api.ts#L84-L100)
+- [src/services/imageApi.ts:192-202](file://src/services/imageApi.ts#L192-L202)
+- [src/services/webSearch.ts:48-55](file://src/services/webSearch.ts#L48-L55)
+- [src/services/webSearch.ts:81-91](file://src/services/webSearch.ts#L81-L91)
+
+### 调用示例与最佳实践
+- 聊天流式调用
+  - 步骤：准备 messages 与 systemPrompt；调用 streamChat；订阅 yield 增量；在 finally 中处理用量回调
+  - 最佳实践：传入 AbortSignal 支持取消；合理设置 temperature；关注 usage 统计
+- 图片生成调用
+  - 步骤：构造 ImageGenerationParams；调用 generateImage；处理 URL 列表；注意超时与取消
+  - 最佳实践：编辑模式需正确传入 base64/data URI/URL；根据模型选择合适的 size/quality/output_format
+- Web 搜索调用
+  - 步骤：调用 searchWeb；如需上下文，使用 formatSearchResultsForContext 拼接
+  - 最佳实践：未配置 API Key 时降级为空结果；捕获异常避免阻断主流程
+
+章节来源
+- [src/services/api.ts:44-173](file://src/services/api.ts#L44-L173)
+- [src/services/imageApi.ts:149-243](file://src/services/imageApi.ts#L149-L243)
+- [src/services/webSearch.ts:23-117](file://src/services/webSearch.ts#L23-L117)
+
+### 第三方服务集成与配置
+- 提供商配置
+  - 在 providers.ts 中新增 Provider 并设置 chatBaseUrl/imageBaseUrl
+  - 通过 settingsService.setProvider 动态切换
+- API Key 管理
+  - 通过 settingsService.setApiKey 保存各提供商密钥
+  - 读取时使用 settingsService.getApiKey
+- 搜索提供商
+  - 博查：需在设置中配置 bocha 的 API Key
+  - Tavily：需在设置中配置 tavily 的 API Key
+
+章节来源
+- [src/config/providers.ts:7-18](file://src/config/providers.ts#L7-L18)
+- [src/services/settingsService.ts:59-100](file://src/services/settingsService.ts#L59-L100)
+- [src/services/webSearch.ts:23-36](file://src/services/webSearch.ts#L23-L36)

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { MessageSquare, Image as ImageIcon, Film, Eye, EyeOff, Check, ChevronLeft, ChevronRight, KeyRound, MessageCircle, Database, Palette } from 'lucide-react';
+import { MessageSquare, Image as ImageIcon, Film, Eye, EyeOff, Check, ChevronLeft, ChevronRight, KeyRound, MessageCircle, Database, Palette, Sun, Moon } from 'lucide-react';
 import { settingsService, DEFAULT_COMPACT_SETTINGS } from '../../services/settingsService';
 import type { ProviderConfig, CompactSettings } from '../../services/settingsService';
 import { THEMES } from '../../config/themes';
-import { loadTheme, saveTheme } from '../../services/storage';
+import { loadTheme, saveTheme, loadMode, saveMode, type ColorMode } from '../../services/storage';
 import { CHAT_MODELS } from '../../config/models';
 import DataSettings from './DataSettings';
 import CustomSelect from '../common/CustomSelect';
@@ -42,6 +42,9 @@ export default function SettingsPanel() {
   // 主题状态
   const [selectedTheme, setSelectedTheme] = useState<string>('purple');
 
+  // 亮/暗模式状态
+  const [colorMode, setColorMode] = useState<ColorMode>('dark');
+
   // 上下文压缩设置
   const [compact, setCompact] = useState<CompactSettings>(DEFAULT_COMPACT_SETTINGS);
   const [autoCompactEnabled, setAutoCompactEnabled] = useState(true);
@@ -54,6 +57,7 @@ export default function SettingsPanel() {
     });
     const theme = loadTheme();
     setSelectedTheme(theme);
+    setColorMode(loadMode());
     setCompact(settingsService.getCompactSettings());
     try {
       const raw = localStorage.getItem('chat-feature-settings');
@@ -83,11 +87,29 @@ export default function SettingsPanel() {
     } catch { /* ignore */ }
   };
 
+  // 切换亮/暗模式
+  const handleModeChange = (mode: ColorMode) => {
+    setColorMode(mode);
+    document.documentElement.dataset.mode = mode;
+    saveMode(mode);
+    // 同步浏览器工具栏颜色（需要适配颜色主题）
+    const meta = document.getElementById('meta-theme-color') as HTMLMetaElement | null;
+    if (meta) {
+      const darkColor = selectedTheme === 'purple' ? '#0d0a1a' : '#121211';
+      meta.content = mode === 'light' ? '#f5f5f7' : darkColor;
+    }
+  };
+
   // 实时切换主题并自动保存
   const handleThemeChange = (themeId: string) => {
     setSelectedTheme(themeId);
     document.documentElement.dataset.theme = themeId;
     saveTheme(themeId);
+    // 切换颜色主题时也更新状态栏 meta
+    const meta = document.getElementById('meta-theme-color') as HTMLMetaElement | null;
+    if (meta && colorMode === 'dark') {
+      meta.content = themeId === 'purple' ? '#0d0a1a' : '#121211';
+    }
   };
 
   // 切换提供商并自动保存
@@ -305,9 +327,39 @@ export default function SettingsPanel() {
           {activeSettingsTab === 'data' && <DataSettings />}
 
           {activeSettingsTab === 'appearance' && (
-            <div className="space-y-5">
-              <h3 className="text-white text-sm font-medium">主题色</h3>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-6">
+              {/* 亮/暗模式切换 */}
+              <div className="space-y-3">
+                <h3 className="text-white text-sm font-medium">显示模式</h3>
+                <div className="flex rounded-xl bg-white/5 p-1 gap-1">
+                  <button
+                    onClick={() => handleModeChange('light')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      colorMode === 'light'
+                        ? 'bg-[var(--color-accent)] text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <Sun className="w-4 h-4" />
+                    浅色
+                  </button>
+                  <button
+                    onClick={() => handleModeChange('dark')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      colorMode === 'dark'
+                        ? 'bg-[var(--color-accent)] text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <Moon className="w-4 h-4" />
+                    深色
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-white text-sm font-medium">主题色</h3>
+                <div className="grid grid-cols-2 gap-3">
                 {THEMES.map(theme => (
                   <button
                     key={theme.id}
@@ -333,6 +385,7 @@ export default function SettingsPanel() {
                   </button>
                 ))}
               </div>
+            </div>
             </div>
           )}
         </div>

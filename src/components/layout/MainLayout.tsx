@@ -120,12 +120,12 @@ export default function MainLayout({
   return (
     <div
       ref={swipeRef}
-      className="bg-[#121211] text-white overflow-hidden fixed inset-x-0 top-0"
+      className="bg-[var(--color-bg-base)] text-[var(--color-text-primary)] overflow-hidden fixed inset-x-0 top-0"
       style={{ height: frozenHeight, touchAction: 'manipulation' }}
     >
       {/* 侧边栏 - 绝对定位左侧底层，平时收起在屏幕外 */}
       <div
-        className={`absolute top-0 left-0 bottom-0 z-0 transition-transform duration-250 ease-out bg-[#121211] ${
+        className={`absolute top-0 left-0 bottom-0 z-0 transition-transform duration-250 ease-out bg-[var(--color-bg-base)] ${
           dragOffset === null ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full') : ''
         }`}
         style={{

@@ -126,7 +126,7 @@ export default function TopNavBar({
           className={`p-2 rounded-lg transition-colors ${
             canCreateNewConversation
               ? 'text-gray-400 hover:text-white'
-              : 'text-neutral-800 cursor-not-allowed'
+              : 'text-gray-600 cursor-not-allowed'
           }`}
           title="新建对话"
         >

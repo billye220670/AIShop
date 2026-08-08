@@ -14,7 +14,7 @@ const navItems: { id: TabMode; label: string; Icon: typeof MessageSquare }[] = [
 
 export default function BottomNavBar({ activeTab, onTabChange }: BottomNavBarProps) {
   return (
-    <div className="flex items-center justify-around shrink-0 bg-[#121211] pb-[env(safe-area-inset-bottom,0px)]">
+    <div className="flex items-center justify-around shrink-0 bg-[var(--color-bg-base)] pb-[env(safe-area-inset-bottom,0px)]">
       {navItems.map(item => {
         const isActive = activeTab === item.id;
         const Icon = item.Icon;

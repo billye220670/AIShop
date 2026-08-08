@@ -8,14 +8,35 @@
     <link rel="apple-touch-icon" href="/icons/icon-180.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="rgb(18,18,17)" />
+    <meta name="theme-color" content="rgb(18,18,17)" id="meta-theme-color" />
     <meta name="apple-mobile-web-app-title" content="PortAI" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@900&display=swap" rel="stylesheet" />
     <title>PortAI</title>
   </head>
-  <body style="background:rgb(18,18,17);margin:0">
+  <body style="margin:0">
+    <script>
+      // 首帧前设置 data-theme / data-mode，让 CSS 变量从一开始就解析正确。
+      // 不要写 inline style：它优先级高于 CSS 变量，会在切换模式后锁死旧背景色。
+      (function() {
+        try {
+          var mode = localStorage.getItem('aishop_mode');
+          var theme = localStorage.getItem('aishop_theme');
+          if (theme === 'purple' || theme === 'green') {
+            document.documentElement.dataset.theme = theme;
+          }
+          if (mode === 'light' || mode === 'dark') {
+            document.documentElement.dataset.mode = mode;
+          }
+          // 同步浏览器工具栏颜色（Safari 顶部/底部工具栏）
+          var isLight = mode === 'light';
+          var darkColor = (theme === 'purple') ? '#0d0a1a' : '#121211';
+          var meta = document.getElementById('meta-theme-color');
+          if (meta) meta.content = isLight ? '#f5f5f7' : darkColor;
+        } catch (e) { /* 无痕模式等 localStorage 不可用时保持默认 */ }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
