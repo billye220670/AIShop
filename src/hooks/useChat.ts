@@ -32,6 +32,7 @@ import {
 } from '../db';
 import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
+import { judgeSearchNeed } from '../services/searchJudge';
 import { settingsService } from '../services/settingsService';
 import { compactMessages } from '../services/contextCompactor';
 import { buildApiMessages } from '../utils/buildApiMessages';
@@ -627,44 +628,50 @@ export function useChat() {
               ? content
               : content.find((p) => p.type === 'text')?.text || '';
           if (userText) {
-            // 立即显示"正在搜索..."
-            updateActiveConversation(conv => {
-              const updated = [...conv.messages];
-              const lastIdx = updated.length - 1;
-              updated[lastIdx] = { ...updated[lastIdx], webSearching: true };
-              return { ...conv, messages: updated };
-            });
+            // 开关只表示"允许联网"，是否真的要搜由小模型按问题内容判断，
+            // 避免闲聊、写代码这类明显不需要实时信息的问题也去联网
+            const judge = await judgeSearchNeed(userText, messages);
 
-            try {
-              const results = await searchWeb(userText);
-              if (results.length > 0) {
-                searchContext = formatSearchResultsForContext(results);
-                searchSources = results.map((r) => ({
-                  name: r.name,
-                  url: r.url,
-                  siteName: r.siteName,
-                }));
-              } else {
-                // 搜索返回空结果（无论是网络错误还是没搜到），标记为失败
+            if (judge.needSearch) {
+              // 立即显示"正在搜索..."
+              updateActiveConversation(conv => {
+                const updated = [...conv.messages];
+                const lastIdx = updated.length - 1;
+                updated[lastIdx] = { ...updated[lastIdx], webSearching: true };
+                return { ...conv, messages: updated };
+              });
+
+              try {
+                const results = await searchWeb(judge.query || userText);
+                if (results.length > 0) {
+                  searchContext = formatSearchResultsForContext(results);
+                  searchSources = results.map((r) => ({
+                    name: r.name,
+                    url: r.url,
+                    siteName: r.siteName,
+                  }));
+                } else {
+                  // 搜索返回空结果（无论是网络错误还是没搜到），标记为失败
+                  searchFailed = true;
+                }
+              } catch {
                 searchFailed = true;
               }
-            } catch {
-              searchFailed = true;
-            }
 
-            // 搜索完成后立即更新状态（不等流式结束）
-            updateActiveConversation(conv => {
-              const updated = [...conv.messages];
-              const lastIdx = updated.length - 1;
-              updated[lastIdx] = {
-                ...updated[lastIdx],
-                webSearching: false,
-                webSearched: searchSources.length > 0,
-                searchResults: searchSources.length > 0 ? searchSources : undefined,
-                webSearchFailed: searchFailed,
-              };
-              return { ...conv, messages: updated };
-            });
+              // 搜索完成后立即更新状态（不等流式结束）
+              updateActiveConversation(conv => {
+                const updated = [...conv.messages];
+                const lastIdx = updated.length - 1;
+                updated[lastIdx] = {
+                  ...updated[lastIdx],
+                  webSearching: false,
+                  webSearched: searchSources.length > 0,
+                  searchResults: searchSources.length > 0 ? searchSources : undefined,
+                  webSearchFailed: searchFailed,
+                };
+                return { ...conv, messages: updated };
+              });
+            }
           }
         }
 

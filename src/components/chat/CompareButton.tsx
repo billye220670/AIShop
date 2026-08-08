@@ -194,6 +194,28 @@ export default function CompareButton({
     };
   }, [mounted, open]);
 
+  // 打开时禁止后方页面滚动（聊天区域滚动容器是内部 div 而非 body，
+  // 因此拦截 wheel/touchmove 而非单纯锁 body overflow，面板自身的滚动仍放行）
+  useEffect(() => {
+    if (!open) return;
+    const isInsideMenu = (target: EventTarget | null) =>
+      !!(target instanceof Node && menuRef.current?.contains(target));
+    const handleWheel = (e: WheelEvent) => {
+      if (isInsideMenu(e.target)) return;
+      e.preventDefault();
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isInsideMenu(e.target)) return;
+      e.preventDefault();
+    };
+    document.addEventListener('wheel', handleWheel, { passive: false });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => {
+      document.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [open]);
+
   // ESC 和外部点击关闭
   useEffect(() => {
     if (!open) return;

@@ -643,29 +643,88 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     );
   };
 
-  // 用户消息：保持原样
+  // 用户消息：加上长按上下文菜单（目前只有复制），气泡样式保持原样
   if (isUser) {
     return (
-      <div className="flex flex-col items-end mb-4">
-        {message.attachments && message.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2 max-w-[80%] justify-end">
-            {message.attachments.map((file, idx) => (
-              <div key={idx} className="flex items-center gap-3 px-3 py-2.5 bg-[var(--color-bg-secondary)] border border-gray-700/50 rounded-lg min-w-[200px] max-w-[280px]">
-                <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-[var(--color-accent-soft)]">
-                  <FileText className="w-5 h-5 text-[var(--color-accent)]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-200 font-medium truncate">{file.name}</div>
-                  <div className="text-xs text-gray-500">File</div>
-                </div>
-              </div>
-            ))}
-          </div>
+      <>
+        {showToast && (
+          <Toast
+            message={toastMessage}
+            type={toastType}
+            onClose={() => setShowToast(false)}
+          />
         )}
-        <div className="max-w-[80%] rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br-none px-4 py-3 bg-[var(--color-accent)] text-[var(--color-accent-foreground)]">
-          {renderContent()}
+        {menuOpen && createPortal(
+          /* 同 AI 分支：portal + touch-none，避免遮罩上的手势被误传成背景滚动 */
+          <div
+            className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay touch-none overscroll-none"
+            onClick={() => setMenuOpen(false)}
+            onPointerDown={() => setMenuOpen(false)}
+            onTouchMove={e => e.preventDefault()}
+          />,
+          document.body
+        )}
+        <div
+          className={`relative flex flex-col items-end mb-4 select-none [-webkit-touch-callout:none] ${menuOpen ? 'z-[201]' : ''}`}
+          onPointerDown={handlePressStart}
+          onPointerMove={handlePressMove}
+          onPointerUp={clearPressTimer}
+          onPointerCancel={clearPressTimer}
+          onPointerLeave={clearPressTimer}
+          onContextMenu={e => e.preventDefault()}
+          onClick={() => {
+            if (suppressClickRef.current) {
+              suppressClickRef.current = false;
+            }
+          }}
+        >
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2 max-w-[80%] justify-end">
+              {message.attachments.map((file, idx) => (
+                <div key={idx} className="flex items-center gap-3 px-3 py-2.5 bg-[var(--color-bg-secondary)] border border-gray-700/50 rounded-lg min-w-[200px] max-w-[280px]">
+                  <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-[var(--color-accent-soft)]">
+                    <FileText className="w-5 h-5 text-[var(--color-accent)]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-gray-200 font-medium truncate">{file.name}</div>
+                    <div className="text-xs text-gray-500">File</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="max-w-[80%] rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br-none px-4 py-3 bg-[var(--color-accent)] text-[var(--color-accent-foreground)]">
+            {renderContent()}
+          </div>
+
+          {/* 长按上下文菜单：目前只有复制，后续要加别的操作再往这里补 */}
+          {menuOpen && createPortal(
+            <div
+              ref={menuRef}
+              style={{ position: 'fixed', left: 0, top: 0, visibility: 'hidden' }}
+              className="z-[200] w-52 bg-[var(--color-bg-elevated)] border border-white/10 rounded-2xl shadow-2xl py-2 select-none context-menu-pop"
+              onClick={e => e.stopPropagation()}
+              onPointerDown={e => e.stopPropagation()}
+            >
+              <button
+                onClick={async () => {
+                  setMenuOpen(false);
+                  const text = getPlainText(displayContent);
+                  const success = await copyToClipboard(text);
+                  setToastMessage(success ? '已复制到剪贴板' : '复制失败，请重试');
+                  setToastType(success ? 'success' : 'error');
+                  setShowToast(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+              >
+                <Copy className="w-5 h-5 flex-shrink-0" />
+                <span>复制</span>
+              </button>
+            </div>,
+            document.body
+          )}
         </div>
-      </div>
+      </>
     );
   }
 
@@ -980,8 +1039,8 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
         )}
         </div>
 
-        {/* 长按上下文菜单：全局操作（查找）+ 折叠
-            消息级操作（复制/保存/重新生成/引用）已恢复为下方常驻按钮行，此处不再重复
+        {/* 长按上下文菜单：消息级操作（复制/保存/重新生成/引用，跟下方常驻按钮行保持一致）
+            + 细分割线 + 全局操作（查找/折叠回复）
             用 portal 挂到 body：position:fixed 仍会被带 transform / overflow / filter
             的祖先当成包含块并裁剪（消息区是 overflow-y-auto，外层还有
             MainLayout 的 translateX），只有脱离整棵子树才彻底不受影响 */}
@@ -993,6 +1052,61 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             onClick={e => e.stopPropagation()}
             onPointerDown={e => e.stopPropagation()}
           >
+            <button
+              onClick={async () => {
+                setMenuOpen(false);
+                const text = getPlainText(displayContent);
+                const success = await copyToClipboard(text);
+                setToastMessage(success ? '已复制到剪贴板' : '复制失败，请重试');
+                setToastType(success ? 'success' : 'error');
+                setShowToast(true);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+            >
+              <Copy className="w-5 h-5 flex-shrink-0" />
+              <span>复制</span>
+            </button>
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                const content = getPlainText(displayContent);
+                const defaultName = content.slice(0, 20).replace(/[\\/:*?"<>|\n]/g, '_').trim() || 'message';
+                const fileName = `${defaultName}.md`;
+                const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+            >
+              <FileDown className="w-5 h-5 flex-shrink-0" />
+              <span>保存为 Markdown</span>
+            </button>
+            {onRegenerate && (
+              <button
+                onClick={() => { setMenuOpen(false); onRegenerate(message.id); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+              >
+                <RefreshCw className="w-5 h-5 flex-shrink-0" />
+                <span>重新生成</span>
+              </button>
+            )}
+            {onQuote && (
+              <button
+                onClick={() => { setMenuOpen(false); onQuote(message); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+              >
+                <MessageSquareQuote className="w-5 h-5 flex-shrink-0" />
+                <span>引用</span>
+              </button>
+            )}
+
+            {/* 细分割线：把上面消息级操作和下面全局操作分开 */}
+            <div className="my-1 mx-2 border-t border-white/5" />
+
             <button
               onClick={() => { setMenuOpen(false); onOpenSearch?.(); }}
               className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
