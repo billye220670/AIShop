@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Settings2 } from 'lucide-react';
 import ModelBottomSheet from './ModelBottomSheet';
 import type { Model } from '../../types';
+import type { RoleData } from '../../db';
 
 interface ModelSelectorProps {
   models: Model[];
@@ -13,6 +14,11 @@ interface ModelSelectorProps {
   onWebSearchToggle?: () => void; // 联网搜索开关回调（仅 compact 模式使用）
   artifactEnabled?: boolean; // Artifact 开关（仅 compact 模式使用）
   onArtifactToggle?: () => void; // Artifact 开关回调（仅 compact 模式使用）
+  // 角色设置（仅 compact 模式使用）
+  roles?: RoleData[];
+  selectedRoleId?: string;
+  onRoleSelect?: (roleId: string) => void;
+  onRolesChanged?: () => void;
 }
 
 // provider 名称 → /public/providers/ 下的图标文件名
@@ -66,7 +72,7 @@ interface MenuPosition {
   placement: 'top' | 'bottom';
 }
 
-export default function ModelSelector({ models, selectedModel, onModelChange, compact = false, webSearchEnabled = false, onWebSearchToggle, artifactEnabled = false, onArtifactToggle }: ModelSelectorProps) {
+export default function ModelSelector({ models, selectedModel, onModelChange, compact = false, webSearchEnabled = false, onWebSearchToggle, artifactEnabled = false, onArtifactToggle, roles, selectedRoleId, onRoleSelect, onRolesChanged }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [animVisible, setAnimVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -272,6 +278,10 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
           onWebSearchToggle={onWebSearchToggle || (() => {})}
           artifactEnabled={artifactEnabled}
           onArtifactToggle={onArtifactToggle || (() => {})}
+          roles={roles ?? []}
+          selectedRoleId={selectedRoleId ?? ''}
+          onRoleSelect={onRoleSelect || (() => {})}
+          onRolesChanged={onRolesChanged || (() => {})}
         />
       )}
 

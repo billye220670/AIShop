@@ -51,11 +51,12 @@ export interface LocalTombstones {
   convs: string[];
   history: string[];
   favs: string[];
+  roles: string[];
 }
 
 export async function getLocalTombstones(): Promise<LocalTombstones> {
   return (
-    (await kvGet<LocalTombstones>('localTombstones')) ?? { convs: [], history: [], favs: [] }
+    (await kvGet<LocalTombstones>('localTombstones')) ?? { convs: [], history: [], favs: [], roles: [] }
   );
 }
 
@@ -88,7 +89,10 @@ export async function countPending(): Promise<{ convs: number; messages: number 
     listConversations(),
   ]);
   const deleted =
-    tombstones.convs.length + tombstones.history.length + tombstones.favs.length;
+    tombstones.convs.length +
+    tombstones.history.length +
+    tombstones.favs.length +
+    tombstones.roles.length;
   const convs = list.filter(c => c.updatedAt > (c.syncedAt ?? 0));
   let messages = 0;
   for (const c of convs) messages += await countMessages(c.id);

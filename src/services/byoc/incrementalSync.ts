@@ -14,6 +14,7 @@
  *   sync/v1/blobs/{sha256}                二进制原样（内容寻址，全局去重）
  *   sync/v1/history/{id}.json + index.json 图片生成历史
  *   sync/v1/favs/{id}.json + index.json   收藏
+ *   sync/v1/roles/{id}.json + index.json  角色（系统提示词预设）
  *
  * 冲突策略：消息追加式直接并入；会话元数据 last-write-wins（updatedAt 大者胜）；
  * 删除走 manifest 里的 tombstone（数据只增不减是安全方向）。
@@ -38,6 +39,8 @@ import {
   deleteImageHistoryItem,
   listStoredFavorites,
   removeFavorite,
+  listStoredRoles,
+  deleteRole,
 } from '../../db';
 import { collectMessageBlobIds } from '../../db/messageCodec';
 import { deleteConversation } from '../../db/conversationRepo';
@@ -47,6 +50,7 @@ import type {
   StoredContextNode,
   StoredImageHistoryItem,
   StoredFavoriteArtifact,
+  StoredRole,
 } from '../../db/schema';
 import { createS3Client, type S3Client } from './s3Client';
 import type { ByocConfig, SyncManifestV1, SyncResult } from './types';
@@ -71,9 +75,10 @@ function emptyManifest(deviceId: string, now: number): SyncManifestV1 {
     deviceId,
     updatedAt: now,
     convs: {},
-    tombstones: { convs: [], history: [], favs: [] },
+    tombstones: { convs: [], history: [], favs: [], roles: [] },
     historyIds: [],
     favIds: [],
+    roleIds: [],
   };
 }
 
@@ -308,13 +313,34 @@ export async function pushLocal(
   manifest.favIds = favIds;
   await client.putObject(syncKey(cfg.prefix, 'favs', 'index.json'), jsonBlob({ ids: favIds }));
 
-  // 5. 重写清单
+  // 5. 角色：同上（旧版本清单可能没有 roleIds 字段，读侧一律兜底空数组）
+  const roles = await listStoredRoles();
+  const roleIds = roles.map(r => r.id);
+  for (const role of roles) {
+    await client.putObject(syncKey(cfg.prefix, 'roles', `${role.id}.json`), jsonBlob(role));
+  }
+  for (const id of manifest.roleIds ?? []) {
+    if (!roleIds.includes(id) && !(manifest.tombstones.roles ?? []).includes(id)) {
+      (manifest.tombstones.roles ??= []).push(id);
+      if (!localTombstones.roles.includes(id)) {
+        localTombstones.roles.push(id);
+        tombstoneChanged = true;
+      }
+    }
+  }
+  manifest.tombstones.roles = (manifest.tombstones.roles ?? []).filter(
+    id => !roleIds.includes(id)
+  );
+  manifest.roleIds = roleIds;
+  await client.putObject(syncKey(cfg.prefix, 'roles', 'index.json'), jsonBlob({ ids: roleIds }));
+
+  // 6. 重写清单
   if (tombstoneChanged) await setLocalTombstones(localTombstones);
   manifest.updatedAt = Date.now();
   await client.putObject(syncKey(cfg.prefix, 'manifest.json'), jsonBlob(manifest));
   await setCloudManifest(manifest);
 
-  // 6. 全部成功后才标记本地 syncedAt；期间的新写入（updatedAt > now）自然跳过
+  // 7. 全部成功后才标记本地 syncedAt；期间的新写入（updatedAt > now）自然跳过
   await mapLimit(syncedConvs, 4, conv =>
     markSynced(conv.id, now, syncedMessages.find(s => s.convId === conv.id)?.msgs)
   );
@@ -384,9 +410,11 @@ export async function pullRemote(
   );
   const cachedHistIds = new Set<string>(cached ? cached.historyIds : []);
   const cachedFavIds = new Set<string>(cached ? cached.favIds : []);
+  const cachedRoleIds = new Set<string>(cached ? (cached.roleIds ?? []) : []);
   const localConvIds = new Set((await listConversations()).map(c => c.id));
   const localHistIds = new Set((await listStoredImageHistory()).map(h => h.id));
   const localFavIds = new Set((await listStoredFavorites()).map(f => f.id));
+  const localRoleIds = new Set((await listStoredRoles()).map(r => r.id));
   let tombstoneChanged = false;
   for (const convId of Object.keys(manifest.convs)) {
     if (localConvIds.has(convId)) continue;
@@ -408,6 +436,13 @@ export async function pullRemote(
     if (localFavIds.has(id) || !cachedFavIds.has(id)) continue;
     if (!localTombstones.favs.includes(id)) {
       localTombstones.favs.push(id);
+      tombstoneChanged = true;
+    }
+  }
+  for (const id of manifest.roleIds ?? []) {
+    if (localRoleIds.has(id) || !cachedRoleIds.has(id)) continue;
+    if (!localTombstones.roles.includes(id)) {
+      localTombstones.roles.push(id);
       tombstoneChanged = true;
     }
   }
@@ -435,6 +470,13 @@ export async function pullRemote(
     await removeFavorite(id);
     if (localTombstones.favs.includes(id)) {
       localTombstones.favs = localTombstones.favs.filter(x => x !== id);
+      tombstoneChanged = true;
+    }
+  }
+  for (const id of manifest.tombstones.roles ?? []) {
+    await deleteRole(id);
+    if (localTombstones.roles.includes(id)) {
+      localTombstones.roles = localTombstones.roles.filter(x => x !== id);
       tombstoneChanged = true;
     }
   }
@@ -504,6 +546,18 @@ export async function pullRemote(
   }
   result.pulledBlobs += favStat.blobCount;
 
+  // 5. 角色：同上（纯文本记录，无 blob 依赖）
+  const roleIndex = await readIndex(client, cfg, 'roles');
+  const localRoles = new Map((await listStoredRoles()).map(r => [r.id, r]));
+  for (const id of roleIndex) {
+    if (localTombstones.roles.includes(id)) continue; // 本机已删，不拉
+    if (localRoles.has(id)) continue;
+    const raw = await client.getObject(syncKey(cfg.prefix, 'roles', `${id}.json`));
+    if (!raw) continue;
+    const role = JSON.parse(await raw.text()) as StoredRole;
+    await putStoredRole(role);
+  }
+
   await setCloudManifest(manifest);
   return result;
 }
@@ -511,7 +565,7 @@ export async function pullRemote(
 async function readIndex(
   client: S3Client,
   cfg: ByocConfig,
-  dir: 'history' | 'favs'
+  dir: 'history' | 'favs' | 'roles'
 ): Promise<string[]> {
   const raw = await client.getObject(syncKey(cfg.prefix, dir, 'index.json'));
   if (!raw) return [];
@@ -647,6 +701,13 @@ function putStoredHistory(item: StoredImageHistoryItem): Promise<void> {
 function putStoredFavorite(fav: StoredFavoriteArtifact): Promise<void> {
   return enqueue('favorites', async () => {
     await withDB(db => db.put('favoriteArtifacts', fav));
+  });
+}
+
+/** 原样落库角色记录 */
+function putStoredRole(role: StoredRole): Promise<void> {
+  return enqueue('roles', async () => {
+    await withDB(db => db.put('roles', role));
   });
 }
 

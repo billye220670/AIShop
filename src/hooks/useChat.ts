@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Message, MessageVersion, Conversation, FileAttachment, MessageContent, ChatFeatureSettings, ContextSegment, ContextSummary, TokenUsage } from '../types';
 import { streamChat } from '../services/api';
 import { CHAT_MODELS } from '../config/models';
-import { BASE_SYSTEM_PROMPT, ARTIFACT_PROMPT, buildContextInfo } from '../config/prompts';
+import { BASE_SYSTEM_PROMPT, ARTIFACT_PROMPT, WEB_SEARCH_PROMPT, buildContextInfo } from '../config/prompts';
 import {
   parseArtifactFromContent,
   getDisplayContentWithoutArtifact,
@@ -16,6 +16,8 @@ import {
   loadWebSearchEnabled,
   saveLastActiveConversationId,
   loadLastActiveConversationId,
+  saveSelectedRoleId,
+  loadSelectedRoleId,
 } from '../services/storage';
 import {
   loadConversationList,
@@ -29,7 +31,9 @@ import {
   deleteConversation as dbDeleteConversation,
   newConversationId,
   getAllMessages,
+  listRoles,
 } from '../db';
+import type { RoleData } from '../db';
 import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
 import { judgeSearchNeed } from '../services/searchJudge';
@@ -46,10 +50,25 @@ function getLastUsedModel(): string {
   return loadLastModel() || CHAT_MODELS[0].id;
 }
 
-function buildSystemPrompt(artifactEnabled: boolean, modelId: string): string {
-  const base = artifactEnabled ? BASE_SYSTEM_PROMPT + '\n\n' + ARTIFACT_PROMPT : BASE_SYSTEM_PROMPT;
+function buildSystemPrompt(
+  artifactEnabled: boolean,
+  webSearchEnabled: boolean,
+  modelId: string,
+  role: RoleData | null
+): string {
   const modelName = CHAT_MODELS.find(m => m.id === modelId)?.name;
-  return buildContextInfo(modelName) + '\n\n' + base;
+  const contextInfo = buildContextInfo(modelName);
+  if (!role) {
+    // 默认角色（PortAI）：完整能力已内置在系统提示词里，只按 artifact 开关拼接
+    const base = artifactEnabled ? BASE_SYSTEM_PROMPT + '\n\n' + ARTIFACT_PROMPT : BASE_SYSTEM_PROMPT;
+    return contextInfo + '\n\n' + base;
+  }
+  // 自定义角色：system prompt 完全用角色的提示词，再按功能开关
+  // 把 artifact / 全网搜索的能力提示词动态拼接到后面
+  const parts = [role.systemPrompt];
+  if (artifactEnabled) parts.push(ARTIFACT_PROMPT);
+  if (webSearchEnabled) parts.push(WEB_SEARCH_PROMPT);
+  return contextInfo + '\n\n' + parts.join('\n\n');
 }
 
 // 智能清理过度使用的反引号：只保留真正的代码/技术内容
@@ -67,7 +86,7 @@ function cleanExcessiveBackticks(content: string): string {
     // 保留：纯英文、短内容、包含特殊字符（代码特征）
     if (
       inner.length <= 15 ||
-      /^[a-zA-Z0-9_\-\.\/\\:]+$/.test(inner) || // 文件名、函数名、命令
+      /^[a-zA-Z0-9_\-./\\:]+$/.test(inner) || // 文件名、函数名、命令
       /[<>{}[\]()=>$#]/.test(inner) || // 代码符号
       /^[a-zA-Z]+\(/.test(inner) // 函数调用
     ) {
@@ -159,6 +178,8 @@ export function useChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [webSearchEnabled, setWebSearchEnabledState] = useState<boolean>(() => loadWebSearchEnabled());
+    const [roles, setRoles] = useState<RoleData[]>([]);
+    const [selectedRoleId, setSelectedRoleIdState] = useState<string>(() => loadSelectedRoleId());
   const [streamingArtifact, setStreamingArtifact] = useState<{ title: string; code: string } | null>(null);
   const [featureSettings, setFeatureSettings] = useState<ChatFeatureSettings>(() => {
     const saved = localStorage.getItem('chat-feature-settings');
@@ -319,7 +340,7 @@ export function useChat() {
     }
 
     // 对话发生真实变更（发消息/标题/重命名/收藏/压缩等）→ 防抖触发一次 BYOC 同步
-    if (changed) setPendingSyncTick(t => t + 1);
+    if (changed) setTimeout(() => setPendingSyncTick(t => t + 1), 0);
   }, [conversations, isBooting]);
 
   // 记住当前停留的会话，切后台被系统杀掉进程后冷启动也能恢复回来
@@ -360,6 +381,26 @@ export function useChat() {
     };
     window.addEventListener('aishop:feature-settings-changed', reload);
     return () => window.removeEventListener('aishop:feature-settings-changed', reload);
+  }, []);
+
+  // 角色列表：启动时加载；创建/删除/云同步后由外部调 refreshRoles 重读
+  const refreshRoles = useCallback(async () => {
+    try {
+      setRoles(await listRoles());
+    } catch (e) {
+      console.warn('[roles] 角色列表加载失败', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => void refreshRoles(), 0);
+    return () => clearTimeout(t);
+  }, [refreshRoles]);
+
+  // 切换角色：同步写 localStorage（空串 = 默认角色 PortAI）
+  const setSelectedRole = useCallback((roleId: string) => {
+    setSelectedRoleIdState(roleId);
+    saveSelectedRoleId(roleId);
   }, []);
 
   /**
@@ -765,7 +806,13 @@ export function useChat() {
 
         let fullContent = '';
         let artifactStreamStarted = false;
-        const systemPrompt = buildSystemPrompt(featureSettings.artifactEnabled, selectedModel);
+        const currentRole = roles.find(r => r.id === selectedRoleId) ?? null;
+        const systemPrompt = buildSystemPrompt(
+          featureSettings.artifactEnabled,
+          webSearchEnabled,
+          selectedModel,
+          currentRole
+        );
         let realUsage: TokenUsage | undefined;
         for await (const chunk of streamChat(
           allMessages,
@@ -885,7 +932,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [messages, selectedModel, updateActiveConversation, webSearchEnabled, featureSettings, activeId, compactSettings, compactConversation, triggerTitleGeneration]
+    [messages, selectedModel, updateActiveConversation, webSearchEnabled, featureSettings, activeId, compactSettings, compactConversation, triggerTitleGeneration, roles, selectedRoleId]
   );
 
   const stopGeneration = useCallback(() => {
@@ -1221,7 +1268,12 @@ export function useChat() {
 
       let fullContent = '';
       try {
-        const systemPrompt = buildSystemPrompt(featureSettings.artifactEnabled, conv.messages[msgIndex].model || selectedModel);
+        const systemPrompt = buildSystemPrompt(
+          featureSettings.artifactEnabled,
+          webSearchEnabled,
+          conv.messages[msgIndex].model || selectedModel,
+          roles.find(r => r.id === selectedRoleId) ?? null
+        );
 
         let realUsage: TokenUsage | undefined;
         for await (const chunk of streamChat(
@@ -1314,7 +1366,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [isLoading, conversations, activeId, selectedModel, updateActiveConversation, featureSettings]
+    [isLoading, conversations, activeId, selectedModel, updateActiveConversation, featureSettings, webSearchEnabled, roles, selectedRoleId]
   );
 
   const importConversation = useCallback((convData: Partial<Conversation>) => {
@@ -1414,7 +1466,12 @@ export function useChat() {
 
       let fullContent = '';
       try {
-        const systemPrompt = buildSystemPrompt(featureSettings.artifactEnabled, targetModelId);
+        const systemPrompt = buildSystemPrompt(
+          featureSettings.artifactEnabled,
+          webSearchEnabled,
+          targetModelId,
+          roles.find(r => r.id === selectedRoleId) ?? null
+        );
 
         let realUsage: TokenUsage | undefined;
         for await (const chunk of streamChat(
@@ -1507,7 +1564,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [isLoading, conversations, activeId, selectedModel, updateActiveConversation, featureSettings]
+    [isLoading, conversations, activeId, selectedModel, updateActiveConversation, featureSettings, webSearchEnabled, roles, selectedRoleId]
   );
 
   // 多模型比较：切换版本
@@ -1552,6 +1609,11 @@ export function useChat() {
     regenerateMessage,
     featureSettings,
     setFeatureSettings,
+    // 角色系统
+    roles,
+    selectedRoleId,
+    setSelectedRole,
+    refreshRoles,
     // 会话管理
     conversations,
     activeConversationId: activeId,

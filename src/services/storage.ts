@@ -51,6 +51,23 @@ export function loadWebSearchEnabled(): boolean {
   }
 }
 
+const SELECTED_ROLE_ID_KEY = 'aishop_selected_role_id';
+
+/** 当前选中的自定义角色 id；空串表示使用默认角色（PortAI） */
+export function saveSelectedRoleId(roleId: string): void {
+  try {
+    localStorage.setItem(SELECTED_ROLE_ID_KEY, roleId);
+  } catch { /* ignore */ }
+}
+
+export function loadSelectedRoleId(): string {
+  try {
+    return localStorage.getItem(SELECTED_ROLE_ID_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
 export function loadTheme(): string {
   try {
     return localStorage.getItem('aishop_theme') || 'green';

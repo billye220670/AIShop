@@ -70,11 +70,14 @@ export interface SyncManifestV1 {
     convs: string[];
     history: string[];
     favs: string[];
+    roles: string[];
   };
   /** imageHistory 当前 id 集合（index 文件，拉取方以它为准删减） */
   historyIds: string[];
   /** 收藏当前 id 集合 */
   favIds: string[];
+  /** 角色当前 id 集合 */
+  roleIds: string[];
 }
 
 /** 单轮同步的统计结果，供 UI 展示 */

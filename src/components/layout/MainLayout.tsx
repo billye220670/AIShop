@@ -3,6 +3,7 @@ import Sidebar, { SIDEBAR_WIDTH } from './Sidebar';
 import TopNavBar from './TopNavBar';
 import BottomNavBar from './BottomNavBar';
 import type { TabMode, Conversation, Model, ContextSegment } from '../../types';
+import type { RoleData } from '../../db';
 import type { UsageTotals } from '../../utils/tokenEstimate';
 import { useDrawerSwipe } from '../../hooks/useDrawerSwipe';
 import { haptic } from '../../utils/haptics';
@@ -33,6 +34,11 @@ interface MainLayoutProps {
   // Artifact
   artifactEnabled?: boolean;
   onArtifactToggle?: () => void;
+  // 角色设置
+  roles?: RoleData[];
+  selectedRoleId?: string;
+  onRoleSelect?: (roleId: string) => void;
+  onRolesChanged?: () => void;
   // 上下文占用（顶栏环状指示器）
   realUsage?: UsageTotals;
   contextLimit?: number;
@@ -67,6 +73,10 @@ export default function MainLayout({
   onWebSearchToggle,
   artifactEnabled,
   onArtifactToggle,
+  roles,
+  selectedRoleId,
+  onRoleSelect,
+  onRolesChanged,
   realUsage,
   contextLimit,
   isCompacting,
@@ -196,6 +206,10 @@ export default function MainLayout({
             onWebSearchToggle={onWebSearchToggle}
             artifactEnabled={artifactEnabled}
             onArtifactToggle={onArtifactToggle}
+            roles={roles}
+            selectedRoleId={selectedRoleId}
+            onRoleSelect={onRoleSelect}
+            onRolesChanged={onRolesChanged}
             realUsage={realUsage}
             contextLimit={contextLimit}
             isCompacting={isCompacting}

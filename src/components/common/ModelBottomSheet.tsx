@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Globe, SquareCode } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Globe, SquareCode, Sparkles, Plus, UserRound, Trash2, Check } from 'lucide-react';
 import BottomSheet from './BottomSheet';
+import { createRole, deleteRole } from '../../db';
 import type { Model } from '../../types';
+import type { RoleData } from '../../db';
 
 interface ModelBottomSheetProps {
   isOpen: boolean;
@@ -13,6 +15,12 @@ interface ModelBottomSheetProps {
   onWebSearchToggle: () => void;
   artifactEnabled: boolean;
   onArtifactToggle: () => void;
+  // 角色设置
+  roles: RoleData[];
+  selectedRoleId: string;
+  onRoleSelect: (roleId: string) => void;
+  /** 角色创建/删除后通知上层重读列表 */
+  onRolesChanged: () => void;
 }
 
 // provider 名称 → /public/providers/ 下的图标文件名
@@ -106,6 +114,17 @@ const MODEL_DESCRIPTIONS: Record<string, string> = {
   'xiaomimimo/mimo-v2-flash': '小米 MiMo 快速模型，极高性价比，适合大规模应用',
 };
 
+/** 底部抽屉内的页面：聊天设置（推荐）/ 所有模型 / 角色列表 / 创建角色 */
+type SheetPage = 'recommended' | 'models' | 'roles' | 'create';
+
+/** 每页的上级页面（返回按钮的目标） */
+const PARENT_PAGE: Record<SheetPage, SheetPage | null> = {
+  recommended: null,
+  models: 'recommended',
+  roles: 'recommended',
+  create: 'roles',
+};
+
 export default function ModelBottomSheet({
   isOpen,
   onClose,
@@ -116,37 +135,115 @@ export default function ModelBottomSheet({
   onWebSearchToggle,
   artifactEnabled,
   onArtifactToggle,
+  roles = [],
+  selectedRoleId = '',
+  onRoleSelect = () => {},
+  onRolesChanged = () => {},
 }: ModelBottomSheetProps) {
-  const [showAllModels, setShowAllModels] = useState(false);
-  const [animationState, setAnimationState] = useState<'idle' | 'to-all' | 'to-recommended'>('idle');
+  // 多级页面导航：page 是当前页，nextPage 非空时处于切换动画中
+  const [page, setPage] = useState<SheetPage>('recommended');
+  const [nextPage, setNextPage] = useState<SheetPage | null>(null);
+  const [animDir, setAnimDir] = useState<'forward' | 'backward'>('forward');
+  const navTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // 当 BottomSheet 关闭时，重置状态
-  useEffect(() => {
-    if (!isOpen) {
-      setShowAllModels(false);
-      setAnimationState('idle');
-    }
-  }, [isOpen]);
+  // 创建角色页
+  const [newRolePrompt, setNewRolePrompt] = useState('');
+  const [creating, setCreating] = useState(false);
 
-  const handleShowAllModels = () => {
-    setAnimationState('to-all');
-    setTimeout(() => {
-      setShowAllModels(true);
-      setAnimationState('idle');
+  // 删除角色：第一次点击进入确认态，3 秒内再点才真正删除
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const deleteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(navTimer.current), []);
+  useEffect(() => () => clearTimeout(deleteTimer.current), []);
+
+  /** 关闭 BottomSheet：先重置所有页面状态，再通知父组件（下次打开回到聊天设置页） */
+  const handleClose = () => {
+    setPage('recommended');
+    setNextPage(null);
+    setConfirmDeleteId(null);
+    setNewRolePrompt('');
+    setCreating(false);
+    onClose();
+  };
+
+  /** 进入更深一层页面（推荐 → 角色列表 / 角色列表 → 创建） */
+  const navigate = (target: SheetPage) => {
+    clearTimeout(navTimer.current);
+    setAnimDir('forward');
+    setNextPage(target);
+    navTimer.current = setTimeout(() => {
+      setPage(target);
+      setNextPage(null);
     }, 300);
   };
 
-  const handleBackToRecommended = () => {
-    setAnimationState('to-recommended');
-    setTimeout(() => {
-      setShowAllModels(false);
-      setAnimationState('idle');
+  /** 逐级返回上一层页面 */
+  const goBack = () => {
+    const parent = PARENT_PAGE[page];
+    if (!parent) return;
+    clearTimeout(navTimer.current);
+    setAnimDir('backward');
+    setNextPage(parent);
+    navTimer.current = setTimeout(() => {
+      setPage(parent);
+      setNextPage(null);
     }, 300);
+  };
+
+  const isPageActive = (p: SheetPage) => page === p || nextPage === p;
+
+  /** 页面切换动画：前进时旧页向左滑出、新页从右滑入；后退相反 */
+  const pageAnimClass = (p: SheetPage) => {
+    if (!nextPage) return '';
+    if (p === page) return animDir === 'forward' ? 'animate-slide-out-left' : 'animate-slide-out-right';
+    if (p === nextPage) return animDir === 'forward' ? 'animate-slide-in-right' : 'animate-slide-in-left';
+    return '';
   };
 
   const handleModelSelect = (modelId: string) => {
     onModelChange(modelId);
-    onClose();
+    handleClose();
+  };
+
+  const handleRoleSelect = (roleId: string) => {
+    onRoleSelect(roleId);
+    handleClose();
+  };
+
+  const handleDeleteRole = (roleId: string) => {
+    if (confirmDeleteId !== roleId) {
+      setConfirmDeleteId(roleId);
+      clearTimeout(deleteTimer.current);
+      deleteTimer.current = setTimeout(() => setConfirmDeleteId(null), 3000);
+      return;
+    }
+    clearTimeout(deleteTimer.current);
+    setConfirmDeleteId(null);
+    void deleteRole(roleId)
+      .then(() => {
+        // 删掉的是当前选中角色 → 回退默认角色
+        if (selectedRoleId === roleId) onRoleSelect('');
+        onRolesChanged();
+      })
+      .catch(e => console.warn('[roles] 删除角色失败', e));
+  };
+
+  const handleCreateRole = () => {
+    const prompt = newRolePrompt.trim();
+    if (!prompt || creating) return;
+    setCreating(true);
+    void createRole(prompt)
+      .then(() => {
+        setNewRolePrompt('');
+        setCreating(false);
+        onRolesChanged();
+        goBack(); // 创建完成返回角色列表
+      })
+      .catch(e => {
+        console.warn('[roles] 创建角色失败', e);
+        setCreating(false);
+      });
   };
 
   // 获取推荐模型
@@ -181,117 +278,140 @@ export default function ModelBottomSheet({
     return <img src={icon} alt={model.provider} className="w-12 h-12 rounded-full" />;
   };
 
-  const renderRecommendedView = () => (
-    <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
-      {/* 标题 */}
-      <h2 className="text-white text-xl font-bold mb-6">聊天设置</h2>
+  const renderRecommendedView = () => {
+    const currentRoleName = selectedRoleId
+      ? (roles.find(r => r.id === selectedRoleId)?.name || '自定义角色')
+      : '默认角色 PortAI';
 
-      {/* 模型区域 */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-white text-base">✦</span>
-            <span className="text-white text-base font-semibold">模型</span>
-          </div>
-          <button
-            onClick={handleShowAllModels}
-            className="flex items-center gap-1 text-[var(--color-accent)] text-sm font-medium"
-          >
-            <div className="flex items-center -space-x-2 mr-1">
-              {recommendedModels.slice(0, 3).map((model, idx) => {
-                const icon = getProviderIcon(model.provider);
-                return icon ? (
-                  <div key={model.id} className="w-5 h-5 rounded-full bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] overflow-hidden" style={{ zIndex: 3 - idx }}>
-                    <img src={icon} alt={model.provider} className="w-full h-full object-cover" />
-                  </div>
-                ) : null;
-              })}
+    return (
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
+        {/* 标题 */}
+        <h2 className="text-white text-xl font-bold mb-6">聊天设置</h2>
+
+        {/* 模型区域 */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-white text-base">✦</span>
+              <span className="text-white text-base font-semibold">模型</span>
             </div>
-            更多
-            <ChevronRight className="w-4 h-4" />
-          </button>
+            <button
+              onClick={() => navigate('models')}
+              className="flex items-center gap-1 text-[var(--color-accent)] text-sm font-medium"
+            >
+              <div className="flex items-center -space-x-2 mr-1">
+                {recommendedModels.slice(0, 3).map((model, idx) => {
+                  const icon = getProviderIcon(model.provider);
+                  return icon ? (
+                    <div key={model.id} className="w-5 h-5 rounded-full bg-[var(--color-bg-secondary)] border border-[var(--color-bg-primary)] overflow-hidden" style={{ zIndex: 3 - idx }}>
+                      <img src={icon} alt={model.provider} className="w-full h-full object-cover" />
+                    </div>
+                  ) : null;
+                })}
+              </div>
+              更多
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* 推荐模型横向滚动 */}
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {recommendedModels.map((model) => {
+              const isSelected = model.id === selectedModel;
+              return (
+                <button
+                  key={model.id}
+                  onClick={() => handleModelSelect(model.id)}
+                  className={`relative flex-shrink-0 w-28 rounded-2xl overflow-hidden p-4 flex flex-col items-center gap-2 transition-all ${
+                    isSelected
+                      ? 'bg-[var(--color-accent-soft)] border-2 border-[var(--color-accent)]'
+                      : 'bg-[var(--color-bg-elevated)] border-2 border-transparent'
+                  }`}
+                >
+                  {renderModelIcon(model)}
+                  <span className="text-white text-sm text-center leading-tight">{model.name}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* 推荐模型横向滚动 */}
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          {recommendedModels.map((model) => {
-            const isSelected = model.id === selectedModel;
-            return (
+        {/* 高级功能区 */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-white text-base">✦</span>
+            <span className="text-white text-base font-semibold">高级功能</span>
+          </div>
+
+          {/* 角色设置 + 联网搜索 + Artifact */}
+          <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-4">
+            {/* 角色设置：点击进入角色列表 */}
+            <button
+              onClick={() => navigate('roles')}
+              className="w-full flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <Sparkles className="w-5 h-5 text-gray-400" />
+                <div className="text-left">
+                  <div className="text-white text-sm font-medium">角色设置</div>
+                  <div className="text-gray-400 text-xs mt-0.5">{currentRoleName}</div>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400" />
+            </button>
+
+            <div className="h-px bg-white/10 my-4" />
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Globe className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="text-white text-sm font-medium">全网搜索</div>
+                  <div className="text-gray-400 text-xs mt-0.5">允许 AI 根据问题需要访问互联网</div>
+                </div>
+              </div>
               <button
-                key={model.id}
-                onClick={() => handleModelSelect(model.id)}
-                className={`relative flex-shrink-0 w-28 rounded-2xl overflow-hidden p-4 flex flex-col items-center gap-2 transition-all ${
-                  isSelected
-                    ? 'bg-[var(--color-accent-soft)] border-2 border-[var(--color-accent)]'
-                    : 'bg-[var(--color-bg-elevated)] border-2 border-transparent'
+                onClick={onWebSearchToggle}
+                className={`relative w-12 h-7 rounded-full transition-colors ${
+                  webSearchEnabled ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-bg-hover)]'
                 }`}
               >
-                {renderModelIcon(model)}
-                <span className="text-white text-sm text-center leading-tight">{model.name}</span>
+                <div
+                  className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${
+                    webSearchEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
               </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 高级功能区 */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-white text-base">✦</span>
-          <span className="text-white text-base font-semibold">高级功能</span>
-        </div>
-
-        {/* 联网搜索 + Artifact */}
-        <div className="bg-[var(--color-bg-secondary)] rounded-2xl p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Globe className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="text-white text-sm font-medium">全网搜索</div>
-                <div className="text-gray-400 text-xs mt-0.5">允许 AI 根据问题需要访问互联网</div>
-              </div>
             </div>
-            <button
-              onClick={onWebSearchToggle}
-              className={`relative w-12 h-7 rounded-full transition-colors ${
-                webSearchEnabled ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-bg-hover)]'
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${
-                  webSearchEnabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
 
-          <div className="h-px bg-white/10 my-4" />
+            <div className="h-px bg-white/10 my-4" />
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <SquareCode className="w-5 h-5 text-gray-400" />
-              <div>
-                <div className="text-white text-sm font-medium">Artifact</div>
-                <div className="text-gray-400 text-xs mt-0.5">允许 AI 生成可交互的代码预览</div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <SquareCode className="w-5 h-5 text-gray-400" />
+                <div>
+                  <div className="text-white text-sm font-medium">Artifact</div>
+                  <div className="text-gray-400 text-xs mt-0.5">允许 AI 生成可交互的代码预览</div>
+                </div>
               </div>
-            </div>
-            <button
-              onClick={onArtifactToggle}
-              className={`relative w-12 h-7 rounded-full transition-colors ${
-                artifactEnabled ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-bg-hover)]'
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${
-                  artifactEnabled ? 'translate-x-6' : 'translate-x-1'
+              <button
+                onClick={onArtifactToggle}
+                className={`relative w-12 h-7 rounded-full transition-colors ${
+                  artifactEnabled ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-bg-hover)]'
                 }`}
-              />
-            </button>
+              >
+                <div
+                  className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${
+                    artifactEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderAllModelsView = () => (
     <>
@@ -301,7 +421,7 @@ export default function ModelBottomSheet({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              handleBackToRecommended();
+              goBack();
             }}
             className="text-white p-1 hover:bg-white/10 rounded-lg transition-colors"
           >
@@ -363,28 +483,187 @@ export default function ModelBottomSheet({
     </>
   );
 
+  const renderRolesView = () => (
+    <>
+      {/* 顶部导航栏 - 固定在顶部 */}
+      <div className="shrink-0 bg-[var(--color-bg-primary)] px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              goBack();
+            }}
+            className="text-white p-1 hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <h2 className="text-white text-lg font-semibold">角色设置</h2>
+        </div>
+      </div>
+
+      {/* 角色列表 - 可滚动区域 */}
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
+        {/* 默认角色：永远在最顶部 */}
+        <div className="text-gray-400 text-xs font-medium mb-3 uppercase">默认角色</div>
+        <button
+          onClick={() => handleRoleSelect('')}
+          className={`w-full rounded-xl px-4 py-4 flex items-center gap-3 transition-all ${
+            !selectedRoleId
+              ? 'bg-[var(--color-accent-soft)] border border-[var(--color-accent)]'
+              : 'bg-[var(--color-bg-secondary)] border border-transparent hover:border-white/10'
+          }`}
+        >
+          <div className="w-10 h-10 shrink-0 rounded-full bg-[var(--color-accent)] flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-[var(--color-accent-foreground)]" />
+          </div>
+          <div className="flex-1 text-left">
+            <div className="text-white text-sm font-medium">PortAI</div>
+            <div className="text-gray-400 text-xs mt-0.5">默认角色，内置全网搜索与 Artifact 等完整能力</div>
+          </div>
+          {!selectedRoleId && (
+            <div className="w-5 h-5 shrink-0 rounded-full bg-[var(--color-accent)] flex items-center justify-center">
+              <Check className="w-3.5 h-3.5 text-[var(--color-accent-foreground)]" />
+            </div>
+          )}
+        </button>
+
+        {/* 自定义角色 */}
+        {roles.length > 0 && (
+          <>
+            <div className="text-gray-400 text-xs font-medium mt-6 mb-3 uppercase">自定义角色</div>
+            <div className="space-y-2">
+              {roles.map((role) => {
+                const isSelected = role.id === selectedRoleId;
+                return (
+                  <div
+                    key={role.id}
+                    className={`w-full rounded-xl px-4 py-4 flex items-center gap-3 transition-all ${
+                      isSelected
+                        ? 'bg-[var(--color-accent-soft)] border border-[var(--color-accent)]'
+                        : 'bg-[var(--color-bg-secondary)] border border-transparent'
+                    }`}
+                  >
+                    <button
+                      onClick={() => handleRoleSelect(role.id)}
+                      className="flex-1 flex items-center gap-3 text-left"
+                    >
+                      <div className="w-10 h-10 shrink-0 rounded-full bg-[var(--color-bg-hover)] flex items-center justify-center">
+                        <UserRound className="w-5 h-5 text-gray-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white text-sm font-medium truncate">{role.name}</div>
+                        <div className="text-gray-400 text-xs mt-0.5 line-clamp-2">{role.systemPrompt}</div>
+                      </div>
+                      {isSelected && (
+                        <div className="w-5 h-5 shrink-0 rounded-full bg-[var(--color-accent)] flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5 text-[var(--color-accent-foreground)]" />
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRole(role.id)}
+                      title={confirmDeleteId === role.id ? '再次点击确认删除' : '删除角色'}
+                      className={`shrink-0 p-2 rounded-lg transition-colors ${
+                        confirmDeleteId === role.id
+                          ? 'bg-red-500/20 text-red-400'
+                          : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                      }`}
+                    >
+                      {confirmDeleteId === role.id ? (
+                        <span className="text-xs font-medium">确认</span>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* 新角色按钮：固定在列表最底部 */}
+        <button
+          onClick={() => navigate('create')}
+          className="mt-8 w-full rounded-xl py-3.5 flex items-center justify-center gap-2 bg-[var(--color-accent)] text-[var(--color-accent-foreground)] text-sm font-semibold active:opacity-80"
+        >
+          <Plus className="w-5 h-5" />
+          新角色
+        </button>
+      </div>
+    </>
+  );
+
+  const renderCreateRoleView = () => (
+    <>
+      {/* 顶部导航栏 - 固定在顶部 */}
+      <div className="shrink-0 bg-[var(--color-bg-primary)] px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              goBack();
+            }}
+            className="text-white p-1 hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <h2 className="text-white text-lg font-semibold">创建角色</h2>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col px-4 pt-4 pb-6 overflow-hidden">
+        <textarea
+          autoFocus
+          value={newRolePrompt}
+          onChange={(e) => setNewRolePrompt(e.target.value)}
+          placeholder={`输入角色的系统提示词，例如：\n你是一位精通古典诗词创作的诗人，擅长七言绝句，用词凝练、意境深远。`}
+          className="flex-1 min-h-[200px] w-full bg-[var(--color-bg-secondary)] rounded-2xl p-4 text-white text-sm placeholder-gray-500 focus:outline-none resize-none leading-relaxed overflow-y-auto"
+        />
+        <div className="text-gray-500 text-xs mt-2">
+          角色名自动取自提示词第一行（最多 20 字），创建后可在聊天设置中随时切换
+        </div>
+        <button
+          onClick={handleCreateRole}
+          disabled={!newRolePrompt.trim() || creating}
+          className="mt-4 w-full rounded-xl py-3.5 bg-[var(--color-accent)] text-[var(--color-accent-foreground)] text-sm font-semibold disabled:opacity-40"
+        >
+          {creating ? '创建中…' : '创建'}
+        </button>
+      </div>
+    </>
+  );
+
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose}>
+    <BottomSheet isOpen={isOpen} onClose={handleClose}>
       <div className="flex-1 flex flex-col relative overflow-hidden">
-        {/* 推荐视图 */}
-        {(animationState === 'idle' && !showAllModels) || animationState === 'to-all' || animationState === 'to-recommended' ? (
-          <div className={`absolute inset-0 flex flex-col ${
-            animationState === 'to-all' ? 'animate-slide-out-left' :
-            animationState === 'to-recommended' ? 'animate-slide-in-left' : ''
-          }`}>
+        {/* 推荐视图（聊天设置） */}
+        {isPageActive('recommended') && (
+          <div className={`absolute inset-0 flex flex-col ${pageAnimClass('recommended')}`}>
             {renderRecommendedView()}
           </div>
-        ) : null}
+        )}
 
         {/* 所有模型视图 */}
-        {(animationState === 'idle' && showAllModels) || animationState === 'to-all' || animationState === 'to-recommended' ? (
-          <div className={`absolute inset-0 flex flex-col ${
-            animationState === 'to-all' ? 'animate-slide-in-right' :
-            animationState === 'to-recommended' ? 'animate-slide-out-right' : ''
-          }`}>
+        {isPageActive('models') && (
+          <div className={`absolute inset-0 flex flex-col ${pageAnimClass('models')}`}>
             {renderAllModelsView()}
           </div>
-        ) : null}
+        )}
+
+        {/* 角色列表视图 */}
+        {isPageActive('roles') && (
+          <div className={`absolute inset-0 flex flex-col ${pageAnimClass('roles')}`}>
+            {renderRolesView()}
+          </div>
+        )}
+
+        {/* 创建角色视图 */}
+        {isPageActive('create') && (
+          <div className={`absolute inset-0 flex flex-col ${pageAnimClass('create')}`}>
+            {renderCreateRoleView()}
+          </div>
+        )}
       </div>
     </BottomSheet>
   );

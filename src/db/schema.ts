@@ -22,7 +22,7 @@ import type {
 } from '../types';
 
 export const DB_NAME = 'aishop';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 /** 同步预留字段，conversations 与 messages 共用 */
 export interface SyncMeta {
@@ -218,6 +218,21 @@ export interface StoredFavoriteArtifact {
   favoritedAt: number;
 }
 
+// ---------- 角色 ----------
+
+/**
+ * 用户自定义角色：把一段系统提示词保存为可复用、可切换的预设。
+ *
+ * 与消息/会话同一套 SyncMeta 约定，随 BYOC 增量同步跨设备。
+ */
+export interface StoredRole extends SyncMeta {
+  id: string;
+  /** 角色名：创建时从提示词首行自动提取，纯展示用 */
+  name: string;
+  systemPrompt: string;
+  createdAt: number;
+}
+
 export interface AiShopDB extends DBSchema {
   conversations: {
     key: string;
@@ -273,6 +288,13 @@ export interface AiShopDB extends DBSchema {
     value: StoredFavoriteArtifact;
     indexes: {
       by_favoritedAt: number;
+    };
+  };
+  roles: {
+    key: string;
+    value: StoredRole;
+    indexes: {
+      by_createdAt: number;
     };
   };
   kv: {

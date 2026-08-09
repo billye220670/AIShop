@@ -14,34 +14,58 @@ let dbPromise: Promise<IDBPDatabase<AiShopDB>> | null = null;
 function create(): Promise<IDBPDatabase<AiShopDB>> {
   return openDB<AiShopDB>(DB_NAME, DB_VERSION, {
     upgrade(db) {
-      const conversations = db.createObjectStore('conversations', { keyPath: 'id' });
-      conversations.createIndex('by_updatedAt', 'updatedAt');
-      // isFavorite 是可选布尔，索引不到 undefined，所以按需查询时以 1/0 存
-      conversations.createIndex('by_favorite', 'isFavorite');
+      // 旧版本库升级时会重跑本回调，已存在的 store 必须跳过，否则重复创建抛错
+      if (!db.objectStoreNames.contains('conversations')) {
+        const conversations = db.createObjectStore('conversations', { keyPath: 'id' });
+        conversations.createIndex('by_updatedAt', 'updatedAt');
+        // isFavorite 是可选布尔，索引不到 undefined，所以按需查询时以 1/0 存
+        conversations.createIndex('by_favorite', 'isFavorite');
+      }
 
-      const messages = db.createObjectStore('messages', { keyPath: 'id' });
-      messages.createIndex('by_conv_seq', ['convId', 'seq']);
-      messages.createIndex('by_conv_time', ['convId', 'timestamp']);
+      if (!db.objectStoreNames.contains('messages')) {
+        const messages = db.createObjectStore('messages', { keyPath: 'id' });
+        messages.createIndex('by_conv_seq', ['convId', 'seq']);
+        messages.createIndex('by_conv_time', ['convId', 'timestamp']);
+      }
 
-      db.createObjectStore('blobs', { keyPath: 'blobId' });
+      if (!db.objectStoreNames.contains('blobs')) {
+        db.createObjectStore('blobs', { keyPath: 'blobId' });
+      }
 
-      const contextNodes = db.createObjectStore('contextNodes', { keyPath: 'id' });
-      contextNodes.createIndex('by_conv', 'convId');
+      if (!db.objectStoreNames.contains('contextNodes')) {
+        const contextNodes = db.createObjectStore('contextNodes', { keyPath: 'id' });
+        contextNodes.createIndex('by_conv', 'convId');
+      }
 
-      const contextPlans = db.createObjectStore('contextPlans', { keyPath: 'id' });
-      contextPlans.createIndex('by_conv', 'convId');
+      if (!db.objectStoreNames.contains('contextPlans')) {
+        const contextPlans = db.createObjectStore('contextPlans', { keyPath: 'id' });
+        contextPlans.createIndex('by_conv', 'convId');
+      }
 
-      const retrieval = db.createObjectStore('retrieval', { keyPath: 'messageId' });
-      retrieval.createIndex('by_conv', 'convId');
-      retrieval.createIndex('terms', 'terms', { multiEntry: true });
+      if (!db.objectStoreNames.contains('retrieval')) {
+        const retrieval = db.createObjectStore('retrieval', { keyPath: 'messageId' });
+        retrieval.createIndex('by_conv', 'convId');
+        retrieval.createIndex('terms', 'terms', { multiEntry: true });
+      }
 
-      const imageHistory = db.createObjectStore('imageHistory', { keyPath: 'id' });
-      imageHistory.createIndex('by_timestamp', 'timestamp');
+      if (!db.objectStoreNames.contains('imageHistory')) {
+        const imageHistory = db.createObjectStore('imageHistory', { keyPath: 'id' });
+        imageHistory.createIndex('by_timestamp', 'timestamp');
+      }
 
-      const favorites = db.createObjectStore('favoriteArtifacts', { keyPath: 'id' });
-      favorites.createIndex('by_favoritedAt', 'favoritedAt');
+      if (!db.objectStoreNames.contains('favoriteArtifacts')) {
+        const favorites = db.createObjectStore('favoriteArtifacts', { keyPath: 'id' });
+        favorites.createIndex('by_favoritedAt', 'favoritedAt');
+      }
 
-      db.createObjectStore('kv', { keyPath: 'key' });
+      if (!db.objectStoreNames.contains('roles')) {
+        const roles = db.createObjectStore('roles', { keyPath: 'id' });
+        roles.createIndex('by_createdAt', 'createdAt');
+      }
+
+      if (!db.objectStoreNames.contains('kv')) {
+        db.createObjectStore('kv', { keyPath: 'key' });
+      }
     },
     blocked() {
       // 另一个标签页占着旧版本连接。除了等没别的办法，至少留下线索。

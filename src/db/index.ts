@@ -98,3 +98,12 @@ export {
   renameFavorite,
 } from './favoriteRepo';
 export type { FavoriteArtifactData } from './favoriteRepo';
+
+export {
+  newRoleId,
+  listRoles,
+  listStoredRoles,
+  createRole,
+  deleteRole,
+} from './roleRepo';
+export type { RoleData } from './roleRepo';

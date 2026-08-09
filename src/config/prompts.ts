@@ -48,6 +48,17 @@ export const SYSTEM_PROMPTS = {
   default: ARTIFACT_PROMPT + '\n\n' + BASE_SYSTEM_PROMPT,
 };
 
+/**
+ * 联网搜索能力提示词。
+ *
+ * 默认角色（PortAI）的系统提示词不包含它——搜索由前端 judge + 结果上下文
+ * 驱动，无需模型背书；自定义角色时按全网搜索开关拼接到角色提示词后面，
+ * 让角色感知“可以借助联网资料作答”的行为约定。
+ */
+export const WEB_SEARCH_PROMPT = `联网搜索能力：
+当用户的问题需要实时信息、最新资讯或事实核查时，应使用联网搜索获取的参考资料来回答。
+基于搜索资料作答时，在相关内容旁标注引用来源（来源名称或链接）。`;
+
 export function getSystemPrompt(key: keyof typeof SYSTEM_PROMPTS = 'default'): string {
   return SYSTEM_PROMPTS[key];
 }

@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: app_shell/byoc_service
+title: BYOC（自带云存储）S3 同步与备份服务
+scope:
+    - src/services/byoc/
+    - src/utils/sha256.ts
+source_files: []
+depends_on: []
+related_to: []

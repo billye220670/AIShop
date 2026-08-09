@@ -43,12 +43,15 @@ function App() {
   const chat = useChat();
   const { favorites, isFavorite, toggleFavorite, removeFavorite, renameFavorite } = useFavoriteArtifacts();
 
-  // BYOC 同步完成后自动刷新会话列表
+  // BYOC 同步完成后自动刷新会话列表与角色列表（角色可能从云端拉到/被删除）
   useEffect(() => {
-    const handler = () => void chat.reloadConversations();
+    const handler = () => {
+      void chat.reloadConversations();
+      void chat.refreshRoles();
+    };
     window.addEventListener(BYOC_SYNC_DONE_EVENT, handler);
     return () => window.removeEventListener(BYOC_SYNC_DONE_EVENT, handler);
-  }, [chat.reloadConversations]);
+  }, [chat.reloadConversations, chat.refreshRoles]);
 
   const activeConversation = chat.conversations.find(
     c => c.id === chat.activeConversationId
@@ -143,6 +146,10 @@ function App() {
         onWebSearchToggle={activeTab === 'chat' ? () => chat.setWebSearchEnabled(!chat.webSearchEnabled) : undefined}
         artifactEnabled={activeTab === 'chat' ? chat.featureSettings.artifactEnabled : undefined}
         onArtifactToggle={activeTab === 'chat' ? () => chat.setFeatureSettings({ ...chat.featureSettings, artifactEnabled: !chat.featureSettings.artifactEnabled }) : undefined}
+        roles={activeTab === 'chat' ? chat.roles : undefined}
+        selectedRoleId={activeTab === 'chat' ? chat.selectedRoleId : undefined}
+        onRoleSelect={activeTab === 'chat' ? chat.setSelectedRole : undefined}
+        onRolesChanged={activeTab === 'chat' ? chat.refreshRoles : undefined}
       >
         {renderContent()}
       </MainLayout>

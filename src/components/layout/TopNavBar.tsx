@@ -1,6 +1,7 @@
 import { Menu, MessageSquarePlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Model, ContextSegment } from '../../types';
+import type { RoleData } from '../../db';
 import ModelSelector from '../common/ModelSelector';
 import ContextRing from '../chat/ContextRing';
 import ContextPanel from '../chat/ContextPanel';
@@ -18,6 +19,11 @@ interface TopNavBarProps {
   onWebSearchToggle?: () => void;
   artifactEnabled?: boolean;
   onArtifactToggle?: () => void;
+  // 角色设置
+  roles?: RoleData[];
+  selectedRoleId?: string;
+  onRoleSelect?: (roleId: string) => void;
+  onRolesChanged?: () => void;
   // 上下文占用（仅聊天页传入）
   realUsage?: UsageTotals;
   contextLimit?: number;
@@ -42,6 +48,10 @@ export default function TopNavBar({
   onWebSearchToggle,
   artifactEnabled = false,
   onArtifactToggle,
+  roles,
+  selectedRoleId,
+  onRoleSelect,
+  onRolesChanged,
   realUsage,
   contextLimit,
   isCompacting = false,
@@ -95,6 +105,10 @@ export default function TopNavBar({
           onWebSearchToggle={onWebSearchToggle}
           artifactEnabled={artifactEnabled}
           onArtifactToggle={onArtifactToggle}
+          roles={roles}
+          selectedRoleId={selectedRoleId}
+          onRoleSelect={onRoleSelect}
+          onRolesChanged={onRolesChanged}
         />
 
         {showRing && (
