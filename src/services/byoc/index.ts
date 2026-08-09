@@ -14,7 +14,13 @@ import { settingsService } from '../settingsService';
 import type { ByocConfig, SyncResult, CloudBackupResult, ProgressFn } from './types';
 import { pushLocal, pullRemote } from './incrementalSync';
 import { backupToCloud, restoreFromCloud, hasCloudBackup } from './backupSync';
-import { countPending, setLastSyncAt, getLastSyncAt } from './state';
+import {
+  countPending,
+  setLastSyncAt,
+  getLastSyncAt,
+  getLocalTombstones,
+  setLocalTombstones,
+} from './state';
 import { createS3Client } from './s3Client';
 
 /** 状态变化事件（设置面板监听后刷新展示） */
@@ -50,6 +56,29 @@ export async function testConnection(cfg: ByocConfig = getByocConfig()): Promise
 // ---------------- 增量同步 ----------------
 
 let syncing = false;
+
+/**
+ * 记录本机会话删除（删除动作发生时立即写本地 tombstone）。
+ *
+ * 为什么删除时要主动记而不是等同步期检测：
+ * 1. 删除后的自动同步可能失败（网络抖动、与另一同步冲突），失败即无重试；
+ * 2. 60 秒轮询靠 countPending 感知——它统计会话/消息 diff，删掉的会话不在
+ *    列表里，只有 tombstone 记录能把它变成「待同步项」；
+ * 3. pushLocal 的删除传播也能以这份记录为准，不再依赖缓存清单是否完整。
+ * 云端确认删除后，pullRemote 应用 tombstone 时会自动清除这里的记录。
+ */
+export async function recordLocalDeletions(convIds: string[]): Promise<void> {
+  if (!convIds.length) return;
+  const t = await getLocalTombstones();
+  let changed = false;
+  for (const id of convIds) {
+    if (!t.convs.includes(id)) {
+      t.convs.push(id);
+      changed = true;
+    }
+  }
+  if (changed) await setLocalTombstones(t);
+}
 
 /**
  * 双向同步：先拉后推。

@@ -34,7 +34,7 @@ import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
 import { judgeSearchNeed } from '../services/searchJudge';
 import { settingsService } from '../services/settingsService';
-import { syncNow, getByocConfig, validateConfig } from '../services/byoc';
+import { syncNow, getByocConfig, validateConfig, recordLocalDeletions } from '../services/byoc';
 import { compactMessages } from '../services/contextCompactor';
 import { buildApiMessages } from '../utils/buildApiMessages';
 import { planCompaction, getContextUsage, isCompactionViable } from '../utils/compactPlan';
@@ -1066,6 +1066,9 @@ export function useChat() {
 
       // 删除是数据变更，同样要同步（tombstone 需要推到云端）
       setPendingSyncTick(t => t + 1);
+      // 删除动作发生时立即落本地 tombstone：即使本次自动同步失败，
+      // 60 秒轮询的 countPending 也能感知删除并兜底传播，不会静默丢失。
+      await recordLocalDeletions(ids).catch(() => undefined);
 
       const remaining = conversationsRef.current.filter(c => !idSet.has(c.id));
       if (remaining.length === 0) {

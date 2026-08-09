@@ -160,8 +160,9 @@ export async function pushLocal(
   manifest.tombstones.convs = manifest.tombstones.convs.filter(id => !localIds.has(id));
 
   // 1. 删除检测：云端有而本地没有的会话 → tombstone，清理云端对象。
-  //    只处理"之前同步过"的会话（本地缓存清单里有）：云端新增、本机还没拉过的
-  //    不能当删除处理，否则 pull 失败时会把其他设备新建的会话误删。
+  //    只处理"之前同步过"或"本机明确删除过"的会话（缓存清单/本地 tombstone
+  //    里有记录）：云端新增、本机还没拉过的不能当删除处理，否则 pull 失败时
+  //    会把其他设备新建的会话误删。
   //    同步记本地 tombstone（pullRemote 靠它跳过拉取，防止删了又拉回来）。
   const cached = await getCloudManifest();
   const knownRemote = new Set(cached ? Object.keys(cached.convs) : []);
@@ -169,7 +170,7 @@ export async function pushLocal(
   let tombstoneChanged = false;
   for (const convId of Object.keys(manifest.convs)) {
     if (localIds.has(convId)) continue;
-    if (!knownRemote.has(convId)) continue;
+    if (!knownRemote.has(convId) && !localTombstones.convs.includes(convId)) continue;
     if (manifest.tombstones.convs.includes(convId)) continue;
     manifest.tombstones.convs.push(convId);
     delete manifest.convs[convId];
@@ -177,13 +178,18 @@ export async function pushLocal(
       localTombstones.convs.push(convId);
       tombstoneChanged = true;
     }
-
-    await client.deleteObject(syncKey(cfg.prefix, 'convs', `${convId}.json`));
-    const msgs = await client.listObjects(syncKey(cfg.prefix, 'msgs', convId));
-    await mapLimit(msgs, 8, m => client.deleteObject(m.key));
-    const nodes = await client.listObjects(syncKey(cfg.prefix, 'nodes', convId));
-    await mapLimit(nodes, 8, n => client.deleteObject(n.key));
     result.deletedConvs += 1;
+    // 云端对象清理失败只警告、不阻塞 tombstone 写回——否则删除永远无法
+    // 跨设备传播（manifest 不落盘，其他端收不到删除）；残留对象下轮再清。
+    try {
+      await client.deleteObject(syncKey(cfg.prefix, 'convs', `${convId}.json`));
+      const msgs = await client.listObjects(syncKey(cfg.prefix, 'msgs', convId));
+      await mapLimit(msgs, 8, m => client.deleteObject(m.key));
+      const nodes = await client.listObjects(syncKey(cfg.prefix, 'nodes', convId));
+      await mapLimit(nodes, 8, n => client.deleteObject(n.key));
+    } catch (e) {
+      console.warn(`[byoc] 会话 ${convId} 云端对象清理失败（下轮重试）`, e);
+    }
   }
   if (tombstoneChanged) await setLocalTombstones(localTombstones);
 
@@ -441,9 +447,11 @@ export async function pullRemote(
     const convId = convIds[i];
     const cloudUpdatedAt = manifest.convs[convId];
     if (localTombstones.convs.includes(convId)) {
-      // 本机已删且云端没有比缓存更新的数据 → 保持删除（push 阶段会清云端对象）
-      if (cloudUpdatedAt <= (cachedConvs.get(convId) ?? 0)) continue;
-      // 删除后云端又有了新数据（其他设备恢复了会话）→ 撤销本机删除，数据优先
+      const cachedAt = cachedConvs.get(convId);
+      // 本机已删：缓存清单里没有该会话（缓存丢失等）或云端没有更新 →
+      // 保持删除（push 阶段会清云端对象）；
+      // 云端 updatedAt 晚于缓存记录 → 其他设备恢复了会话，数据优先，撤销删除。
+      if (cachedAt === undefined || cloudUpdatedAt <= cachedAt) continue;
       localTombstones.convs = localTombstones.convs.filter(x => x !== convId);
       await setLocalTombstones(localTombstones);
     }
