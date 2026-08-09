@@ -152,6 +152,9 @@
   /* active:bg-white/N */
   & .active\:bg-white\/10:active { background-color: rgba(0, 0, 0, 0.06); }
 
+  /* hover:border-white/N */
+  & .hover\:border-white\/10:hover { border-color: rgba(0, 0, 0, 0.08); }
+
   /* Markdown 排版：暗色模式用 prose-invert，亮色下移除反转 */
   & .prose-invert {
     --tw-prose-body: var(--color-text-primary);
@@ -172,16 +175,20 @@
     --tw-prose-td-borders: var(--color-border);
   }
 
-  /* 覆盖硬编码的 prose 内联样式（组件中作为 className 传入的部分） */
-  & .prose-headings\:text-gray-100 { color: var(--color-text-primary); }
-  & .prose-p\:text-gray-200 { color: var(--color-text-primary); }
-  & .prose-strong\:text-white { color: var(--color-text-primary); }
-  & .prose-li\:text-gray-200 { color: var(--color-text-primary); }
-  & .prose-th\:text-gray-200 { color: var(--color-text-primary); }
-  & .prose-td\:text-gray-300 { color: var(--color-text-primary); }
-  & .prose-blockquote\:border-gray-600 { border-color: var(--color-border); }
-  & .prose-blockquote\:text-gray-300 { color: var(--color-text-secondary); }
-  & .prose-hr\:border-gray-700 { border-color: var(--color-border); }
+  /* 覆盖硬编码的 prose 内联样式（组件中作为 className 传入的部分）
+     注意：Tailwind 生成的规则形如 `.prose-p\:text-gray-200 :where(p)`，
+     因此覆盖必须同样匹配到子元素，仅写在容器类上不会生效 */
+  & .prose-headings\:text-gray-100 :where(h1,h2,h3,h4,h5,h6,th):not([class~="not-prose"]) { color: var(--color-text-primary); }
+  & .prose-p\:text-gray-200 :where(p):not([class~="not-prose"]) { color: var(--color-text-primary); }
+  & .prose-strong\:text-white :where(strong):not([class~="not-prose"]) { color: var(--color-text-primary); }
+  & .prose-li\:text-gray-200 :where(li):not([class~="not-prose"]) { color: var(--color-text-primary); }
+  & .prose-th\:text-gray-200 :where(th):not([class~="not-prose"]) { color: var(--color-text-primary); }
+  & .prose-td\:text-gray-300 :where(td):not([class~="not-prose"]) { color: var(--color-text-primary); }
+  & .prose-code\:text-blue-300 :where(code):not([class~="not-prose"]) { color: var(--color-text-primary); }
+  & .prose-a\:text-blue-400 :where(a):not([class~="not-prose"]) { color: var(--color-accent); }
+  & .prose-blockquote\:border-gray-600 :where(blockquote):not([class~="not-prose"]) { border-color: var(--color-border); }
+  & .prose-blockquote\:text-gray-300 :where(blockquote):not([class~="not-prose"]) { color: var(--color-text-secondary); }
+  & .prose-hr\:border-gray-700 :where(hr):not([class~="not-prose"]) { border-color: var(--color-border); }
 
   /* 边框覆盖 */
   & .border-white\/5  { border-color: rgba(0, 0, 0, 0.06); }

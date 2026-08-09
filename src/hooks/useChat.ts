@@ -34,6 +34,7 @@ import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
 import { judgeSearchNeed } from '../services/searchJudge';
 import { settingsService } from '../services/settingsService';
+import { syncNow, getByocConfig, validateConfig } from '../services/byoc';
 import { compactMessages } from '../services/contextCompactor';
 import { buildApiMessages } from '../utils/buildApiMessages';
 import { planCompaction, getContextUsage, isCompactionViable } from '../utils/compactPlan';
@@ -171,6 +172,8 @@ export function useChat() {
     settingsService.getCompactSettings()
   );
   const [compactingId, setCompactingId] = useState<string | null>(null);
+  /** 对话变更信号（自增计数）：非 0 时触发变更后自动同步，防抖合并多次变更 */
+  const [pendingSyncTick, setPendingSyncTick] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const activeConversation = conversations.find(c => c.id === activeId) || conversations[0];
@@ -297,10 +300,14 @@ export function useChat() {
     conversationsRef.current = conversations;
     if (isBooting) return;
 
+    let changed = false;
     for (const conv of conversations) {
       const prev = persistedRef.current.get(conv.id);
       if (prev === conv) continue;
       persistedRef.current.set(conv.id, conv);
+      // 刚新建还没开始聊的空会话不构成变更，不触发同步
+      if (!prev && conv.messages.length === 0) continue;
+      changed = true;
       void persistConversation(prev, conv).catch(e =>
         console.error('[useChat] 持久化失败', e)
       );
@@ -310,6 +317,9 @@ export function useChat() {
     for (const id of persistedRef.current.keys()) {
       if (!alive.has(id)) persistedRef.current.delete(id);
     }
+
+    // 对话发生真实变更（发消息/标题/重命名/收藏/压缩等）→ 防抖触发一次 BYOC 同步
+    if (changed) setPendingSyncTick(t => t + 1);
   }, [conversations, isBooting]);
 
   // 记住当前停留的会话，切后台被系统杀掉进程后冷启动也能恢复回来
@@ -352,6 +362,76 @@ export function useChat() {
     return () => window.removeEventListener('aishop:feature-settings-changed', reload);
   }, []);
 
+  /**
+   * 重新从 IndexedDB 读会话列表（BYOC 手动同步后调用，刷新侧栏数据）。
+   * 列表只含元数据；当前会话额外 hydrate，让云端拉取的新消息进入内存。
+   * 同步后的列表作为新的落盘基准，避免持久化 diff 把刚拉取的内容再写回。
+   *
+   * 两个防护：
+   * 1. 先 flush 挂起的落盘再读库——persist 是 fire-and-forget，若在写入未完成时
+   *    读库，新会话的 messageCount 还是 0，会被当成空会话从侧栏过滤掉。
+   * 2. 无条件 hydrate 当前会话并把内存中尚未落盘的消息合并回来，避免"库快照
+   *    替换内存"时把刚发的消息弄丢（侧栏立即消失、当前对话变空白）。
+   */
+  const reloadConversations = useCallback(async () => {
+    await flushPendingWrites();
+    const list = await loadConversationList();
+    const active = list.find(c => c.id === activeId);
+    let result = list;
+    if (active) {
+      try {
+        const { messages, segments, totalMessageCount } =
+          await hydrateConversation(active.id);
+        // 内存版可能比库新（并发写入未排空时的兜底）：同 id 保留内存版，
+        // 云端有而内存没有的补进来
+        const mem = conversationsRef.current.find(c => c.id === activeId);
+        const memById = new Map((mem?.messages ?? []).map(m => [m.id, m]));
+        const merged = [...messages];
+        const seen = new Set(merged.map(m => m.id));
+        for (const m of memById.values()) {
+          if (!seen.has(m.id)) merged.push(m);
+          seen.add(m.id);
+        }
+        merged.sort((a, b) => a.timestamp - b.timestamp);
+        const total = Math.max(totalMessageCount, merged.length);
+        result = list.map(c =>
+          c.id === active.id
+            ? { ...c, messages: merged, segments, totalMessageCount: total, hasMoreMessages: merged.length < total, hydrated: true }
+            : c
+        );
+      } catch (e) {
+        console.warn('[useChat] 同步后刷新当前会话失败', e);
+      }
+    }
+    persistedRef.current = new Map(result.map(c => [c.id, c]));
+    conversationsRef.current = result;
+    setConversations(result);
+  }, [activeId]);
+
+  /**
+   * 变更后自动同步（BYOC）：对话数据一变就防抖触发，3 秒内合并多次变更成一次。
+   * 动作与侧栏「同步」按钮一致：先拉后推 + 重载会话列表。
+   * 未启用/配置不完整时跳过，scheduleAutoSync 的 60 秒轮询继续兜底。
+   */
+  useEffect(() => {
+    if (pendingSyncTick === 0) return;
+    const timer = setTimeout(() => {
+      const cfg = getByocConfig();
+      if (!cfg.enabled || validateConfig(cfg)) return;
+      void (async () => {
+        try {
+          // 先排空落盘写链，避免推送时读到"消息还没写入"的中间态
+          await flushPendingWrites();
+          await syncNow(cfg);
+          await reloadConversations();
+        } catch (e) {
+          console.warn('[useChat] 变更后自动同步失败（稍后轮询兜底）', e);
+        }
+      })();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [pendingSyncTick, reloadConversations]);
+
   const updateActiveConversation = useCallback(
     (updater: (conv: Conversation) => Conversation) => {
       setConversations(prev => prev.map(c => (c.id === activeId ? updater(c) : c)));
@@ -372,9 +452,14 @@ export function useChat() {
     saveWebSearchEnabled(enabled);
   }, []);
 
+  // 正在生成标题的会话 id，避免同一会话在流式结束与离开会话两个时机并发重复触发
+  const titlePendingRef = useRef<Set<string>>(new Set());
+
   // 异步触发标题生成（fire-and-forget）
   const triggerTitleGeneration = useCallback((conv: Conversation) => {
     const convId = conv.id;
+    if (titlePendingRef.current.has(convId)) return;
+    titlePendingRef.current.add(convId);
     const msgs = conv.messages.map(m => ({ role: m.role, content: m.content }));
     generateTitle(msgs)
       .then(title => {
@@ -387,7 +472,10 @@ export function useChat() {
           )
         );
       })
-      .catch(() => { /* 静默失败 */ });
+      .catch(() => { /* 静默失败 */ })
+      .finally(() => {
+        titlePendingRef.current.delete(convId);
+      });
   }, []);
 
   const setCompactSettings = useCallback((patch: Partial<typeof compactSettings>) => {
@@ -717,14 +805,15 @@ export function useChat() {
           }, 100);
         }
 
+        // 先去除 artifact 标记，再清理过度反引号，最后解析 suggestions
+        const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
+        const cleanedContent = cleanExcessiveBackticks(contentWithoutArtifact);
+        const { text, suggestions } = parseSuggestions(cleanedContent);
+        const artifact = parseArtifactFromContent(fullContent);
+
         updateActiveConversation(conv => {
           const updated = [...conv.messages];
           const lastIdx = updated.length - 1;
-          // 先去除 artifact 标记，再清理过度反引号，最后解析 suggestions
-          const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
-          const cleanedContent = cleanExcessiveBackticks(contentWithoutArtifact);
-          const { text, suggestions } = parseSuggestions(cleanedContent);
-          const artifact = parseArtifactFromContent(fullContent);
           updated[lastIdx] = {
             ...updated[lastIdx],
             content: text,
@@ -738,6 +827,23 @@ export function useChat() {
           };
           return { ...conv, messages: updated, updatedAt: Date.now() };
         });
+
+        // 新会话第一轮对聊完成，立即生成标题（不必再等离开会话才触发）
+        // 只在首轮触发，老会话仍走「离开会话时补标题」的原有路径；
+        // 失败/取消时这里不会执行，切走时原有逻辑仍会兜底触发。
+        if (messages.length === 0) {
+          const snapshot = conversationsRef.current.find(c => c.id === activeId);
+          if (snapshot && !snapshot.isRenamed && snapshot.title === '新对话') {
+            triggerTitleGeneration({
+              ...snapshot,
+              messages: [
+                ...messages,
+                userMessage,
+                { ...assistantMessage, content: text, isStreaming: false },
+              ],
+            });
+          }
+        }
       } catch (err: unknown) {
         const e = err as Error;
         if (e.name === 'AbortError') {
@@ -779,7 +885,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [messages, selectedModel, updateActiveConversation, webSearchEnabled, featureSettings, activeId, compactSettings, compactConversation]
+    [messages, selectedModel, updateActiveConversation, webSearchEnabled, featureSettings, activeId, compactSettings, compactConversation, triggerTitleGeneration]
   );
 
   const stopGeneration = useCallback(() => {
@@ -957,6 +1063,9 @@ export function useChat() {
         console.error('[useChat] 删除会话失败', e);
       }
       for (const id of ids) persistedRef.current.delete(id);
+
+      // 删除是数据变更，同样要同步（tombstone 需要推到云端）
+      setPendingSyncTick(t => t + 1);
 
       const remaining = conversationsRef.current.filter(c => !idSet.has(c.id));
       if (remaining.length === 0) {
@@ -1454,6 +1563,8 @@ export function useChat() {
     toggleConversationFavorite,
     renameConversation,
     importConversation,
+    // BYOC 同步后从 IndexedDB 重读会话列表
+    reloadConversations,
     compareWithModel,
     switchVersion,
     // 上下文压缩

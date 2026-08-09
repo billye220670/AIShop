@@ -147,6 +147,8 @@ export interface Conversation {
   selectedModel: string;
   createdAt: number;
   updatedAt: number;
+  /** 最近一次确认同步到云端的时刻（BYOC）；null/undefined 表示尚未同步 */
+  syncedAt?: number | null;
   isRenamed: boolean;
   isFavorite?: boolean;
   /** 已压缩的历史区间，按 fromMessageId 在 messages 中的顺序排列 */

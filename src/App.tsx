@@ -10,6 +10,7 @@ import { useFavoriteArtifacts } from './hooks/useFavoriteArtifacts';
 import { CHAT_MODELS } from './config/models';
 import { loadTheme, loadMode } from './services/storage';
 import { requestPersistentStorage } from './utils/pwa';
+import { scheduleAutoSync, safeSync, BYOC_SYNC_DONE_EVENT } from './services/byoc';
 import { messageCountOf } from './utils/conversationView';
 import type { TabMode } from './types';
 
@@ -33,12 +34,21 @@ function App() {
   // 那不是错误——iOS 上只能靠装到主屏幕和导出备份兜底。
   useEffect(() => {
     void requestPersistentStorage();
+    // BYOC 自动同步：启动延迟拉取 + 周期推送 + 回前台拉取（内部检查配置）
+    scheduleAutoSync();
   }, []);
 
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
 
   const chat = useChat();
   const { favorites, isFavorite, toggleFavorite, removeFavorite, renameFavorite } = useFavoriteArtifacts();
+
+  // BYOC 同步完成后自动刷新会话列表
+  useEffect(() => {
+    const handler = () => void chat.reloadConversations();
+    window.addEventListener(BYOC_SYNC_DONE_EVENT, handler);
+    return () => window.removeEventListener(BYOC_SYNC_DONE_EVENT, handler);
+  }, [chat.reloadConversations]);
 
   const activeConversation = chat.conversations.find(
     c => c.id === chat.activeConversationId
@@ -116,6 +126,7 @@ function App() {
         onDeleteConversations={chat.deleteConversations}
         onToggleConversationFavorite={chat.toggleConversationFavorite}
         onRenameConversation={chat.renameConversation}
+        onRefreshConversations={chat.reloadConversations}
         realUsage={activeTab === 'chat' ? chat.realUsageTotals : undefined}
         contextLimit={activeTab === 'chat' ? chat.contextUsage.limit : undefined}
         isCompacting={chat.isCompacting}
@@ -124,6 +135,7 @@ function App() {
         segments={activeTab === 'chat' ? chat.segments : undefined}
         onOpenSegment={setOpenSegmentIdRequest}
         onDeleteSegment={(segmentId) => { if (chat.activeConversationId) chat.revertSegment(chat.activeConversationId, segmentId); }}
+        onSidebarOpen={() => void safeSync()}
         models={activeTab === 'chat' ? CHAT_MODELS : undefined}
         selectedModel={activeTab === 'chat' ? (activeConversation?.selectedModel || CHAT_MODELS[0].id) : undefined}
         onModelChange={activeTab === 'chat' ? chat.setSelectedModel : undefined}

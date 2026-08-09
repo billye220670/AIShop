@@ -1,6 +1,8 @@
 /**
  * 设置服务 - 基于 localStorage 存储
  */
+import type { ByocConfig } from './byoc/types';
+import { DEFAULT_BYOC_CONFIG } from './byoc/types';
 
 export interface ProviderConfig {
   llm: string;
@@ -22,6 +24,8 @@ export interface AppSettings {
   providers: ProviderConfig;
   apiKeys: Record<string, string>;
   compact?: CompactSettings;
+  /** BYOC 云同步配置（自带 S3 兼容存储） */
+  byoc?: ByocConfig;
 }
 
 export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
@@ -95,6 +99,16 @@ export const settingsService = {
   setCompactSettings(patch: Partial<CompactSettings>): void {
     const settings = getLocalSettings();
     settings.compact = { ...DEFAULT_COMPACT_SETTINGS, ...(settings.compact || {}), ...patch };
+    saveLocalSettings(settings);
+  },
+
+  getByocSettings(): ByocConfig {
+    return { ...DEFAULT_BYOC_CONFIG, ...(getLocalSettings().byoc ?? {}) };
+  },
+
+  setByocSettings(patch: Partial<ByocConfig>): void {
+    const settings = getLocalSettings();
+    settings.byoc = { ...DEFAULT_BYOC_CONFIG, ...(settings.byoc ?? {}), ...patch };
     saveLocalSettings(settings);
   },
 };

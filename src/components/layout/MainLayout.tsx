@@ -21,6 +21,8 @@ interface MainLayoutProps {
   onDeleteConversations?: (ids: string[]) => void;
   onToggleConversationFavorite?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
+  /** BYOC 同步完成后重载会话列表（透传给 Sidebar） */
+  onRefreshConversations?: () => Promise<void> | void;
   // 模型选择
   models?: Model[];
   selectedModel?: string;
@@ -40,6 +42,8 @@ interface MainLayoutProps {
   segments?: ContextSegment[];
   onOpenSegment?: (segmentId: string) => void;
   onDeleteSegment?: (segmentId: string) => void;
+  /** 侧边栏打开时回调（用于触发同步等） */
+  onSidebarOpen?: () => void;
 }
 
 export default function MainLayout({
@@ -55,6 +59,7 @@ export default function MainLayout({
   onDeleteConversations,
   onToggleConversationFavorite,
   onRenameConversation,
+  onRefreshConversations,
   models,
   selectedModel,
   onModelChange,
@@ -70,6 +75,7 @@ export default function MainLayout({
   segments,
   onOpenSegment,
   onDeleteSegment,
+  onSidebarOpen,
 }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -101,6 +107,11 @@ export default function MainLayout({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [sidebarOpen]);
+
+  // 侧边栏打开时通知上层（触发同步等）
+  useEffect(() => {
+    if (sidebarOpen) onSidebarOpen?.();
+  }, [sidebarOpen, onSidebarOpen]);
 
   // 冻结初始视口高度，防止键盘弹起时 dvh 变化导致整页收缩
   const [frozenHeight] = useState(() => window.innerHeight);
@@ -143,6 +154,7 @@ export default function MainLayout({
           onDeleteConversations={onDeleteConversations}
           onToggleConversationFavorite={onToggleConversationFavorite}
           onRenameConversation={onRenameConversation}
+          onRefreshConversations={onRefreshConversations}
         />
       </div>
 

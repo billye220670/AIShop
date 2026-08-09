@@ -33,6 +33,16 @@ export async function getAllMessages(convId: string): Promise<Message[]> {
 }
 
 /**
+ * 读取会话的原始存盘记录（云同步用）。
+ *
+ * 与 getAllMessages 的区别：保留 seq / syncedAt / image_ref 引用原样，
+ * 不经过运行时转换，同步层直接序列化到云端或从云端落库。
+ */
+export async function getStoredMessages(convId: string): Promise<StoredMessage[]> {
+  return withDB(db => db.getAllFromIndex('messages', 'by_conv_seq', convRange(convId)));
+}
+
+/**
  * 读最新的 limit 条，返回仍按 seq 升序。
  *
  * 打开会话的默认路径：反向游标只碰要用的那几条，不会把整段历史读进内存。

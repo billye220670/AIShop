@@ -18,6 +18,8 @@ export interface SidebarProps {
   onDeleteConversations?: (ids: string[]) => void;
   onToggleConversationFavorite?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
+  /** BYOC 同步完成后重新加载会话列表（由 App 层提供 useChat 的重载能力） */
+  onRefreshConversations?: () => Promise<void> | void;
 }
 
 export const SIDEBAR_WIDTH = 360;

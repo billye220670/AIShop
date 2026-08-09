@@ -36,6 +36,11 @@ export async function listFavorites(): Promise<FavoriteArtifactData[]> {
   return recs.map(fromStored);
 }
 
+/** 读取原始存盘记录（云同步用），thumbnailBlobId 保持引用形式原样 */
+export async function listStoredFavorites(): Promise<StoredFavoriteArtifact[]> {
+  return withDB(db => db.getAllFromIndex('favoriteArtifacts', 'by_favoritedAt'));
+}
+
 /**
  * 添加收藏。已存在则不动——重复收藏同一个 artifact 是无操作，
  * 不该悄悄换掉已有的缩略图。

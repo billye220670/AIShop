@@ -43,6 +43,7 @@ export {
 
 export {
   getAllMessages,
+  getStoredMessages,
   getRecentMessages,
   getMessagesBefore,
   getMessageRange,
@@ -77,11 +78,12 @@ export {
   createSummaryNode,
 } from './contextNodeCodec';
 
-export { searchMessages, tokenize } from './retrievalRepo';
+export { searchMessages, tokenize, indexMessage } from './retrievalRepo';
 export type { SearchHit } from './retrievalRepo';
 
 export {
   listImageHistory,
+  listStoredImageHistory,
   putImageHistoryItem,
   updateImageDimensions,
   deleteImageHistoryItem,
@@ -90,6 +92,7 @@ export {
 
 export {
   listFavorites,
+  listStoredFavorites,
   addFavorite,
   removeFavorite,
   renameFavorite,

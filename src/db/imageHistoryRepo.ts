@@ -87,6 +87,11 @@ export async function listImageHistory(): Promise<ImageHistoryItem[]> {
   return recs.map(fromStored);
 }
 
+/** 读取原始存盘记录（云同步用），blobIds 保持引用形式原样 */
+export async function listStoredImageHistory(): Promise<StoredImageHistoryItem[]> {
+  return withDB(db => db.getAllFromIndex('imageHistory', 'by_timestamp'));
+}
+
 export function putImageHistoryItem(item: ImageHistoryItem): Promise<void> {
   return enqueue(QUEUE, async () => {
     const existing = await withDB(db => db.get('imageHistory', item.id));

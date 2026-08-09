@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { MessageSquare, Image as ImageIcon, Film, Eye, EyeOff, Check, ChevronLeft, ChevronRight, KeyRound, MessageCircle, Database, Palette, Sun, Moon } from 'lucide-react';
+import { MessageSquare, Image as ImageIcon, Film, Eye, EyeOff, Check, ChevronLeft, ChevronRight, KeyRound, MessageCircle, Database, Palette, Sun, Moon, Cloud, CheckCircle, AlertCircle } from 'lucide-react';
 import { settingsService, DEFAULT_COMPACT_SETTINGS } from '../../services/settingsService';
 import type { ProviderConfig, CompactSettings } from '../../services/settingsService';
 import { THEMES } from '../../config/themes';
 import { loadTheme, saveTheme, loadMode, saveMode, type ColorMode } from '../../services/storage';
 import { CHAT_MODELS } from '../../config/models';
 import DataSettings from './DataSettings';
+import ByocSettings from './ByocSettings';
+import { getByocConfig, validateConfig } from '../../services/byoc';
 import CustomSelect from '../common/CustomSelect';
 
-type SettingsTab = 'api' | 'context' | 'data' | 'appearance';
+type SettingsTab = 'api' | 'context' | 'data' | 'byoc' | 'appearance';
 
 const PROVIDER_OPTIONS: Record<string, { value: string; label: string }[]> = {
   default: [
@@ -128,9 +130,22 @@ export default function SettingsPanel() {
     { key: 'api', label: 'API 配置', desc: 'LLM、图片、视频与搜索提供商', Icon: KeyRound },
     { key: 'context', label: '上下文', desc: '自动压缩与摘要设置', Icon: MessageCircle },
     { key: 'data', label: '数据', desc: '备份、恢复与存储用量', Icon: Database },
+    { key: 'byoc', label: 'BYOC', desc: '自带 S3 云同步设置', Icon: Cloud },
     { key: 'appearance', label: '外观', desc: '主题色', Icon: Palette },
   ];
   const [activeTabMeta, setActiveTabMeta] = useState<(typeof TABS)[number] | null>(null);
+
+  // BYOC 连接状态：null=未检测（配置不完整），true=可用，false=不可用
+  const [byocStatus, setByocStatus] = useState<boolean | null>(
+    () => validateConfig(getByocConfig()) === null ? null : null
+  );
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setByocStatus((e as CustomEvent<boolean | null>).detail);
+    };
+    window.addEventListener('aishop:byoc-connection-status', handler);
+    return () => window.removeEventListener('aishop:byoc-connection-status', handler);
+  }, []);
 
   const openTab = (tab: (typeof TABS)[number]) => {
     setActiveSettingsTab(tab.key);
@@ -151,8 +166,13 @@ export default function SettingsPanel() {
             <ChevronLeft className="w-5 h-5" />
           </button>
         )}
-        <h2 className="text-white text-lg font-semibold">
+        <h2 className="text-white text-lg font-semibold flex items-center gap-2">
           {activeTabMeta ? activeTabMeta.label : '设置'}
+          {activeTabMeta?.key === 'byoc' && byocStatus !== null && (
+            byocStatus
+              ? <CheckCircle className="w-4 h-4 text-green-500" />
+              : <AlertCircle className="w-4 h-4 text-amber-500" />
+          )}
         </h2>
       </div>
 
@@ -176,6 +196,11 @@ export default function SettingsPanel() {
                   <div className="text-sm font-medium text-white">{tab.label}</div>
                   <div className="text-xs text-gray-400 mt-0.5 truncate">{tab.desc}</div>
                 </div>
+                {tab.key === 'byoc' && byocStatus !== null && (
+                  byocStatus
+                    ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                    : <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                )}
                 <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />
               </button>
             ))}
@@ -325,6 +350,8 @@ export default function SettingsPanel() {
           )}
 
           {activeSettingsTab === 'data' && <DataSettings />}
+
+          {activeSettingsTab === 'byoc' && <ByocSettings />}
 
           {activeSettingsTab === 'appearance' && (
             <div className="space-y-6">

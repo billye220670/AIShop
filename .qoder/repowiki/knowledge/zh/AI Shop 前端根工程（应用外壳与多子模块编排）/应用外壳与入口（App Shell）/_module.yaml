@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: app_shell
-title: 应用启动与根布局壳层
+title: 应用外壳与入口（App Shell）
 scope:
     - src/App.tsx
     - src/main.tsx

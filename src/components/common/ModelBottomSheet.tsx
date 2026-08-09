@@ -223,15 +223,9 @@ export default function ModelBottomSheet({
                 className={`relative flex-shrink-0 w-28 rounded-2xl overflow-hidden p-4 flex flex-col items-center gap-2 transition-all ${
                   isSelected
                     ? 'bg-[var(--color-accent-soft)] border-2 border-[var(--color-accent)]'
-                    : 'border-2 border-transparent'
+                    : 'bg-[var(--color-bg-elevated)] border-2 border-transparent'
                 }`}
               >
-                {!isSelected && (
-                  <div
-                    className="absolute inset-0 -z-10"
-                    style={{ background: 'linear-gradient(to top, #202020, #333333)' }}
-                  />
-                )}
                 {renderModelIcon(model)}
                 <span className="text-white text-sm text-center leading-tight">{model.name}</span>
               </button>

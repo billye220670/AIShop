@@ -51,6 +51,7 @@ function toRuntime(rec: StoredConversation): Conversation {
     selectedModel: rec.selectedModel,
     createdAt: rec.createdAt,
     updatedAt: rec.updatedAt,
+    syncedAt: rec.syncedAt ?? null,
     isRenamed: rec.isRenamed,
     isFavorite: rec.isFavorite,
     compactFocusHint: rec.compactFocusHint,
@@ -188,6 +189,22 @@ function cancelStreamFlush(convId: string, msgId: string): void {
  * @param next 当前版
  */
 export async function persistConversation(
+  prev: Conversation | undefined,
+  next: Conversation
+): Promise<void> {
+  return chainPersist(() => persistConversationImpl(prev, next));
+}
+
+/** 持久化写链：persist 是 fire-and-forget 异步，同步（BYOC）前要等队列排空，
+ * 否则读库会读到"消息还没写入"的中间态，把内存里的新会话替换成空壳。 */
+let writeChain: Promise<void> = Promise.resolve();
+function chainPersist(fn: () => Promise<void>): Promise<void> {
+  const next = writeChain.then(fn, fn);
+  writeChain = next.catch(() => undefined);
+  return next;
+}
+
+async function persistConversationImpl(
   prev: Conversation | undefined,
   next: Conversation
 ): Promise<void> {
@@ -344,4 +361,6 @@ export async function flushPendingWrites(): Promise<void> {
   await Promise.all(
     pending.map(p => putMessage(p.convId, p.msg).catch(() => undefined))
   );
+  // 等持久化写链排空，保证库里已是最新（含刚入队的 persistConversation）
+  await writeChain;
 }
