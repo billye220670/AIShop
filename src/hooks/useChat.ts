@@ -38,7 +38,7 @@ import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
 import { judgeSearchNeed } from '../services/searchJudge';
 import { settingsService } from '../services/settingsService';
-import { syncNow, getByocConfig, validateConfig, recordLocalDeletions } from '../services/byoc';
+import { syncNow, getByocConfig, validateConfig, recordLocalDeletions, recordLocalRoleDeletions } from '../services/byoc';
 import { compactMessages } from '../services/contextCompactor';
 import { buildApiMessages } from '../utils/buildApiMessages';
 import { planCompaction, getContextUsage, isCompactionViable } from '../utils/compactPlan';
@@ -178,8 +178,10 @@ export function useChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [webSearchEnabled, setWebSearchEnabledState] = useState<boolean>(() => loadWebSearchEnabled());
-    const [roles, setRoles] = useState<RoleData[]>([]);
-    const [selectedRoleId, setSelectedRoleIdState] = useState<string>(() => loadSelectedRoleId());
+  const [roles, setRoles] = useState<RoleData[]>([]);
+  // 上一次加载的角色列表快照：refreshRoles 用它检测创建/删除等变更，null = 首次加载
+  const rolesRef = useRef<RoleData[] | null>(null);
+  const [selectedRoleId, setSelectedRoleIdState] = useState<string>(() => loadSelectedRoleId());
   const [streamingArtifact, setStreamingArtifact] = useState<{ title: string; code: string } | null>(null);
   const [featureSettings, setFeatureSettings] = useState<ChatFeatureSettings>(() => {
     const saved = localStorage.getItem('chat-feature-settings');
@@ -383,10 +385,26 @@ export function useChat() {
     return () => window.removeEventListener('aishop:feature-settings-changed', reload);
   }, []);
 
-  // 角色列表：启动时加载；创建/删除/云同步后由外部调 refreshRoles 重读
+  // 角色列表：启动时加载；创建/删除/云同步后由外部调 refreshRoles 重读。
+  // 加载时对比上次快照：检测到本地角色变更（创建/删除）就记删除 tombstone
+  // 并触发防抖同步，让角色像会话一样创建后 3 秒内自动上云、删除自动传播。
   const refreshRoles = useCallback(async () => {
     try {
-      setRoles(await listRoles());
+      const list = await listRoles();
+      setRoles(list);
+      const prev = rolesRef.current;
+      if (prev) {
+        const removed = prev.filter(r => !list.some(c => c.id === r.id)).map(r => r.id);
+        const changed =
+          list.length !== prev.length ||
+          list.some((r, i) => {
+            const p = prev[i];
+            return !p || p.name !== r.name || p.systemPrompt !== r.systemPrompt || p.createdAt !== r.createdAt;
+          });
+        if (removed.length) void recordLocalRoleDeletions(removed);
+        if (removed.length || changed) setPendingSyncTick(t => t + 1);
+      }
+      rolesRef.current = list;
     } catch (e) {
       console.warn('[roles] 角色列表加载失败', e);
     }

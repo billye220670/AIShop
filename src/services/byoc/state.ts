@@ -5,7 +5,7 @@
  * 描述"同步这件事进行到哪里了"，改配置不应当动它。
  */
 import { withDB } from '../../db/open';
-import { listConversations, countMessages } from '../../db';
+import { listConversations, countMessages, listStoredRoles } from '../../db';
 import type { SyncManifestV1 } from './types';
 
 const KV_PREFIX = 'byoc:';
@@ -74,19 +74,20 @@ export async function setLastSyncAt(time: number): Promise<void> {
 }
 
 /**
- * 统计待同步数量：updatedAt 晚于 syncedAt 的会话/消息 + 未传播的本地删除。
+ * 统计待同步数量：updatedAt 晚于 syncedAt 的会话/消息/角色 + 未传播的本地删除。
  *
  * 注意不能只按 syncedAt == null 判断——流式覆盖写（putMessage）会保留旧的
  * syncedAt，但 updatedAt 已经前移，那也算待同步。
  *
- * 删除也必须计入：被删的会话不在 listConversations 里，只按 updatedAt 统计
+ * 删除也必须计入：被删的会话/角色不在列表里，只按 updatedAt 统计
  * 会永远看不到删除。本地 tombstone 记录在云端确认删除后由 pullRemote 清除，
  * 所以「还有记录」= 删除尚未传播，必须让 60 秒轮询兜底触发同步。
  */
-export async function countPending(): Promise<{ convs: number; messages: number }> {
-  const [tombstones, list] = await Promise.all([
+export async function countPending(): Promise<{ convs: number; messages: number; roles: number }> {
+  const [tombstones, list, roles] = await Promise.all([
     getLocalTombstones(),
     listConversations(),
+    listStoredRoles(),
   ]);
   const deleted =
     tombstones.convs.length +
@@ -96,5 +97,6 @@ export async function countPending(): Promise<{ convs: number; messages: number 
   const convs = list.filter(c => c.updatedAt > (c.syncedAt ?? 0));
   let messages = 0;
   for (const c of convs) messages += await countMessages(c.id);
-  return { convs: convs.length + deleted, messages };
+  const pendingRoles = roles.filter(r => r.updatedAt > (r.syncedAt ?? 0)).length;
+  return { convs: convs.length + deleted, messages, roles: pendingRoles };
 }

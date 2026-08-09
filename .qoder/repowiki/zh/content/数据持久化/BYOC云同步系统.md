@@ -11,8 +11,17 @@
 - [src/components/settings/SettingsPanel.tsx](file://src/components/settings/SettingsPanel.tsx)
 - [src/services/settingsService.ts](file://src/services/settingsService.ts)
 - [src/db/index.ts](file://src/db/index.ts)
+- [src/db/roleRepo.ts](file://src/db/roleRepo.ts)
+- [src/db/schema.ts](file://src/db/schema.ts)
 - [test-byoc-s3.mjs](file://test-byoc-s3.mjs)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 新增角色数据同步功能支持
+- 增强增量同步机制以包含角色数据
+- 更新清单结构以支持角色索引和墓碑
+- 扩展桶布局以包含角色数据存储
 
 ## 目录
 1. [简介](#简介)
@@ -27,15 +36,16 @@
 10. [附录](#附录)
 
 ## 简介
-本系统为“自带云存储（BYOC）”的浏览器端数据同步方案，支持将对话、消息、图片历史、收藏等数据增量同步到用户自己的 S3 兼容对象存储（如腾讯云 COS、阿里云 OSS、Cloudflare R2、MinIO、Backblaze B2 或自定义 S3）。系统提供：
+本系统为"自带云存储（BYOC）"的浏览器端数据同步方案，支持将对话、消息、图片历史、收藏、**角色（系统提示词预设）**等数据增量同步到用户自己的 S3 兼容对象存储（如腾讯云 COS、阿里云 OSS、Cloudflare R2、MinIO、Backblaze B2 或自定义 S3）。系统提供：
 - 全量备份与恢复（独立于增量同步）
 - 增量双向同步（先拉后推，收敛本地与云端状态）
+- **角色数据自动同步**（通过现有 BYOC 基础设施）
 - 自动调度（启动延迟拉取、周期轮询、回到前台拉取）
 - 连接性测试与配置校验
 - 多设备并发安全（Web Locks 串行化）
 
 ## 项目结构
-BYOC 能力集中在 services/byoc 目录，对外暴露统一入口；设置面板在 components/settings 中；持久化状态通过 state.ts 写入 IndexedDB；数据库访问通过 db/index.ts 统一导出。
+BYOC 能力集中在 services/byoc 目录，对外暴露统一入口；设置面板在 components/settings 中；持久化状态通过 state.ts 写入 IndexedDB；数据库访问通过 db/index.ts 统一导出。**角色数据通过 roleRepo.ts 管理，并集成到增量同步流程中**。
 
 ```mermaid
 graph TB
@@ -45,46 +55,51 @@ API --> BAK["全量备份层<br/>backupSync.ts"]
 API --> ST["同步状态持久化<br/>state.ts"]
 API --> CFG["设置服务<br/>settingsService.ts"]
 INC --> DB["数据层<br/>db/index.ts"]
+INC --> ROLE["角色数据层<br/>roleRepo.ts"]
 INC --> S3["S3 客户端外部实现"]
 BAK --> S3
 ST --> DB
+ROLE --> DB
 ```
 
-图表来源
+**图表来源**
 - [src/services/byoc/index.ts:1-211](file://src/services/byoc/index.ts#L1-L211)
-- [src/services/byoc/incrementalSync.ts:1-656](file://src/services/byoc/incrementalSync.ts#L1-L656)
+- [src/services/byoc/incrementalSync.ts:1-717](file://src/services/byoc/incrementalSync.ts#L1-L717)
 - [src/services/byoc/backupSync.ts:1-69](file://src/services/byoc/backupSync.ts#L1-L69)
 - [src/services/byoc/state.ts:1-97](file://src/services/byoc/state.ts#L1-L97)
 - [src/services/settingsService.ts:1-115](file://src/services/settingsService.ts#L1-L115)
-- [src/db/index.ts:1-101](file://src/db/index.ts#L1-L101)
+- [src/db/index.ts:1-110](file://src/db/index.ts#L1-L110)
+- [src/db/roleRepo.ts:1-72](file://src/db/roleRepo.ts#L1-L72)
 
 章节来源
 - [src/services/byoc/index.ts:1-211](file://src/services/byoc/index.ts#L1-L211)
-- [src/services/byoc/types.ts:1-99](file://src/services/byoc/types.ts#L1-L99)
+- [src/services/byoc/types.ts:1-102](file://src/services/byoc/types.ts#L1-L102)
 
 ## 核心组件
 - 统一入口与自动调度：负责配置校验、连通性测试、手动/自动同步触发、事件广播。
-- 增量同步引擎：维护云端清单 manifest，处理会话/消息/节点/blobs/历史/收藏的双向同步与删除传播。
+- 增量同步引擎：维护云端清单 manifest，处理会话/消息/节点/blobs/历史/收藏/**角色**的双向同步与删除传播。
 - 全量备份层：将应用内备份格式直接上传至用户桶，或从最新备份恢复。
 - 状态持久化：设备 ID、云端清单缓存、本地 tombstone、最近同步时间等。
 - 设置服务：读写 BYOC 配置（localStorage），提供默认值与合并策略。
 - 设置界面：可视化配置、预设填充、连通性检测反馈。
+- **角色数据管理**：通过 roleRepo.ts 提供角色的创建、删除、列表查询等功能，并集成到同步流程中。
 
 章节来源
 - [src/services/byoc/index.ts:1-211](file://src/services/byoc/index.ts#L1-L211)
-- [src/services/byoc/incrementalSync.ts:1-656](file://src/services/byoc/incrementalSync.ts#L1-L656)
+- [src/services/byoc/incrementalSync.ts:1-717](file://src/services/byoc/incrementalSync.ts#L1-L717)
 - [src/services/byoc/backupSync.ts:1-69](file://src/services/byoc/backupSync.ts#L1-L69)
 - [src/services/byoc/state.ts:1-97](file://src/services/byoc/state.ts#L1-L97)
 - [src/services/settingsService.ts:1-115](file://src/services/settingsService.ts#L1-L115)
 - [src/components/settings/ByocSettings.tsx:1-180](file://src/components/settings/ByocSettings.tsx#L1-L180)
+- [src/db/roleRepo.ts:1-72](file://src/db/roleRepo.ts#L1-L72)
 
 ## 架构总览
-BYOC 采用“分层 + 清单驱动”的设计：
+BYOC 采用"分层 + 清单驱动"的设计：
 - 全量备份层：独立于增量同步，用于灾难恢复。
-- 增量同步层：以 manifest.json 作为“目录”，按 updatedAt/syncedAt 判断变更，使用 tombstones 传播删除。
+- 增量同步层：以 manifest.json 作为"目录"，按 updatedAt/syncedAt 判断变更，使用 tombstones 传播删除。**现已扩展支持角色数据的同步**。
 - 状态层：持久化设备标识、清单缓存、本地 tombstone、最近同步时间。
 - 设置层：管理用户配置（endpoint、bucket、密钥等）。
-- 数据层：IndexedDB 中的会话、消息、节点、blob、历史、收藏等。
+- 数据层：IndexedDB 中的会话、消息、节点、blob、历史、收藏、**角色**等。
 
 ```mermaid
 sequenceDiagram
@@ -94,6 +109,7 @@ participant API as "BYOC 入口"
 participant INC as "增量同步"
 participant ST as "状态持久化"
 participant DB as "IndexedDB"
+participant ROLE as "角色数据"
 participant S3 as "S3 兼容存储"
 U->>UI : 填写配置并保存
 UI->>API : updateByocConfig()
@@ -102,13 +118,14 @@ U->>API : 触发 syncNow()
 API->>INC : pullRemote()
 INC->>S3 : 读取 manifest.json
 INC->>DB : 拉取/落库会话、消息、节点、blob
+INC->>ROLE : 拉取/落库角色数据
 INC->>S3 : 推送变更与会话元数据
 INC->>ST : 更新本地 tombstone/清单缓存
 API->>ST : 记录 lastSyncAt
 API-->>U : 返回统计结果
 ```
 
-图表来源
+**图表来源**
 - [src/services/byoc/index.ts:56-123](file://src/services/byoc/index.ts#L56-L123)
 - [src/services/byoc/incrementalSync.ts:139-323](file://src/services/byoc/incrementalSync.ts#L139-L323)
 - [src/services/byoc/incrementalSync.ts:364-509](file://src/services/byoc/incrementalSync.ts#L364-L509)
@@ -132,30 +149,33 @@ Lock --> |否| Pull["pullRemote()"]
 Pull --> Push["pushLocal()"]
 Push --> Merge["合并统计结果"]
 Merge --> SaveTime["记录 lastSyncAt"]
-SaveTime --> Dispatch["派发状态事件"]
+Dispatch["派发状态事件"]
+SaveTime --> Dispatch
 Dispatch --> End(["结束"])
 ```
 
-图表来源
+**图表来源**
 - [src/services/byoc/index.ts:40-123](file://src/services/byoc/index.ts#L40-L123)
 
 章节来源
 - [src/services/byoc/index.ts:1-211](file://src/services/byoc/index.ts#L1-L211)
 
 ### 增量同步引擎（incrementalSync.ts）
-- 桶布局约定：manifest.json、convs/{id}.json、msgs/{convId}/{msgId}.json、nodes/{convId}/{nodeId}.json、blobs/{sha256}、history/favs 及其 index.json。
+- 桶布局约定：manifest.json、convs/{id}.json、msgs/{convId}/{msgId}.json、nodes/{convId}/{nodeId}.json、blobs/{sha256}、history/favs 及其 index.json、**roles/{id}.json 及其 index.json**。
 - 推送流程（pushLocal）：
   - 清理回退：若本地仍存在某会话，则移除云端 tombstone。
   - 删除检测：云端有而本地无且已知（缓存清单或本地 tombstone）→ 写 tombstone 并尝试删除云端对象。
   - 变更会话：仅当本地 updatedAt > 云端 updatedAt 才覆盖元数据；消息按 diff 推送；引用 blob 用 HEAD 探测去重；节点覆盖式同步并清理云端多余节点。
   - 历史/收藏：以本地为准推全量索引；云端多余项记 tombstone。
+  - **角色数据同步**：以本地为准推全量索引；云端多余项记 tombstone；支持旧版本清单向后兼容。
   - 重写清单：更新 manifest.updatedAt 与 deviceId，并落盘本地清单缓存。
   - 标记 syncedAt：全部成功后批量标记，保证下次不重复推送。
 - 拉取流程（pullRemote）：
-  - 本机删除检测：云端有、缓存清单也有、本地没有 → 记本地 tombstone，防止“拉缺失”把刚删的拉回。
+  - 本机删除检测：云端有、缓存清单也有、本地没有 → 记本地 tombstone，防止"拉缺失"把刚删的拉回。
   - 应用 tombstone：删除本地对应记录，并清理本地 tombstone。
   - 会话拉取：按清单遍历，按 updatedAt/syncedAt 判断是否需要拉取；消息按 msgId 去重并以 updatedAt 大者胜；节点根据云端较新与否决定覆盖或补全；元数据 LWW。
   - 历史/收藏：以云端 index 为准拉缺失；本地多余不删（防丢数据）。
+  - **角色数据拉取**：以云端 index 为准拉缺失；本地多余不删（防丢数据）。
   - 更新本地清单缓存。
 
 ```mermaid
@@ -164,16 +184,17 @@ A["开始 pushLocal"] --> D0["清理回退：本地存在则清云端tombstone"]
 D0 --> D1["删除检测：云端有/本地无 → 写tombstone并删云端对象"]
 D1 --> C1["变更会话：元数据LWW、消息diff、blob去重、节点覆盖"]
 C1 --> H1["历史/收藏：推全量索引，云端多余记tombstone"]
-H1 --> M1["重写manifest并更新本地清单缓存"]
+H1 --> R1["角色数据：推全量索引，云端多余记tombstone"]
+R1 --> M1["重写manifest并更新本地清单缓存"]
 M1 --> S1["标记syncedAt仅updatedAt<=now的记录"]
 S1 --> Z["结束"]
 ```
 
-图表来源
+**图表来源**
 - [src/services/byoc/incrementalSync.ts:139-323](file://src/services/byoc/incrementalSync.ts#L139-L323)
 
 章节来源
-- [src/services/byoc/incrementalSync.ts:1-656](file://src/services/byoc/incrementalSync.ts#L1-L656)
+- [src/services/byoc/incrementalSync.ts:1-717](file://src/services/byoc/incrementalSync.ts#L1-L717)
 
 ### 全量备份层（backupSync.ts）
 - 备份：构建应用内备份文件（自包含 JSON），以时间戳命名上传至 backups 目录。
@@ -185,8 +206,8 @@ S1 --> Z["结束"]
 
 ### 状态持久化（state.ts）
 - 设备 ID：首次生成并持久化，用于清单中标记最后推送方。
-- 云端清单缓存：本地副本，用于判断“新增/删除”语义。
-- 本地 tombstone：区分“本机已删”和“从未拉过”，避免误拉回或删除。
+- 云端清单缓存：本地副本，用于判断"新增/删除"语义。
+- 本地 tombstone：区分"本机已删"和"从未拉过"，避免误拉回或删除。
 - 最近同步时间：供 UI 展示。
 - 待同步计数：综合 updatedAt/syncedAt 与 tombstone 计算，支撑 60 秒轮询。
 
@@ -196,11 +217,29 @@ S1 --> Z["结束"]
 ### 类型定义（types.ts）
 - ByocConfig：enabled、provider、endpoint、region、bucket、prefix、pathStyle、accessKey、secretKey、lastSyncAt。
 - 服务商预设：cos/oss/r2/minio/b2 的默认 region/pathStyle。
-- SyncManifestV1：schema、deviceId、updatedAt、convs、tombstones、historyIds、favIds。
+- SyncManifestV1：schema、deviceId、updatedAt、convs、tombstones、historyIds、favIds、**roleIds**。
 - 结果与进度回调：SyncResult、CloudBackupResult、ProgressFn。
 
 章节来源
-- [src/services/byoc/types.ts:1-99](file://src/services/byoc/types.ts#L1-L99)
+- [src/services/byoc/types.ts:1-102](file://src/services/byoc/types.ts#L1-L102)
+
+### 角色数据管理（roleRepo.ts）
+- 角色数据结构：StoredRole 接口包含 id、name、systemPrompt、createdAt、updatedAt、syncedAt 字段。
+- 角色操作：createRole（自动提取名称）、deleteRole、listRoles、listStoredRoles。
+- 队列管理：使用 enqueue 确保异步操作的顺序执行。
+- **同步集成**：通过 listStoredRoles 获取原始存储记录，供增量同步使用。
+
+章节来源
+- [src/db/roleRepo.ts:1-72](file://src/db/roleRepo.ts#L1-L72)
+
+### 数据库模式（schema.ts）
+- StoredRole 接口：继承 SyncMeta，包含角色相关字段。
+- roles 表：IndexedDB 中的角色数据存储，按 createdAt 建立索引。
+- **同步支持**：角色数据遵循与其他数据相同的同步约定（updatedAt/syncedAt）。
+
+章节来源
+- [src/db/schema.ts:221-234](file://src/db/schema.ts#L221-L234)
+- [src/db/schema.ts:293-299](file://src/db/schema.ts#L293-L299)
 
 ### 设置界面（ByocSettings.tsx / SettingsPanel.tsx）
 - 由 ByocSettings 提供表单与预设选择，并在配置变更后防抖执行 testConnection，通过自定义事件上报连接状态。
@@ -224,7 +263,7 @@ S1 --> Z["结束"]
   - state 提供设备ID、清单缓存、本地 tombstone、最近同步时间
   - s3Client（外部实现）提供 S3 操作
 - 增量同步依赖：
-  - db/index.ts 提供的会话、消息、节点、blob、历史、收藏等读写接口
+  - db/index.ts 提供的会话、消息、节点、blob、历史、收藏、**角色**等读写接口
   - messageCodec 提取消息中的 blob 引用
   - conversationRepo 删除会话
 - 状态持久化依赖：
@@ -240,15 +279,18 @@ IDX --> BAK["backupSync.ts"]
 IDX --> ST["state.ts"]
 IDX --> CFG["settingsService.ts"]
 INC --> DB["db/index.ts"]
+INC --> ROLE["roleRepo.ts"]
 INC --> MSGC["messageCodec"]
 INC --> CONV["conversationRepo"]
 ST --> DB
+ROLE --> DB
 ```
 
-图表来源
+**图表来源**
 - [src/services/byoc/index.ts:13-24](file://src/services/byoc/index.ts#L13-L24)
 - [src/services/byoc/incrementalSync.ts:21-59](file://src/services/byoc/incrementalSync.ts#L21-L59)
 - [src/services/byoc/state.ts:7-9](file://src/services/byoc/state.ts#L7-L9)
+- [src/db/roleRepo.ts:9-10](file://src/db/roleRepo.ts#L9-L10)
 
 章节来源
 - [src/services/byoc/index.ts:13-24](file://src/services/byoc/index.ts#L13-L24)
@@ -257,13 +299,13 @@ ST --> DB
 
 ## 性能考量
 - 并发控制：
-  - 列表处理 mapLimit 限制并发度，避免对 S3 的请求风暴（会话、消息、节点、历史/收藏均有限流保护）。
+  - 列表处理 mapLimit 限制并发度，避免对 S3 的请求风暴（会话、消息、节点、历史/收藏、**角色**均有限流保护）。
   - 多标签页通过 navigator.locks.request 串行化同步，避免并发写冲突。
 - 去重与最小化传输：
   - 推送 blob 前使用 headObject 探测，已存在则跳过上传。
   - 消息按 diff（updatedAt > syncedAt）推送，减少冗余。
 - 资源回收：
-  - 节点与历史/收藏的索引与 tombstone 配合，确保多余对象被清理或不再拉取。
+  - 节点与历史/收藏、**角色**的索引与 tombstone 配合，确保多余对象被清理或不再拉取。
 - 数据库事务：
   - markSynced 使用事务批量更新 syncedAt，降低 IO 次数。
 
@@ -285,16 +327,21 @@ ST --> DB
 - 签名异常（非 HTTPS/局域网）：
   - 现象：签名失败或行为不一致。
   - 排查：参考测试脚本验证 SigV4 签名路径与降级实现一致性。
+- **角色同步问题**：
+  - 现象：角色数据未同步或不同步。
+  - 排查：确认 manifest.roleIds 字段存在；检查 roles/index.json 是否正确更新；验证角色 tombstone 机制是否正常工作。
 
 章节来源
 - [src/services/byoc/index.ts:40-54](file://src/services/byoc/index.ts#L40-L54)
 - [src/services/byoc/index.ts:192-210](file://src/services/byoc/index.ts#L192-L210)
 - [src/services/byoc/incrementalSync.ts:162-194](file://src/services/byoc/incrementalSync.ts#L162-L194)
 - [src/services/byoc/incrementalSync.ts:416-441](file://src/services/byoc/incrementalSync.ts#L416-L441)
+- [src/services/byoc/incrementalSync.ts:316-335](file://src/services/byoc/incrementalSync.ts#L316-L335)
+- [src/services/byoc/incrementalSync.ts:442-448](file://src/services/byoc/incrementalSync.ts#L442-L448)
 - [test-byoc-s3.mjs:1-86](file://test-byoc-s3.mjs#L1-L86)
 
 ## 结论
-本 BYOC 系统以“清单驱动 + 增量同步 + 全量备份”的组合，实现了在浏览器端对任意 S3 兼容存储的安全、可靠、低侵入的数据同步。通过 tombstone 与本地 tombstone 的配合，删除可跨设备传播；通过 Web Locks 与 mapLimit，保障并发与限流；通过自动调度，提升用户体验。建议在生产环境结合服务端日志与监控，持续优化并发度与重试策略。
+本 BYOC 系统以"清单驱动 + 增量同步 + 全量备份"的组合，实现了在浏览器端对任意 S3 兼容存储的安全、可靠、低侵入的数据同步。**最新的增强功能包括角色数据的自动同步**，通过现有的 BYOC 基础设施，系统现在能够无缝同步用户的自定义角色（系统提示词预设）。通过 tombstone 与本地 tombstone 的配合，删除可跨设备传播；通过 Web Locks 与 mapLimit，保障并发与限流；通过自动调度，提升用户体验。建议在生产环境结合服务端日志与监控，持续优化并发度与重试策略。
 
 [本节为总结性内容，无需特定文件来源]
 
@@ -307,6 +354,9 @@ ST --> DB
   - sync/v1/blobs/{sha256}
   - sync/v1/history/{id}.json + index.json
   - sync/v1/favs/{id}.json + index.json
+  - **sync/v1/roles/{id}.json + index.json**
 
 章节来源
 - [src/services/byoc/incrementalSync.ts:9-19](file://src/services/byoc/incrementalSync.ts#L9-L19)
+- [src/services/byoc/incrementalSync.ts:316-335](file://src/services/byoc/incrementalSync.ts#L316-L335)
+- [src/services/byoc/incrementalSync.ts:549-559](file://src/services/byoc/incrementalSync.ts#L549-L559)

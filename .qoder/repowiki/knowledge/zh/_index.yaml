@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: master
 nodes_managed: true
-exported_at: "2026-08-09T10:56:27Z"
+exported_at: "2026-08-09T14:57:07Z"
 modules:
     "":
-        dir_name: AI Shop 应用根工程
-        title: AI Shop 应用根工程
+        dir_name: AI 助手 Web 应用根工程
+        title: AI 助手 Web 应用根工程
         scope:
             - README.md
             - .gitignore
@@ -38,8 +38,8 @@ modules:
         depends_on: []
         related_to: []
     app_shell:
-        dir_name: 应用外壳与根入口
-        title: 应用外壳与根入口
+        dir_name: 应用外壳与入口（App Shell）
+        title: 应用外壳与入口（App Shell）
         scope:
             - src/App.tsx
             - src/main.tsx
@@ -51,8 +51,8 @@ modules:
         depends_on: []
         related_to: []
     app_shell/byoc_service:
-        dir_name: BYOC（自带云存储）S3 同步与备份服务
-        title: BYOC（自带云存储）S3 同步与备份服务
+        dir_name: BYOC（自带云存储）S3 同步服务
+        title: BYOC（自带云存储）S3 同步服务
         scope:
             - src/services/byoc/
             - src/utils/sha256.ts

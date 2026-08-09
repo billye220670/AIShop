@@ -81,6 +81,25 @@ export async function recordLocalDeletions(convIds: string[]): Promise<void> {
 }
 
 /**
+ * 记录本机角色删除（角色被删后由 useChat 检测列表差异时写入）。
+ *
+ * 与 recordLocalDeletions 同理：删除不在列表里，countPending 只按
+ * updatedAt 统计看不到它，必须靠本地 tombstone 让 60 秒轮询兜底重试。
+ */
+export async function recordLocalRoleDeletions(roleIds: string[]): Promise<void> {
+  if (!roleIds.length) return;
+  const t = await getLocalTombstones();
+  let changed = false;
+  for (const id of roleIds) {
+    if (!t.roles.includes(id)) {
+      t.roles.push(id);
+      changed = true;
+    }
+  }
+  if (changed) await setLocalTombstones(t);
+}
+
+/**
  * 双向同步：先拉后推。
  *
  * 先拉：把云端（其他设备的变更与 tombstone）落到本地，再推本地变更，
@@ -155,7 +174,7 @@ export async function cloudHasBackup(cfg: ByocConfig = getByocConfig()): Promise
 
 export interface ByocStatus {
   lastSyncAt: number | null;
-  pending: { convs: number; messages: number };
+  pending: { convs: number; messages: number; roles: number };
 }
 
 export async function getSyncStatus(): Promise<ByocStatus> {
@@ -186,25 +205,34 @@ export async function safeSync(): Promise<void> {
 /**
  * 注册自动同步（App 启动时调用一次）。
  *
+ * 自动同步时机：
+ * - 启动后延迟拉取（打开/刷新页面即同步一次，等首屏与数据层就绪）
+ * - 页面回到前台 / 从 bfcache 恢复时拉取，赶上其他设备的变更
+ * - 每 60 秒检查待同步量（会话/消息/角色），>0 就推送
  * 内部每次执行都会重新读配置，所以启动时即便还没配置也不影响——
  * 用户配好并打开开关后，下一轮定时检查自然生效。
  */
 export function scheduleAutoSync(): void {
   if (typeof window === 'undefined') return;
 
-  // 启动延迟拉取：等首屏与数据层就绪
-  setTimeout(() => void safeSync(), 8000);
+  // 启动延迟拉取：等首屏与数据层就绪（覆盖页面打开与刷新）
+  setTimeout(() => void safeSync(), 3000);
 
   // 周期检查待同步量（写操作后 60 秒内被兜住）
   setInterval(() => {
     if (!getByocConfig().enabled) return;
     void countPending().then(pending => {
-      if (pending.convs > 0 || pending.messages > 0) void safeSync();
+      if (pending.convs > 0 || pending.messages > 0 || pending.roles > 0) void safeSync();
     });
   }, 60000);
 
   // 回到前台立即拉取，赶上其他设备的变更
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void safeSync();
+  });
+
+  // 从 bfcache 恢复时不一定触发 visibilitychange，这里兜底补一次
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) void safeSync();
   });
 }

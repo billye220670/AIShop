@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: AI Shop 应用根工程
+title: AI 助手 Web 应用根工程
 scope:
     - README.md
     - .gitignore

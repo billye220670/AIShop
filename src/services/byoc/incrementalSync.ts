@@ -317,7 +317,9 @@ export async function pushLocal(
   const roles = await listStoredRoles();
   const roleIds = roles.map(r => r.id);
   for (const role of roles) {
-    await client.putObject(syncKey(cfg.prefix, 'roles', `${role.id}.json`), jsonBlob(role));
+    const stored: Record<string, unknown> = { ...role };
+    delete stored.syncedAt; // 云端不存本地同步元数据，与会话一致
+    await client.putObject(syncKey(cfg.prefix, 'roles', `${role.id}.json`), jsonBlob(stored));
   }
   for (const id of manifest.roleIds ?? []) {
     if (!roleIds.includes(id) && !(manifest.tombstones.roles ?? []).includes(id)) {
@@ -333,6 +335,8 @@ export async function pushLocal(
   );
   manifest.roleIds = roleIds;
   await client.putObject(syncKey(cfg.prefix, 'roles', 'index.json'), jsonBlob({ ids: roleIds }));
+  // 推送成功的角色标记本地 syncedAt，否则 countPending 会一直把它们算作待同步
+  await markRolesSynced(roles, now);
 
   // 6. 重写清单
   if (tombstoneChanged) await setLocalTombstones(localTombstones);
@@ -704,11 +708,24 @@ function putStoredFavorite(fav: StoredFavoriteArtifact): Promise<void> {
   });
 }
 
-/** 原样落库角色记录 */
+/** 原样落库角色记录（拉取即视为已同步：标记 syncedAt，避免 countPending 反复统计） */
 function putStoredRole(role: StoredRole): Promise<void> {
   return enqueue('roles', async () => {
-    await withDB(db => db.put('roles', role));
+    await withDB(db => db.put('roles', { ...role, syncedAt: Date.now() }));
   });
+}
+
+/** 推送成功的角色批量标记 syncedAt（只标记 updatedAt 不晚于 time 的，期间的写入下轮再推） */
+async function markRolesSynced(roles: StoredRole[], time: number): Promise<void> {
+  return enqueue('roles', () =>
+    withDB(async db => {
+      for (const r of roles) {
+        if (r.updatedAt <= time) {
+          await db.put('roles', { ...r, syncedAt: time });
+        }
+      }
+    })
+  );
 }
 
 async function listNodesFor(convId: string): Promise<StoredContextNode[]> {
