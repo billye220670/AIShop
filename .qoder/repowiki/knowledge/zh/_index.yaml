@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: master
 nodes_managed: true
-exported_at: "2026-08-10T01:55:34Z"
+exported_at: "2026-08-10T02:26:46Z"
 modules:
     "":
-        dir_name: AI Shop 前端根工程（Vite + React 应用壳）
-        title: AI Shop 前端根工程（Vite + React 应用壳）
+        dir_name: AIShop 前端工程根
+        title: AIShop 前端工程根
         scope:
             - README.md
             - .gitignore
@@ -38,8 +38,8 @@ modules:
         depends_on: []
         related_to: []
     app_shell:
-        dir_name: 应用外壳与入口（App Shell）
-        title: 应用外壳与入口（App Shell）
+        dir_name: 应用外壳与根入口
+        title: 应用外壳与根入口
         scope:
             - src/App.tsx
             - src/main.tsx
@@ -48,6 +48,7 @@ modules:
         source_files: []
         children:
             - app_shell/byoc_service
+            - app_shell/image_utils
         depends_on: []
         related_to: []
     app_shell/byoc_service:
@@ -56,6 +57,15 @@ modules:
         scope:
             - src/services/byoc/
             - src/utils/sha256.ts
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    app_shell/image_utils:
+        dir_name: 图片压缩工具
+        title: 图片压缩工具
+        scope:
+            - src/utils/imageCompress.ts
         source_files: []
         children: []
         depends_on: []

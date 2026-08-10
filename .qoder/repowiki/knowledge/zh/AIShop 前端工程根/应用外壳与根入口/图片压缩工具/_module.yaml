@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: app_shell/image_utils
+title: 图片压缩工具
+scope:
+    - src/utils/imageCompress.ts
+source_files: []
+depends_on: []
+related_to: []

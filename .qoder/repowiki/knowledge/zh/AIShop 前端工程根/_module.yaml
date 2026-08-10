@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: AI Shop 前端根工程（Vite + React 应用壳）
+title: AIShop 前端工程根
 scope:
     - README.md
     - .gitignore
