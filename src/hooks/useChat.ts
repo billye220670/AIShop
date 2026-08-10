@@ -441,13 +441,14 @@ export function useChat() {
       try {
         const { messages, segments, totalMessageCount } =
           await hydrateConversation(active.id);
-        // 内存版可能比库新（并发写入未排空时的兜底）：同 id 保留内存版，
-        // 云端有而内存没有的补进来
+        // 内存版优先：流式中的消息（isStreaming 中间态、未落盘的 dataURL 图片）
+        // 一定比库里的快照新，库版只补云端有而内存没有的消息。
+        // 注意不能反过来——库里读回的消息 isStreaming 恒为 false（该字段不落盘），
+        // 用它替换内存会把正在流式的回复打成"圆点消失+空白"，直到下一 chunk 才恢复。
         const mem = conversationsRef.current.find(c => c.id === activeId);
-        const memById = new Map((mem?.messages ?? []).map(m => [m.id, m]));
-        const merged = [...messages];
+        const merged = [...(mem?.messages ?? [])];
         const seen = new Set(merged.map(m => m.id));
-        for (const m of memById.values()) {
+        for (const m of messages) {
           if (!seen.has(m.id)) merged.push(m);
           seen.add(m.id);
         }
@@ -475,6 +476,10 @@ export function useChat() {
   useEffect(() => {
     if (pendingSyncTick === 0) return;
     const timer = setTimeout(() => {
+      // 流式进行中（含带图请求的上传与等待首 token）跳过本轮：同步会
+      // 抢占移动端带宽拖垮大请求体，reloadConversations 还会用库里快照
+      // 替换正在流式的内存状态。60 秒轮询 countPending 会兜底补同步。
+      if (abortControllerRef.current) return;
       const cfg = getByocConfig();
       if (!cfg.enabled || validateConfig(cfg)) return;
       void (async () => {

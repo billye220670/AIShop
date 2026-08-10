@@ -19,11 +19,19 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 /** 同一 blobId 的并发请求合并成一次查库 */
 const inflight = new Map<string, Promise<string | null>>();
+/** 待撤销的 object URL：卸载后延迟 revoke，避免新 acquire 拿到已被撤销的 URL */
+const revokeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 async function acquire(blobId: string): Promise<string | null> {
   const cached = cache.get(blobId);
   if (cached) {
     cached.refs += 1;
+    // 撤销已排上又来了新持有者：作废本次撤销
+    const timer = revokeTimers.get(blobId);
+    if (timer) {
+      clearTimeout(timer);
+      revokeTimers.delete(blobId);
+    }
     return cached.url;
   }
 
@@ -45,19 +53,39 @@ async function acquire(blobId: string): Promise<string | null> {
   const url = await pending;
   if (!url) return null;
   const entry = cache.get(blobId);
-  if (entry) entry.refs += 1;
+  if (entry) {
+    entry.refs += 1;
+    // 等待期间可能已有持有者释放归零并排上撤销，新持有者接棒后作废它
+    const timer = revokeTimers.get(blobId);
+    if (timer) {
+      clearTimeout(timer);
+      revokeTimers.delete(blobId);
+    }
+  }
   return url;
 }
 
 function release(blobId: string): void {
   const entry = cache.get(blobId);
   if (!entry) return;
-  entry.refs -= 1;
+  // 不变量：refs 是"挂载中的组件数 + 未决 acquire 数"，释放不能减到负数——
+  // 已有 acquire 在等 pending 时先 release 再 +1，会互相抵消成 0，
+  // 此时撤销会把新持有者正在加载的 URL 废掉。
+  entry.refs = Math.max(0, entry.refs - 1);
   if (entry.refs > 0) return;
-  // 引用归零：撤销 object URL 并移出缓存。
-  // 不做延迟回收——重新申请只是一次 IDB 读，比长期占着内存划算。
-  URL.revokeObjectURL(entry.url);
-  cache.delete(blobId);
+  // 引用归零：延迟撤销 object URL。组件卸载与重新挂载（src 变化、会话
+  // hydrate 替换）的间隙里，新 acquire 可能已拿到同一个 URL 正等 <img>
+  // 加载，立刻 revoke 会让图片 onError 显示成"已不可用"。
+  const url = entry.url;
+  const timer = setTimeout(() => {
+    revokeTimers.delete(blobId);
+    const current = cache.get(blobId);
+    // 期间出现新的持有者（重新 acquire 复用了同一个 URL）就作废本次撤销
+    if (current && current.refs > 0) return;
+    if (current?.url === url) cache.delete(blobId);
+    URL.revokeObjectURL(url);
+  }, 1000);
+  revokeTimers.set(blobId, timer);
 }
 
 /**

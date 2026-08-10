@@ -12,15 +12,16 @@
 - [prompts.ts（提示词配置）](file://src/config/prompts.ts)
 - [ChatPanel.tsx（聊天面板组件）](file://src/components/chat/ChatPanel.tsx)
 - [MessageBubble.tsx（消息气泡组件）](file://src/components/chat/MessageBubble.tsx)
+- [incrementalSync.ts（增量同步）](file://src/services/byoc/incrementalSync.ts)
+- [state.ts（BYOC状态管理）](file://src/services/byoc/state.ts)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 新增角色选择功能，支持自定义AI人格
-- 集成角色系统到聊天工作流中
-- 选中的角色系统提示词成为对话上下文的一部分
-- 增强buildSystemPrompt函数以支持角色切换
-- 添加角色管理UI和持久化存储
+- 新增角色变更检测机制，通过 rolesRef 状态变量维护角色列表快照
+- 实现角色元数据变更检测（名称、系统提示词、创建时间）
+- 增强角色同步流程，支持自动检测和传播角色变更
+- 集成本地墓碑记录机制，确保角色删除的可靠同步
 
 ## 目录
 1. [简介](#简介)
@@ -35,10 +36,10 @@
 10. [附录：API 参考](#附录api-参考)
 
 ## 简介
-本文件为 useChat Hook 的状态管理文档，聚焦聊天状态设计、消息生命周期、流式 API 调用、网络请求与错误处理、会话管理与数据持久化、上下文压缩与自动保存、历史加载等。同时提供完整的 API 参考、错误处理策略、性能优化建议、调试技巧以及与其他组件和服务的集成方式说明。**最新更新**：集成了角色选择功能，允许用户通过自定义角色来个性化AI响应风格和行为模式。
+本文件为 useChat Hook 的状态管理文档，聚焦聊天状态设计、消息生命周期、流式 API 调用、网络请求与错误处理、会话管理与数据持久化、上下文压缩与自动保存、历史加载等。同时提供完整的 API 参考、错误处理策略、性能优化建议、调试技巧以及与其他组件和服务的集成方式说明。**最新更新**：集成了角色变更检测机制，通过智能对比角色列表快照，自动检测角色创建、删除和元数据变更，并触发相应的同步流程，确保多设备间角色数据的实时一致性。
 
 ## 项目结构
-useChat Hook 位于 src/hooks 下，负责整个聊天应用的核心状态与流程编排；类型定义在 src/types；流式 API 封装在 src/services/api.ts；本地小体积设置保存在 src/services/storage.ts；模型列表在 src/config/models.ts；**新增**：角色存储在 src/db/roleRepo.ts；UI 层通过 ChatPanel 和 MessageBubble 消费 Hook 暴露的状态与方法，并通过 ModelBottomSheet 进行角色和模型选择。
+useChat Hook 位于 src/hooks 下，负责整个聊天应用的核心状态与流程编排；类型定义在 src/types；流式 API 封装在 src/services/api.ts；本地小体积设置保存在 src/services/storage.ts；模型列表在 src/config/models.ts；**新增**：角色存储在 src/db/roleRepo.ts；UI 层通过 ChatPanel 和 MessageBubble 消费 Hook 暴露的状态与方法，并通过 ModelBottomSheet 进行角色和模型选择。**新增**：BYOC 同步服务通过 incrementalSync.ts 和 state.ts 提供角色数据的增量同步和本地墓碑记录功能。
 
 ```mermaid
 graph TB
@@ -48,6 +49,7 @@ Hook --> Store["会话存储与持久化<br/>conversationStore / db"]
 Hook --> Settings["本地设置<br/>storage.ts"]
 Hook --> Models["模型配置<br/>models.ts"]
 Hook --> Roles["角色管理<br/>roleRepo.ts"]
+Hook --> BYOC["BYOC 同步<br/>incrementalSync.ts / state.ts"]
 Hook --> Utils["工具与上下文压缩<br/>buildApiMessages / compactPlan / tokenEstimate"]
 UI --> RoleSelector["角色选择器<br/>ModelBottomSheet"]
 RoleSelector --> Hook
@@ -57,6 +59,8 @@ RoleSelector --> Hook
 - [useChat.ts:172-1650](file://src/hooks/useChat.ts#L172-L1650)
 - [roleRepo.ts:14-71](file://src/db/roleRepo.ts#L14-L71)
 - [ModelBottomSheet.tsx:128-671](file://src/components/common/ModelBottomSheet.tsx#L128-L671)
+- [incrementalSync.ts:316-335](file://src/services/byoc/incrementalSync.ts#L316-L335)
+- [state.ts:50-65](file://src/services/byoc/state.ts#L50-L65)
 
 ## 核心组件
 - 聊天状态与生命周期
@@ -65,7 +69,7 @@ RoleSelector --> Hook
   - 加载与错误：isLoading、error
   - 启动态：isBooting
   - 联网搜索开关：webSearchEnabled
-  - **新增**：角色系统：roles、selectedRoleId、setSelectedRole、refreshRoles
+  - **新增**：角色系统：roles、selectedRoleId、setSelectedRole、refreshRoles、rolesRef
   - 流式 Artifact：streamingArtifact
   - 功能设置：featureSettings（artifact 启用、自动压缩）
   - 压缩相关：compactSettings、compactingId、contextUsage、realUsageTotals
@@ -78,7 +82,7 @@ RoleSelector --> Hook
   - regenerateMessage / compareWithModel / switchVersion：多版本与多模型比较
   - compactConversation / updateSegment / revertSegment / setCompactFocusHint：上下文压缩与摘要编辑
   - setSelectedModel / setWebSearchEnabled / setFeatureSettings / setCompactSettings：设置变更
-  - **新增**：角色管理方法：setSelectedRole、refreshRoles
+  - **新增**：角色管理方法：setSelectedRole、refreshRoles、rolesRef 变更检测
 
 **章节来源**
 - [useChat.ts:172-1650](file://src/hooks/useChat.ts#L172-L1650)
@@ -87,8 +91,10 @@ RoleSelector --> Hook
 ## 架构总览
 useChat 作为状态中枢，协调 UI、API、存储与工具模块：
 - 启动阶段：加载会话列表，恢复上次活跃会话或创建新会话，补齐标题，解除 isBooting
-- **新增**：角色初始化：加载角色列表，恢复上次选中的角色
+- **新增**：角色初始化：加载角色列表，恢复上次选中的角色，建立角色列表快照
 - 发送消息：检查上下文水位并触发压缩（可配置），构造用户消息与占位助手消息，构建 API 消息（含压缩区间），**根据选中角色构建系统提示词**，可选联网搜索，调用 streamChat 流式输出，实时更新显示内容与 artifact，最终解析 suggestions/artifact 并写入真实用量
+- **新增**：角色变更检测：每次刷新角色列表时对比 rolesRef 快照，检测创建、删除和元数据变更
+- **新增**：自动同步：检测到角色变更时记录本地墓碑并触发防抖同步，确保跨设备一致性
 - 持久化：diff 变化后异步落盘，页面隐藏/离开时 flushPendingWrites
 - 历史加载：切换会话按需 hydrate，向上滚动分页加载更早消息
 - 多版本：支持对同一消息进行重新生成或多模型对比，维护 versions 与 activeVersionIndex
@@ -98,6 +104,7 @@ sequenceDiagram
 participant UI as "ChatPanel"
 participant Hook as "useChat"
 participant RoleMgr as "角色管理器"
+participant BYOC as "BYOC 同步"
 participant API as "streamChat"
 participant Store as "会话存储"
 participant DB as "IndexedDB"
@@ -115,17 +122,24 @@ Hook->>Store : 实时回写显示内容/usage/suggestions/artifact
 API-->>Hook : usage真实用量
 Hook->>Store : 持久化 diff
 Store->>DB : 写入/合并
+Note over Hook,BYOC : 角色变更检测流程
+Hook->>RoleMgr : refreshRoles()
+RoleMgr->>RoleMgr : 对比 rolesRef 快照
+RoleMgr->>BYOC : recordLocalRoleDeletions(删除的角色)
+BYOC->>BYOC : 触发防抖同步
 ```
 
 **图表来源**
 - [useChat.ts:623-936](file://src/hooks/useChat.ts#L623-L936)
 - [useChat.ts:53-72](file://src/hooks/useChat.ts#L53-L72)
+- [useChat.ts:391-411](file://src/hooks/useChat.ts#L391-L411)
 - [api.ts:44-172](file://src/services/api.ts#L44-L172)
+- [state.ts:86-102](file://src/services/byoc/state.ts#L86-L102)
 
 ## 详细组件分析
 
 ### 角色系统与个性化AI人格
-**新增功能**：角色系统允许用户创建和选择自定义AI人格，每个角色拥有独立的系统提示词，这些提示词会作为对话上下文的一部分发送给AI模型。
+**新增功能**：角色系统允许用户创建和选择自定义AI人格，每个角色拥有独立的系统提示词，这些提示词会作为对话上下文的一部分发送给AI模型。**最新更新**：增强了角色变更检测机制，通过 rolesRef 状态变量维护角色列表快照，智能检测角色创建、删除和元数据变更。
 
 - 角色数据结构
   - id：唯一标识符
@@ -135,8 +149,15 @@ Store->>DB : 写入/合并
 - 角色工作流程
   - 启动时加载所有可用角色
   - 恢复上次选中的角色ID
+  - **新增**：建立角色列表快照（rolesRef.current）用于后续变更检测
   - 发送消息时根据选中角色构建系统提示词
   - 支持默认角色（PortAI）和自定义角色切换
+- **新增**：角色变更检测机制
+  - 每次刷新角色列表时对比 rolesRef 快照
+  - 检测角色数量变化（创建/删除）
+  - 检测角色元数据变更（name、systemPrompt、createdAt）
+  - 自动记录删除的角色到本地墓碑
+  - 触发防抖同步确保跨设备一致性
 - 系统提示词构建逻辑
   - 默认角色：使用内置的BASE_SYSTEM_PROMPT和ARTIFACT_PROMPT
   - 自定义角色：完全使用角色的systemPrompt，按功能开关动态拼接artifact和联网搜索提示词
@@ -154,17 +175,26 @@ AddFeatures -- 是 --> FeaturePrompt["拼接artifact/搜索提示词"]
 AddFeatures -- 否 --> Stream["调用流式API"]
 FeaturePrompt --> Stream
 Stream --> Response["返回个性化AI响应"]
+Note after Stream --> RoleDetection["角色变更检测"]
+RoleDetection --> CompareSnapshot["对比 rolesRef 快照"]
+CompareSnapshot --> DetectChanges{"检测到变更？"}
+DetectChanges -- 是 --> RecordDeletions["记录删除到墓碑"]
+RecordDeletions --> TriggerSync["触发防抖同步"]
+DetectChanges -- 否 --> End["完成"]
+TriggerSync --> End
 ```
 
 **图表来源**
 - [useChat.ts:53-72](file://src/hooks/useChat.ts#L53-L72)
-- [useChat.ts:809-815](file://src/hooks/useChat.ts#L809-L815)
+- [useChat.ts:391-411](file://src/hooks/useChat.ts#L391-L411)
+- [state.ts:86-102](file://src/services/byoc/state.ts#L86-L102)
 
 **章节来源**
 - [roleRepo.ts:14-71](file://src/db/roleRepo.ts#L14-L71)
 - [useChat.ts:53-72](file://src/hooks/useChat.ts#L53-L72)
 - [useChat.ts:181-182](file://src/hooks/useChat.ts#L181-L182)
 - [useChat.ts:387-404](file://src/hooks/useChat.ts#L387-L404)
+- [useChat.ts:391-411](file://src/hooks/useChat.ts#L391-L411)
 
 ### 消息状态与生命周期
 - 消息结构
@@ -249,6 +279,7 @@ API-->>Hook : usage若有
 - 网关不支持 include_usage：降级重试
 - 用户取消：AbortError，将最后一条 assistant 消息标记为 stoppedByUser，保留已有内容
 - 其他异常：设置 error 状态，并在消息中标注失败提示
+- **新增**：角色同步错误：记录本地墓碑确保删除操作不会丢失，即使同步失败也能通过轮询兜底
 
 **章节来源**
 - [api.ts:102-118](file://src/services/api.ts#L102-L118)
@@ -261,6 +292,7 @@ API-->>Hook : usage若有
 - 持久化策略：diff 变化后异步写入，避免全量序列化阻塞主线程；页面隐藏/离开时 flushPendingWrites
 - 历史加载：切换会话时按需 hydrate；向上滚动加载更多更早消息
 - 删除与会话重建：先删库再改 state，防止持久化副作用
+- **新增**：角色数据持久化：角色变更通过 BYOC 同步机制持久化，支持跨设备一致性
 
 **章节来源**
 - [useChat.ts:219-312](file://src/hooks/useChat.ts#L219-L312)
@@ -315,6 +347,7 @@ API-->>Hook : usage若有
   - 存储：localStorage（小设置）、IndexedDB（会话与消息、角色）
   - 配置：CHAT_MODELS、BASE_SYSTEM_PROMPT、ARTIFACT_PROMPT
   - **新增**：角色管理：listRoles、createRole、deleteRole、newRoleId
+  - **新增**：BYOC 同步：syncNow、getByocConfig、validateConfig、recordLocalDeletions、recordLocalRoleDeletions
 - 耦合与内聚
   - 高内聚：消息生命周期、流式处理、压缩策略集中在 Hook
   - 低耦合：通过 services 与 utils 抽象网络、存储、压缩、估算等能力
@@ -326,6 +359,7 @@ Hook --> API["services/api.ts"]
 Hook --> Storage["services/storage.ts"]
 Hook --> Models["config/models.ts"]
 Hook --> Roles["db/roleRepo.ts"]
+Hook --> BYOC["services/byoc/*"]
 Hook --> Utils["utils/* 与 services/*"]
 UI["ChatPanel/MessageBubble"] --> Hook
 RoleSelector["ModelBottomSheet"] --> Hook
@@ -348,6 +382,8 @@ RoleSelector["ModelBottomSheet"] --> Hook
 - 滚动与布局：吸底滚动、折叠动画与锚点定位，减少重排抖动
 - 用量统计：真实 usage 与本地估算结合，辅助缓存命中率与成本控制
 - **新增**：角色加载优化：角色列表懒加载，避免启动时阻塞
+- **新增**：变更检测优化：通过 rolesRef 快照避免不必要的同步触发，只在真正发生变更时记录墓碑并触发同步
+- **新增**：防抖同步：角色变更后 3 秒内合并多次变更成一次同步，减少网络开销
 
 ## 故障排查指南
 - 无法获取 API Key：检查设置中 provider 与 apiKey 配置
@@ -357,6 +393,8 @@ RoleSelector["ModelBottomSheet"] --> Hook
 - 压缩无效：检查阈值与热窗口设置；确认 isCompactionViable 条件满足
 - 联网搜索失败：检查 judgeSearchNeed 判定与 searchWeb 返回；关注 webSearchFailed 标志
 - **新增**：角色相关问题：检查角色列表加载、角色ID持久化、角色提示词格式验证
+- **新增**：角色同步问题：检查 BYOC 配置、网络连接、本地墓碑记录是否正确更新
+- **新增**：角色变更检测：确认 rolesRef 快照正确维护，变更检测逻辑正常工作
 
 **章节来源**
 - [api.ts:57-59](file://src/services/api.ts#L57-L59)
@@ -366,7 +404,7 @@ RoleSelector["ModelBottomSheet"] --> Hook
 - [roleRepo.ts:48-67](file://src/db/roleRepo.ts#L48-L67)
 
 ## 结论
-useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周期、流式输出、上下文压缩、会话持久化、联网搜索、多版本与多模型比较等核心功能。**最新更新**：集成了角色选择功能，允许用户通过自定义角色来个性化AI响应风格和行为模式，增强了用户体验和功能灵活性。通过清晰的职责划分与模块化设计，实现了高性能、可扩展且易维护的聊天体验。
+useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周期、流式输出、上下文压缩、会话持久化、联网搜索、多版本与多模型比较等核心功能。**最新更新**：集成了角色变更检测机制，通过 rolesRef 状态变量维护角色列表快照，智能检测角色创建、删除和元数据变更，并自动触发同步流程，确保多设备间角色数据的实时一致性。通过清晰的职责划分与模块化设计，实现了高性能、可扩展且易维护的聊天体验。
 
 ## 附录：API 参考
 
@@ -390,6 +428,7 @@ useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周�
 - **新增**：roles：RoleData[]，可用角色列表
 - **新增**：selectedRoleId：string，当前选中的角色ID
 - **新增**：refreshRoles：() => Promise<void>，刷新角色列表
+- **新增**：rolesRef：useRef<RoleData[] | null>，角色列表快照引用
 
 **章节来源**
 - [useChat.ts:1597-1650](file://src/hooks/useChat.ts#L1597-L1650)
@@ -418,7 +457,7 @@ useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周�
 - revertSegment(convId, segmentId)：撤销压缩
 - setCompactFocusHint(convId, hint)：设置压缩重点提示
 - **新增**：setSelectedRole(roleId)：设置选中的角色
-- **新增**：refreshRoles()：刷新角色列表
+- **新增**：refreshRoles()：刷新角色列表并检测变更
 
 **章节来源**
 - [useChat.ts:623-1650](file://src/hooks/useChat.ts#L623-L1650)
@@ -438,3 +477,4 @@ useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周�
 - 压缩上下文：调整 compactSettings 并启用 autoCompactEnabled，或在必要时手动 compactConversation
 - **新增**：角色切换：调用 setSelectedRole 选择自定义角色，或传入空字符串使用默认角色
 - **新增**：角色管理：通过 refreshRoles 刷新角色列表，在UI中创建、删除和管理自定义角色
+- **新增**：角色同步：角色变更后自动触发防抖同步，确保跨设备一致性

@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: master
 nodes_managed: true
-exported_at: "2026-08-09T14:57:07Z"
+exported_at: "2026-08-09T15:25:04Z"
 modules:
     "":
-        dir_name: AI 助手 Web 应用根工程
-        title: AI 助手 Web 应用根工程
+        dir_name: AI Shop 前端根工程（Vite + React 应用壳）
+        title: AI Shop 前端根工程（Vite + React 应用壳）
         scope:
             - README.md
             - .gitignore
@@ -51,8 +51,8 @@ modules:
         depends_on: []
         related_to: []
     app_shell/byoc_service:
-        dir_name: BYOC（自带云存储）S3 同步服务
-        title: BYOC（自带云存储）S3 同步服务
+        dir_name: BYOC（自带云存储）S3 同步与备份服务
+        title: BYOC（自带云存储）S3 同步与备份服务
         scope:
             - src/services/byoc/
             - src/utils/sha256.ts

@@ -13,15 +13,18 @@
 - [src/db/index.ts](file://src/db/index.ts)
 - [src/db/roleRepo.ts](file://src/db/roleRepo.ts)
 - [src/db/schema.ts](file://src/db/schema.ts)
+- [src/hooks/useChat.ts](file://src/hooks/useChat.ts)
 - [test-byoc-s3.mjs](file://test-byoc-s3.mjs)
 </cite>
 
 ## 更新摘要
 **所做更改**
-- 新增角色数据同步功能支持
-- 增强增量同步机制以包含角色数据
-- 更新清单结构以支持角色索引和墓碑
-- 扩展桶布局以包含角色数据存储
+- 增强了角色数据同步功能，新增自动角色变更检测机制
+- 实现了角色删除传播功能，通过本地tombstone确保跨设备删除一致性
+- 添加了角色同步状态计数功能，支持精确的待同步数量统计
+- 新增了rolesRef状态变量用于跟踪角色变更历史
+- 实现了recordLocalRoleDeletions()函数处理本地角色删除检测
+- 完善了markRolesSynced()函数批量标记角色同步状态
 
 ## 目录
 1. [简介](#简介)
@@ -39,13 +42,13 @@
 本系统为"自带云存储（BYOC）"的浏览器端数据同步方案，支持将对话、消息、图片历史、收藏、**角色（系统提示词预设）**等数据增量同步到用户自己的 S3 兼容对象存储（如腾讯云 COS、阿里云 OSS、Cloudflare R2、MinIO、Backblaze B2 或自定义 S3）。系统提供：
 - 全量备份与恢复（独立于增量同步）
 - 增量双向同步（先拉后推，收敛本地与云端状态）
-- **角色数据自动同步**（通过现有 BYOC 基础设施）
+- **增强的角色数据自动同步**（通过现有 BYOC 基础设施，支持自动变更检测和删除传播）
 - 自动调度（启动延迟拉取、周期轮询、回到前台拉取）
 - 连接性测试与配置校验
 - 多设备并发安全（Web Locks 串行化）
 
 ## 项目结构
-BYOC 能力集中在 services/byoc 目录，对外暴露统一入口；设置面板在 components/settings 中；持久化状态通过 state.ts 写入 IndexedDB；数据库访问通过 db/index.ts 统一导出。**角色数据通过 roleRepo.ts 管理，并集成到增量同步流程中**。
+BYOC 能力集中在 services/byoc 目录，对外暴露统一入口；设置面板在 components/settings 中；持久化状态通过 state.ts 写入 IndexedDB；数据库访问通过 db/index.ts 统一导出。**角色数据通过 roleRepo.ts 管理，并集成到增量同步流程中，支持自动变更检测和删除传播**。
 
 ```mermaid
 graph TB
@@ -60,19 +63,21 @@ INC --> S3["S3 客户端外部实现"]
 BAK --> S3
 ST --> DB
 ROLE --> DB
+USECHAT["角色变更检测<br/>useChat.ts"] --> API
 ```
 
 **图表来源**
-- [src/services/byoc/index.ts:1-211](file://src/services/byoc/index.ts#L1-L211)
-- [src/services/byoc/incrementalSync.ts:1-717](file://src/services/byoc/incrementalSync.ts#L1-L717)
+- [src/services/byoc/index.ts:1-239](file://src/services/byoc/index.ts#L1-L239)
+- [src/services/byoc/incrementalSync.ts:1-734](file://src/services/byoc/incrementalSync.ts#L1-L734)
 - [src/services/byoc/backupSync.ts:1-69](file://src/services/byoc/backupSync.ts#L1-L69)
-- [src/services/byoc/state.ts:1-97](file://src/services/byoc/state.ts#L1-L97)
+- [src/services/byoc/state.ts:1-103](file://src/services/byoc/state.ts#L1-L103)
 - [src/services/settingsService.ts:1-115](file://src/services/settingsService.ts#L1-L115)
 - [src/db/index.ts:1-110](file://src/db/index.ts#L1-L110)
 - [src/db/roleRepo.ts:1-72](file://src/db/roleRepo.ts#L1-L72)
+- [src/hooks/useChat.ts:380-450](file://src/hooks/useChat.ts#L380-L450)
 
 章节来源
-- [src/services/byoc/index.ts:1-211](file://src/services/byoc/index.ts#L1-L211)
+- [src/services/byoc/index.ts:1-239](file://src/services/byoc/index.ts#L1-L239)
 - [src/services/byoc/types.ts:1-102](file://src/services/byoc/types.ts#L1-L102)
 
 ## 核心组件
@@ -82,13 +87,13 @@ ROLE --> DB
 - 状态持久化：设备 ID、云端清单缓存、本地 tombstone、最近同步时间等。
 - 设置服务：读写 BYOC 配置（localStorage），提供默认值与合并策略。
 - 设置界面：可视化配置、预设填充、连通性检测反馈。
-- **角色数据管理**：通过 roleRepo.ts 提供角色的创建、删除、列表查询等功能，并集成到同步流程中。
+- **增强的角色数据管理**：通过 roleRepo.ts 提供角色的创建、删除、列表查询等功能，集成自动变更检测、删除传播和同步状态计数。
 
 章节来源
-- [src/services/byoc/index.ts:1-211](file://src/services/byoc/index.ts#L1-L211)
-- [src/services/byoc/incrementalSync.ts:1-717](file://src/services/byoc/incrementalSync.ts#L1-L717)
+- [src/services/byoc/index.ts:1-239](file://src/services/byoc/index.ts#L1-L239)
+- [src/services/byoc/incrementalSync.ts:1-734](file://src/services/byoc/incrementalSync.ts#L1-L734)
 - [src/services/byoc/backupSync.ts:1-69](file://src/services/byoc/backupSync.ts#L1-L69)
-- [src/services/byoc/state.ts:1-97](file://src/services/byoc/state.ts#L1-L97)
+- [src/services/byoc/state.ts:1-103](file://src/services/byoc/state.ts#L1-L103)
 - [src/services/settingsService.ts:1-115](file://src/services/settingsService.ts#L1-L115)
 - [src/components/settings/ByocSettings.tsx:1-180](file://src/components/settings/ByocSettings.tsx#L1-L180)
 - [src/db/roleRepo.ts:1-72](file://src/db/roleRepo.ts#L1-L72)
@@ -96,7 +101,7 @@ ROLE --> DB
 ## 架构总览
 BYOC 采用"分层 + 清单驱动"的设计：
 - 全量备份层：独立于增量同步，用于灾难恢复。
-- 增量同步层：以 manifest.json 作为"目录"，按 updatedAt/syncedAt 判断变更，使用 tombstones 传播删除。**现已扩展支持角色数据的同步**。
+- 增量同步层：以 manifest.json 作为"目录"，按 updatedAt/syncedAt 判断变更，使用 tombstones 传播删除。**现已全面支持角色数据的同步，包括自动变更检测和删除传播**。
 - 状态层：持久化设备标识、清单缓存、本地 tombstone、最近同步时间。
 - 设置层：管理用户配置（endpoint、bucket、密钥等）。
 - 数据层：IndexedDB 中的会话、消息、节点、blob、历史、收藏、**角色**等。
@@ -110,6 +115,7 @@ participant INC as "增量同步"
 participant ST as "状态持久化"
 participant DB as "IndexedDB"
 participant ROLE as "角色数据"
+participant USECHAT as "角色变更检测"
 participant S3 as "S3 兼容存储"
 U->>UI : 填写配置并保存
 UI->>API : updateByocConfig()
@@ -119,6 +125,8 @@ API->>INC : pullRemote()
 INC->>S3 : 读取 manifest.json
 INC->>DB : 拉取/落库会话、消息、节点、blob
 INC->>ROLE : 拉取/落库角色数据
+USECHAT->>API : recordLocalRoleDeletions()
+API->>INC : pushLocal()
 INC->>S3 : 推送变更与会话元数据
 INC->>ST : 更新本地 tombstone/清单缓存
 API->>ST : 记录 lastSyncAt
@@ -130,6 +138,7 @@ API-->>U : 返回统计结果
 - [src/services/byoc/incrementalSync.ts:139-323](file://src/services/byoc/incrementalSync.ts#L139-L323)
 - [src/services/byoc/incrementalSync.ts:364-509](file://src/services/byoc/incrementalSync.ts#L364-L509)
 - [src/services/byoc/state.ts:22-73](file://src/services/byoc/state.ts#L22-L73)
+- [src/hooks/useChat.ts:389-411](file://src/hooks/useChat.ts#L389-L411)
 
 ## 详细组件分析
 
@@ -138,6 +147,7 @@ API-->>U : 返回统计结果
 - 手动同步：syncNow 使用 Web Locks 串行化，避免多标签页并发写冲突；先拉后推，合并统计结果。
 - 自动调度：scheduleAutoSync 在启动后延迟拉取一次、每 60 秒检查待同步量并触发 safeSync、页面回到前台时立即拉取。
 - 事件机制：通过自定义事件通知 UI 刷新（状态变化、同步完成）。
+- **角色删除检测**：新增 recordLocalRoleDeletions() 函数，用于记录本地角色删除操作，确保删除能跨设备传播。
 
 ```mermaid
 flowchart TD
@@ -158,7 +168,7 @@ Dispatch --> End(["结束"])
 - [src/services/byoc/index.ts:40-123](file://src/services/byoc/index.ts#L40-L123)
 
 章节来源
-- [src/services/byoc/index.ts:1-211](file://src/services/byoc/index.ts#L1-L211)
+- [src/services/byoc/index.ts:1-239](file://src/services/byoc/index.ts#L1-L239)
 
 ### 增量同步引擎（incrementalSync.ts）
 - 桶布局约定：manifest.json、convs/{id}.json、msgs/{convId}/{msgId}.json、nodes/{convId}/{nodeId}.json、blobs/{sha256}、history/favs 及其 index.json、**roles/{id}.json 及其 index.json**。
@@ -167,7 +177,7 @@ Dispatch --> End(["结束"])
   - 删除检测：云端有而本地无且已知（缓存清单或本地 tombstone）→ 写 tombstone 并尝试删除云端对象。
   - 变更会话：仅当本地 updatedAt > 云端 updatedAt 才覆盖元数据；消息按 diff 推送；引用 blob 用 HEAD 探测去重；节点覆盖式同步并清理云端多余节点。
   - 历史/收藏：以本地为准推全量索引；云端多余项记 tombstone。
-  - **角色数据同步**：以本地为准推全量索引；云端多余项记 tombstone；支持旧版本清单向后兼容。
+  - **增强的角色数据同步**：以本地为准推全量索引；云端多余项记 tombstone；支持旧版本清单向后兼容；**新增 markRolesSynced() 函数批量标记角色同步状态**。
   - 重写清单：更新 manifest.updatedAt 与 deviceId，并落盘本地清单缓存。
   - 标记 syncedAt：全部成功后批量标记，保证下次不重复推送。
 - 拉取流程（pullRemote）：
@@ -175,7 +185,7 @@ Dispatch --> End(["结束"])
   - 应用 tombstone：删除本地对应记录，并清理本地 tombstone。
   - 会话拉取：按清单遍历，按 updatedAt/syncedAt 判断是否需要拉取；消息按 msgId 去重并以 updatedAt 大者胜；节点根据云端较新与否决定覆盖或补全；元数据 LWW。
   - 历史/收藏：以云端 index 为准拉缺失；本地多余不删（防丢数据）。
-  - **角色数据拉取**：以云端 index 为准拉缺失；本地多余不删（防丢数据）。
+  - **增强的角色数据拉取**：以云端 index 为准拉缺失；本地多余不删（防丢数据）；**新增 putStoredRole() 函数自动标记 syncedAt**。
   - 更新本地清单缓存。
 
 ```mermaid
@@ -194,7 +204,7 @@ S1 --> Z["结束"]
 - [src/services/byoc/incrementalSync.ts:139-323](file://src/services/byoc/incrementalSync.ts#L139-L323)
 
 章节来源
-- [src/services/byoc/incrementalSync.ts:1-717](file://src/services/byoc/incrementalSync.ts#L1-L717)
+- [src/services/byoc/incrementalSync.ts:1-734](file://src/services/byoc/incrementalSync.ts#L1-L734)
 
 ### 全量备份层（backupSync.ts）
 - 备份：构建应用内备份文件（自包含 JSON），以时间戳命名上传至 backups 目录。
@@ -209,10 +219,10 @@ S1 --> Z["结束"]
 - 云端清单缓存：本地副本，用于判断"新增/删除"语义。
 - 本地 tombstone：区分"本机已删"和"从未拉过"，避免误拉回或删除。
 - 最近同步时间：供 UI 展示。
-- 待同步计数：综合 updatedAt/syncedAt 与 tombstone 计算，支撑 60 秒轮询。
+- **增强的待同步计数**：**countPending() 函数现在包含角色待同步数量的统计**，综合 updatedAt/syncedAt 与 tombstone 计算，支撑 60 秒轮询。
 
 章节来源
-- [src/services/byoc/state.ts:1-97](file://src/services/byoc/state.ts#L1-L97)
+- [src/services/byoc/state.ts:1-103](file://src/services/byoc/state.ts#L1-L103)
 
 ### 类型定义（types.ts）
 - ByocConfig：enabled、provider、endpoint、region、bucket、prefix、pathStyle、accessKey、secretKey、lastSyncAt。
@@ -227,7 +237,7 @@ S1 --> Z["结束"]
 - 角色数据结构：StoredRole 接口包含 id、name、systemPrompt、createdAt、updatedAt、syncedAt 字段。
 - 角色操作：createRole（自动提取名称）、deleteRole、listRoles、listStoredRoles。
 - 队列管理：使用 enqueue 确保异步操作的顺序执行。
-- **同步集成**：通过 listStoredRoles 获取原始存储记录，供增量同步使用。
+- **增强的同步集成**：通过 listStoredRoles 获取原始存储记录，供增量同步使用；**支持完整的同步生命周期管理**。
 
 章节来源
 - [src/db/roleRepo.ts:1-72](file://src/db/roleRepo.ts#L1-L72)
@@ -235,11 +245,19 @@ S1 --> Z["结束"]
 ### 数据库模式（schema.ts）
 - StoredRole 接口：继承 SyncMeta，包含角色相关字段。
 - roles 表：IndexedDB 中的角色数据存储，按 createdAt 建立索引。
-- **同步支持**：角色数据遵循与其他数据相同的同步约定（updatedAt/syncedAt）。
+- **增强的同步支持**：角色数据遵循与其他数据相同的同步约定（updatedAt/syncedAt），支持完整的增量同步流程。
 
 章节来源
 - [src/db/schema.ts:221-234](file://src/db/schema.ts#L221-L234)
 - [src/db/schema.ts:293-299](file://src/db/schema.ts#L293-L299)
+
+### 角色变更检测（useChat.ts）
+- **自动角色变更检测**：通过 rolesRef 状态变量跟踪角色变更历史，检测角色创建、删除和修改。
+- **本地删除记录**：检测到角色删除时调用 recordLocalRoleDeletions() 记录删除操作，确保删除能跨设备传播。
+- **防抖同步触发**：角色变更后触发防抖同步，让角色像会话一样创建后 3 秒内自动上云、删除自动传播。
+
+章节来源
+- [src/hooks/useChat.ts:389-411](file://src/hooks/useChat.ts#L389-L411)
 
 ### 设置界面（ByocSettings.tsx / SettingsPanel.tsx）
 - 由 ByocSettings 提供表单与预设选择，并在配置变更后防抖执行 testConnection，通过自定义事件上报连接状态。
@@ -271,6 +289,9 @@ S1 --> Z["结束"]
 - 设置界面依赖：
   - byoc 入口的 validateConfig/testConnection/BYOC_STATUS_EVENT
   - types 中的预设与类型
+- **角色变更检测依赖**：
+  - useChat 中的 rolesRef 状态跟踪
+  - recordLocalRoleDeletions 函数用于记录删除操作
 
 ```mermaid
 graph LR
@@ -284,6 +305,7 @@ INC --> MSGC["messageCodec"]
 INC --> CONV["conversationRepo"]
 ST --> DB
 ROLE --> DB
+USECHAT["useChat.ts"] --> IDX
 ```
 
 **图表来源**
@@ -291,6 +313,7 @@ ROLE --> DB
 - [src/services/byoc/incrementalSync.ts:21-59](file://src/services/byoc/incrementalSync.ts#L21-L59)
 - [src/services/byoc/state.ts:7-9](file://src/services/byoc/state.ts#L7-L9)
 - [src/db/roleRepo.ts:9-10](file://src/db/roleRepo.ts#L9-L10)
+- [src/hooks/useChat.ts:389-411](file://src/hooks/useChat.ts#L389-L411)
 
 章节来源
 - [src/services/byoc/index.ts:13-24](file://src/services/byoc/index.ts#L13-L24)
@@ -308,6 +331,9 @@ ROLE --> DB
   - 节点与历史/收藏、**角色**的索引与 tombstone 配合，确保多余对象被清理或不再拉取。
 - 数据库事务：
   - markSynced 使用事务批量更新 syncedAt，降低 IO 次数。
+- **增强的角色同步性能**：
+  - **markRolesSynced() 函数批量标记角色同步状态，减少数据库操作次数**。
+  - **rolesRef 状态变量避免重复的角色变更检测**。
 
 [本节为通用指导，无需特定文件来源]
 
@@ -327,9 +353,11 @@ ROLE --> DB
 - 签名异常（非 HTTPS/局域网）：
   - 现象：签名失败或行为不一致。
   - 排查：参考测试脚本验证 SigV4 签名路径与降级实现一致性。
-- **角色同步问题**：
+- **增强的角色同步问题**：
   - 现象：角色数据未同步或不同步。
-  - 排查：确认 manifest.roleIds 字段存在；检查 roles/index.json 是否正确更新；验证角色 tombstone 机制是否正常工作。
+  - 排查：确认 manifest.roleIds 字段存在；检查 roles/index.json 是否正确更新；验证角色 tombstone 机制是否正常工作；**检查 rolesRef 状态变量是否正确跟踪角色变更**。
+  - 现象：角色删除未传播到其他设备。
+  - 排查：确认 recordLocalRoleDeletions() 函数被正确调用；检查本地 tombstones.roles 是否正确记录删除；**验证 useChat 中的角色变更检测逻辑是否正常工作**。
 
 章节来源
 - [src/services/byoc/index.ts:40-54](file://src/services/byoc/index.ts#L40-L54)
@@ -338,10 +366,12 @@ ROLE --> DB
 - [src/services/byoc/incrementalSync.ts:416-441](file://src/services/byoc/incrementalSync.ts#L416-L441)
 - [src/services/byoc/incrementalSync.ts:316-335](file://src/services/byoc/incrementalSync.ts#L316-L335)
 - [src/services/byoc/incrementalSync.ts:442-448](file://src/services/byoc/incrementalSync.ts#L442-L448)
+- [src/services/byoc/index.ts:89-100](file://src/services/byoc/index.ts#L89-L100)
+- [src/hooks/useChat.ts:389-411](file://src/hooks/useChat.ts#L389-L411)
 - [test-byoc-s3.mjs:1-86](file://test-byoc-s3.mjs#L1-L86)
 
 ## 结论
-本 BYOC 系统以"清单驱动 + 增量同步 + 全量备份"的组合，实现了在浏览器端对任意 S3 兼容存储的安全、可靠、低侵入的数据同步。**最新的增强功能包括角色数据的自动同步**，通过现有的 BYOC 基础设施，系统现在能够无缝同步用户的自定义角色（系统提示词预设）。通过 tombstone 与本地 tombstone 的配合，删除可跨设备传播；通过 Web Locks 与 mapLimit，保障并发与限流；通过自动调度，提升用户体验。建议在生产环境结合服务端日志与监控，持续优化并发度与重试策略。
+本 BYOC 系统以"清单驱动 + 增量同步 + 全量备份"的组合，实现了在浏览器端对任意 S3 兼容存储的安全、可靠、低侵入的数据同步。**最新的增强功能包括全面的角色数据自动同步**，通过现有的 BYOC 基础设施，系统现在能够无缝同步用户的自定义角色（系统提示词预设）。通过 rolesRef 状态变量跟踪角色变更、recordLocalRoleDeletions() 函数处理本地角色删除、markRolesSynced() 函数批量标记角色同步状态等改进，系统提供了更完善的角色同步体验。通过 tombstone 与本地 tombstone 的配合，删除可跨设备传播；通过 Web Locks 与 mapLimit，保障并发与限流；通过自动调度，提升用户体验。建议在生产环境结合服务端日志与监控，持续优化并发度与重试策略。
 
 [本节为总结性内容，无需特定文件来源]
 
