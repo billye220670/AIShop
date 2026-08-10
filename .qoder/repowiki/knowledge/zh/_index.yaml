@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: master
 nodes_managed: true
-exported_at: "2026-08-09T15:25:04Z"
+exported_at: "2026-08-10T01:55:34Z"
 modules:
     "":
         dir_name: AI Shop 前端根工程（Vite + React 应用壳）

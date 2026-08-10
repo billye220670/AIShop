@@ -11,19 +11,22 @@ interface BlobImageProps {
   src: string;
   alt?: string;
   className?: string;
+  style?: React.CSSProperties;
   draggable?: boolean;
   loading?: 'lazy' | 'eager';
   /** 加载中显示什么；默认是一块脉冲占位 */
   placeholder?: React.ReactNode;
   /** 图片不可用时显示什么；默认什么都不显示 */
   fallback?: React.ReactNode;
-  onLoad?: () => void;
+  /** 加载完成回调，能拿到 img 元素（读 naturalWidth 等） */
+  onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
 }
 
 export default function BlobImage({
   src,
   alt = '',
   className,
+  style,
   draggable,
   loading,
   placeholder,
@@ -51,6 +54,7 @@ export default function BlobImage({
       src={resolved}
       alt={alt}
       className={className}
+      style={style}
       draggable={draggable}
       loading={loading}
       onLoad={onLoad}

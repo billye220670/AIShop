@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, type ChangeEvent, type ClipboardEvent, typ
 import { Plus, Square, X, FileText, MessageSquareQuote, ArrowUp, Globe } from 'lucide-react';
 import type { MessageContent, FileAttachment, Message, ChatFeatureSettings } from '../../types';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
+import { compressImageFile } from '../../utils/imageCompress';
 
 interface ChatInputProps {
   onSend: (content: string | MessageContent[], attachments?: FileAttachment[]) => void;
@@ -125,7 +126,7 @@ export default function ChatInput({
     textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
   };
 
-  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = async (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
 
@@ -134,12 +135,9 @@ export default function ChatInput({
         e.preventDefault();
         const file = item.getAsFile();
         if (file) {
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            const base64 = ev.target?.result as string;
-            setImages(prev => [...prev, base64]);
-          };
-          reader.readAsDataURL(file);
+          // 粘贴的截图压缩后再入列：避免大图 base64 撑大请求体与 IndexedDB
+          const base64 = await compressImageFile(file);
+          setImages(prev => [...prev, base64]);
         }
       }
     }
@@ -167,12 +165,9 @@ export default function ChatInput({
       }
 
       if (isImageFile(file)) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const base64 = ev.target?.result as string;
-          setImages(prev => [...prev, base64]);
-        };
-        reader.readAsDataURL(file);
+        // 压缩后再入列：发送、落盘、云同步都拿小图，弱网下不再撑爆请求体
+        const base64 = await compressImageFile(file);
+        setImages(prev => [...prev, base64]);
       } else {
         try {
           const parsed = await parseFile(file);
