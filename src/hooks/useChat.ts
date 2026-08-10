@@ -41,6 +41,7 @@ import { settingsService } from '../services/settingsService';
 import { syncNow, getByocConfig, validateConfig, recordLocalDeletions, recordLocalRoleDeletions } from '../services/byoc';
 import { compactMessages } from '../services/contextCompactor';
 import { buildApiMessages } from '../utils/buildApiMessages';
+import { monotonicNow } from '../utils/monotonic';
 import { planCompaction, getContextUsage, isCompactionViable } from '../utils/compactPlan';
 import { estimateMessagesTokens, estimateSummaryTokens, sumRealUsage } from '../utils/tokenEstimate';
 import { migrateSummary } from '../utils/contextSummary';
@@ -688,19 +689,25 @@ export function useChat() {
         }
       }
 
+      // 同一毫秒内 Date.now() 会返回相同值：user/assistant 的 timestamp 相等
+      // 会让所有按 timestamp 的排序（同步后合并、预留的 by_conv_time 索引）
+      // 失去区分度，id 前缀也会相同。用严格单调递增的时钟，保证
+      // user < assistant 恒成立、id 恒唯一——排序在任何路径下都能纠错。
+      const userNow = monotonicNow();
       const userMessage: Message = {
-        id: Date.now().toString() + '-user',
+        id: userNow.toString() + '-user',
         role: 'user',
         content,
-        timestamp: Date.now(),
+        timestamp: userNow,
         attachments,
       };
 
+      const assistantNow = monotonicNow();
       const assistantMessage: Message = {
-        id: Date.now().toString() + '-assistant',
+        id: assistantNow.toString() + '-assistant',
         role: 'assistant',
         content: '',
-        timestamp: Date.now(),
+        timestamp: assistantNow,
         isStreaming: true,
         model: selectedModel,
       };

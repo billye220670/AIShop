@@ -662,7 +662,10 @@ async function putStoredMessage(
   );
   await enqueue(convId, () =>
     withDB(async db => {
-      await db.put('messages', { ...msg, convId, seq, syncedAt: Date.now() });
+      // updatedAt 要刷新成本地时刻：否则它会一直停留在云端推送时刻，
+      // 恒小于云端对象 lastModified，导致每次同步都全量重拉覆盖本地——
+      // 一旦云端 seq 因任何原因错乱，本地将永远被覆盖、无法自愈。
+      await db.put('messages', { ...msg, convId, seq, updatedAt: Date.now(), syncedAt: Date.now() });
     })
   );
   await indexMessage({ ...msg, convId, seq });
