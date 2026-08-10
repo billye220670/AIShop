@@ -614,10 +614,16 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
 
     // Multi-part content (text + images)
     const parts = displayContent as MessageContent[];
+    // 图片在上、文字在下（微信发图观感）：只调显示顺序，不改数据里的
+    // 部分顺序——API 发送与落盘格式保持原样，新老消息显示一致
+    const orderedParts = [...parts].sort((a, b) => {
+      const rank = (p: MessageContent) => (p.type === 'image_url' ? 0 : 1);
+      return rank(a) - rank(b);
+    });
     let occurrenceCursor = 0;
     return (
       <div className="space-y-2">
-        {parts.map((part, idx) => {
+        {orderedParts.map((part, idx) => {
           if (part.type === 'text' && part.text) {
             if (searchQuery && searchQuery.trim()) {
               const { nodes, occurrenceCount } = renderTextWithHighlight(part.text, searchQuery.trim(), occurrenceCursor, activeMatchOccurrence);
