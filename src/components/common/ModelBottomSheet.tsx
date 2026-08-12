@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Globe, SquareCode, Sparkles, Plus, UserRound, Trash2, Check } from 'lucide-react';
 import BottomSheet from './BottomSheet';
+import { haptic } from '../../utils/haptics';
 import { createRole, deleteRole } from '../../db';
 import type { Model } from '../../types';
 import type { RoleData } from '../../db';
@@ -39,6 +40,8 @@ const PROVIDER_ICON_MAP: Record<string, string> = {
 
 // 需要圆形背景的深色图标 provider
 const DARK_ICON_PROVIDERS = ['OpenAI', 'xAI', 'Xiaomi'];
+// 仅浅色模式需要纯黑圆形背景的 provider（Kimi 白底彩色图标）
+const BLACK_BG_PROVIDERS = ['Moonshot'];
 
 // provider → 显示的组名
 const PROVIDER_GROUP_MAP: Record<string, string> = {
@@ -268,9 +271,9 @@ export default function ModelBottomSheet({
     const icon = getProviderIcon(model.provider);
     if (!icon) return null;
 
-    if (DARK_ICON_PROVIDERS.includes(model.provider)) {
+    if (DARK_ICON_PROVIDERS.includes(model.provider) || BLACK_BG_PROVIDERS.includes(model.provider)) {
       return (
-        <div className="w-12 h-12 rounded-full bg-white/70 flex items-center justify-center">
+        <div className={`w-12 h-12 rounded-full ${BLACK_BG_PROVIDERS.includes(model.provider) ? 'model-icon-bg-black' : 'model-icon-bg bg-white/70'} flex items-center justify-center`}>
           <img src={icon} alt={model.provider} className="w-7 h-7" />
         </div>
       );
@@ -371,7 +374,7 @@ export default function ModelBottomSheet({
                 </div>
               </div>
               <button
-                onClick={onWebSearchToggle}
+                onClick={() => { haptic(); onWebSearchToggle(); }}
                 className={`relative w-12 h-7 rounded-full transition-colors ${
                   webSearchEnabled ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-bg-hover)]'
                 }`}
@@ -395,7 +398,7 @@ export default function ModelBottomSheet({
                 </div>
               </div>
               <button
-                onClick={onArtifactToggle}
+                onClick={() => { haptic(); onArtifactToggle(); }}
                 className={`relative w-12 h-7 rounded-full transition-colors ${
                   artifactEnabled ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-bg-hover)]'
                 }`}
@@ -452,8 +455,8 @@ export default function ModelBottomSheet({
                     }`}
                   >
                     {icon ? (
-                      DARK_ICON_PROVIDERS.includes(model.provider) ? (
-                        <div className="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-white/70">
+                      DARK_ICON_PROVIDERS.includes(model.provider) || BLACK_BG_PROVIDERS.includes(model.provider) ? (
+                        <div className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-full ${BLACK_BG_PROVIDERS.includes(model.provider) ? 'model-icon-bg-black' : 'model-icon-bg bg-white/70'}`}>
                           <img src={icon} alt={model.provider} className="w-6 h-6" />
                         </div>
                       ) : (

@@ -85,9 +85,8 @@ export default function ContextRing({
             cy={SIZE / 2}
             r={R}
             fill="none"
-            stroke="currentColor"
+            stroke="var(--color-ring-track, rgba(255,255,255,0.15))"
             strokeWidth={STROKE}
-            className="text-white/15"
           />
           {/* 填充：从 12 点方向顺时针 */}
           <circle

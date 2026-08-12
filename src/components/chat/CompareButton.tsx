@@ -87,6 +87,8 @@ const PROVIDER_ICON_MAP: Record<string, string> = {
 };
 
 const DARK_ICON_PROVIDERS = ['OpenAI', 'xAI', 'Xiaomi'];
+// 仅浅色模式需要纯黑圆形背景的 provider（Kimi 白底彩色图标）
+const BLACK_BG_PROVIDERS = ['Moonshot'];
 
 function getProviderIcon(provider: string): string | null {
   const file = PROVIDER_ICON_MAP[provider];
@@ -271,8 +273,8 @@ export default function CompareButton({
           }`}
         >
           {icon ? (
-            DARK_ICON_PROVIDERS.includes(model.provider) ? (
-              <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-white/70">
+            DARK_ICON_PROVIDERS.includes(model.provider) || BLACK_BG_PROVIDERS.includes(model.provider) ? (
+              <span className={`w-5 h-5 shrink-0 flex items-center justify-center rounded-full ${BLACK_BG_PROVIDERS.includes(model.provider) ? 'model-icon-bg-black' : 'model-icon-bg bg-white/70'}`}>
                 <img src={icon} alt={model.provider} className="w-3 h-3" />
               </span>
             ) : (

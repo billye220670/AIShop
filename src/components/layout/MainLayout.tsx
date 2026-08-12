@@ -2,13 +2,17 @@ import { useEffect, useState, useRef, type ReactNode } from 'react';
 import Sidebar, { SIDEBAR_WIDTH } from './Sidebar';
 import TopNavBar from './TopNavBar';
 import BottomNavBar from './BottomNavBar';
+import DesktopLayout from './DesktopLayout';
+import { useDeviceMode } from '../../platform/useDeviceMode';
 import type { TabMode, Conversation, Model, ContextSegment } from '../../types';
 import type { RoleData } from '../../db';
 import type { UsageTotals } from '../../utils/tokenEstimate';
 import { useDrawerSwipe } from '../../hooks/useDrawerSwipe';
 import { haptic } from '../../utils/haptics';
+import { syncFocusedInputType } from '../../utils/androidBridge';
+import { isNativePlatform } from '../../platform/capabilities';
 
-interface MainLayoutProps {
+export interface MainLayoutProps {
   activeTab: TabMode;
   onTabChange: (tab: TabMode) => void;
   children: ReactNode;
@@ -52,60 +56,89 @@ interface MainLayoutProps {
   onSidebarOpen?: () => void;
 }
 
-export default function MainLayout({
-  activeTab,
-  onTabChange,
-  children,
-  conversations,
-  activeConversationId,
-  onSwitchConversation,
-  onNewConversation,
-  canCreateNewConversation = true,
-  onDeleteConversation,
-  onDeleteConversations,
-  onToggleConversationFavorite,
-  onRenameConversation,
-  onRefreshConversations,
-  models,
-  selectedModel,
-  onModelChange,
-  webSearchEnabled,
-  onWebSearchToggle,
-  artifactEnabled,
-  onArtifactToggle,
-  roles,
-  selectedRoleId,
-  onRoleSelect,
-  onRolesChanged,
-  realUsage,
-  contextLimit,
-  isCompacting,
-  isAwaitingUsage,
-  onCompactActive,
-  segments,
-  onOpenSegment,
-  onDeleteSegment,
-  onSidebarOpen,
-}: MainLayoutProps) {
+/** 移动端布局：抽屉侧边栏 + 顶栏 + 底部导航（原 MainLayout 实现） */
+function MobileLayout(props: MainLayoutProps) {
+  const {
+    activeTab,
+    onTabChange,
+    children,
+    conversations,
+    activeConversationId,
+    onSwitchConversation,
+    onNewConversation,
+    canCreateNewConversation = true,
+    onDeleteConversation,
+    onDeleteConversations,
+    onToggleConversationFavorite,
+    onRenameConversation,
+    onRefreshConversations,
+    models,
+    selectedModel,
+    onModelChange,
+    webSearchEnabled,
+    onWebSearchToggle,
+    artifactEnabled,
+    onArtifactToggle,
+    roles,
+    selectedRoleId,
+    onRoleSelect,
+    onRolesChanged,
+    realUsage,
+    contextLimit,
+    isCompacting,
+    isAwaitingUsage,
+    onCompactActive,
+    segments,
+    onOpenSegment,
+    onDeleteSegment,
+    onSidebarOpen,
+  } = props;
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 可编辑元素（输入框/文本域/富文本）聚焦：隐藏底部菜单栏并处理键盘遮挡
+  const isEditable = (el: HTMLElement) =>
+    el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
+
+  // 输入框若位于键盘遮挡区，滚动到可见位置（键盘高度由 MainActivity 注入）
+  const scrollIntoKeyboardView = (el: HTMLElement) => {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--native-ime-inset-bottom');
+    const ime = parseInt(raw) || 0;
+    if (ime <= 0) return;
+    const rect = el.getBoundingClientRect();
+    const visibleBottom = window.innerHeight - ime;
+    if (rect.bottom > visibleBottom - 8 || rect.top < 0) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  };
+
   // 检测输入框聚焦，隐藏底部菜单栏
   const handleFocusIn = (e: React.FocusEvent) => {
     const target = e.target as HTMLElement;
-    if (target.tagName === 'TEXTAREA') {
-      if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
-      setInputFocused(true);
+    if (!isEditable(target)) return;
+    if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
+    setInputFocused(true);
+    // 同步当前输入框类型给原生层（AndroidInputState 桥），密码框长按菜单分流用
+    syncFocusedInputType(target as HTMLInputElement);
+    // 聊天输入框（TEXTAREA）已有底部 padding 顶起机制，不需要滚动；
+    // 设置页等普通输入框主动滚出键盘遮挡区。键盘动画期间 inset 才注入完成，
+    // 立即滚一次 + 300ms 后校正一次。
+    if (target.tagName !== 'TEXTAREA') {
+      scrollIntoKeyboardView(target);
+      setTimeout(() => scrollIntoKeyboardView(target), 300);
     }
   };
 
   const handleFocusOut = (e: React.FocusEvent) => {
     const target = e.target as HTMLElement;
-    if (target.tagName === 'TEXTAREA') {
-      // 延迟隐藏，避免切换到同区域其他元素时闪烁
-      blurTimerRef.current = setTimeout(() => setInputFocused(false), 100);
-    }
+    if (!isEditable(target)) return;
+    // 延迟隐藏，避免切换到同区域其他元素时闪烁
+    blurTimerRef.current = setTimeout(() => {
+      setInputFocused(false);
+      syncFocusedInputType(null);
+    }, 100);
   };
 
   // 监听 ESC 关闭侧边栏
@@ -116,6 +149,17 @@ export default function MainLayout({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
+
+  // Android 壳返回键：侧边栏打开时先关闭并消费事件（否则由 App 层最小化到后台）
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onBackRequested = (e: Event) => {
+      e.preventDefault();
+      setSidebarOpen(false);
+    };
+    window.addEventListener('back-requested', onBackRequested);
+    return () => window.removeEventListener('back-requested', onBackRequested);
   }, [sidebarOpen]);
 
   // 侧边栏打开时通知上层（触发同步等）
@@ -142,7 +186,13 @@ export default function MainLayout({
     <div
       ref={swipeRef}
       className="bg-[var(--color-bg-base)] text-[var(--color-text-primary)] overflow-hidden fixed inset-x-0 top-0"
-      style={{ height: frozenHeight, touchAction: 'manipulation' }}
+      style={{
+        height: frozenHeight,
+        touchAction: 'manipulation',
+        // 原生壳（Capacitor）edge-to-edge 全屏渲染：顶部避让系统状态栏，padding 区即页面背景色；
+        // 高度由 MainActivity 原生注入的 --native-inset-top 提供（getInfo/env() 在 Android 16 不可靠）
+        ...(isNativePlatform() ? { paddingTop: 'var(--native-inset-top, var(--status-bar-height, env(safe-area-inset-top)))' } : {}),
+      }}
     >
       {/* 侧边栏 - 绝对定位左侧底层，平时收起在屏幕外 */}
       <div
@@ -153,6 +203,8 @@ export default function MainLayout({
           width: `${SIDEBAR_WIDTH}px`,
           transform: dragOffset === null ? undefined : `translateX(${dragOffset - SIDEBAR_WIDTH}px)`,
           transition,
+          // 侧边栏 absolute 定位不随根容器 padding 下移，需自身避让状态栏
+          ...(isNativePlatform() ? { paddingTop: 'var(--native-inset-top, var(--status-bar-height, env(safe-area-inset-top)))' } : {}),
         }}
       >
         <Sidebar
@@ -176,6 +228,9 @@ export default function MainLayout({
             ? `translateX(${dragOffset}px)`
             : sidebarOpen ? `translateX(${SIDEBAR_WIDTH}px)` : undefined,
           transition,
+          // Android 壳：键盘（IME）弹起时视口不收缩，底部让出键盘高度把输入框顶到键盘上方，
+          // 避免依赖 Chromium 的视觉滚动兜底（偶发导致整个页面被顶起）；键盘高度由 MainActivity 实时注入
+          ...(isNativePlatform() ? { paddingBottom: 'var(--native-ime-inset-bottom, 0px)' } : {}),
         }}
         onFocus={handleFocusIn}
         onBlur={handleFocusOut}
@@ -227,4 +282,13 @@ export default function MainLayout({
       </div>
     </div>
   );
+}
+
+/** 布局分发外壳：按设备形态在桌面/移动布局间切换，两套布局共用同一份 Props */
+export default function MainLayout(props: MainLayoutProps) {
+  const mode = useDeviceMode();
+  if (mode === 'desktop') {
+    return <DesktopLayout {...props} />;
+  }
+  return <MobileLayout {...props} />;
 }

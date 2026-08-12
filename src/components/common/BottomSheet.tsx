@@ -5,9 +5,11 @@ interface BottomSheetProps {
   isOpen: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  /** 自定义高度类（默认 h-[85vh]，与移动端模型选择器一致） */
+  heightClass?: string;
 }
 
-export default function BottomSheet({ isOpen, onClose, children }: BottomSheetProps) {
+export default function BottomSheet({ isOpen, onClose, children, heightClass = 'h-[85vh]' }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const startY = useRef<number>(0);
   const startX = useRef<number>(0);
@@ -155,7 +157,7 @@ export default function BottomSheet({ isOpen, onClose, children }: BottomSheetPr
       {/* Bottom Sheet */}
       <div
         ref={sheetRef}
-        className={`relative w-full bg-[var(--color-bg-primary)] rounded-t-3xl shadow-2xl overflow-hidden h-[85vh] flex flex-col transition-transform duration-300 ease-out ${
+        className={`relative w-full bg-[var(--color-bg-primary)] rounded-t-3xl shadow-2xl overflow-hidden ${heightClass} flex flex-col transition-transform duration-300 ease-out ${
           isAnimatingIn && !isClosing ? 'translate-y-0' : 'translate-y-full'
         }`}
         onTouchStart={handleTouchStart}

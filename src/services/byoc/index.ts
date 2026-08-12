@@ -18,8 +18,7 @@ import {
   countPending,
   setLastSyncAt,
   getLastSyncAt,
-  getLocalTombstones,
-  setLocalTombstones,
+  updateLocalTombstones,
 } from './state';
 import { createS3Client } from './s3Client';
 
@@ -69,15 +68,12 @@ let syncing = false;
  */
 export async function recordLocalDeletions(convIds: string[]): Promise<void> {
   if (!convIds.length) return;
-  const t = await getLocalTombstones();
-  let changed = false;
-  for (const id of convIds) {
-    if (!t.convs.includes(id)) {
-      t.convs.push(id);
-      changed = true;
+  await updateLocalTombstones(t => {
+    const now = Date.now();
+    for (const id of convIds) {
+      if (!t.convs.some(x => x.id === id)) t.convs.push({ id, at: now });
     }
-  }
-  if (changed) await setLocalTombstones(t);
+  });
 }
 
 /**
@@ -88,15 +84,11 @@ export async function recordLocalDeletions(convIds: string[]): Promise<void> {
  */
 export async function recordLocalRoleDeletions(roleIds: string[]): Promise<void> {
   if (!roleIds.length) return;
-  const t = await getLocalTombstones();
-  let changed = false;
-  for (const id of roleIds) {
-    if (!t.roles.includes(id)) {
-      t.roles.push(id);
-      changed = true;
+  await updateLocalTombstones(t => {
+    for (const id of roleIds) {
+      if (!t.roles.includes(id)) t.roles.push(id);
     }
-  }
-  if (changed) await setLocalTombstones(t);
+  });
 }
 
 /**

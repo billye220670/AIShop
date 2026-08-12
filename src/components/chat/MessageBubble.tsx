@@ -366,6 +366,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
       setMenuPos({ x: clientX, y: clientY });
       setMenuOpen(true);
       window.getSelection?.()?.removeAllRanges();
+      // 与点击汉堡菜单图标一致的轻触感（键盘级），菜单弹出瞬间触发
       haptic();
     }, LONG_PRESS_MS);
   };

@@ -13,6 +13,8 @@ interface ContextPanelProps {
   segments?: ContextSegment[];
   onOpenSegment?: (segmentId: string) => void;
   onDeleteSegment?: (segmentId: string) => void;
+  /** 面板定位类；默认移动端铺满顶栏下方，桌面布局可传入自定义定位（如靠右上浮） */
+  positionClassName?: string;
 }
 
 function formatTokens(n: number): string {
@@ -33,6 +35,7 @@ export default function ContextPanel({
   segments = [],
   onOpenSegment,
   onDeleteSegment,
+  positionClassName,
 }: ContextPanelProps) {
   // 最近的排在最上面，方便一眼看到最新一次压缩
   const sortedSegments = [...segments].sort((a, b) => b.createdAt - a.createdAt);
@@ -54,7 +57,7 @@ export default function ContextPanel({
 
   return (
     <div
-      className="absolute left-3 right-3 top-14 sm:right-auto sm:w-80 bg-[var(--color-bg-elevated)] rounded-2xl shadow-2xl z-[200] context-menu-pop"
+      className={`${positionClassName ?? 'absolute left-3 right-3 top-14 sm:right-auto sm:w-80'} bg-[var(--color-bg-elevated)] rounded-2xl shadow-2xl z-[200] context-menu-pop`}
       onClick={e => e.stopPropagation()}
       onPointerDown={e => e.stopPropagation()}
     >

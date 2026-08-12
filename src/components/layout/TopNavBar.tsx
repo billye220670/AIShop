@@ -6,6 +6,7 @@ import ModelSelector from '../common/ModelSelector';
 import ContextRing from '../chat/ContextRing';
 import ContextPanel from '../chat/ContextPanel';
 import type { UsageTotals } from '../../utils/tokenEstimate';
+import { haptic } from '../../utils/haptics';
 
 interface TopNavBarProps {
   onToggleSidebar: () => void;
@@ -89,7 +90,7 @@ export default function TopNavBar({
       {/* 左侧：汉堡菜单 + 模型选择器 + 上下文环 */}
       <div className="flex items-center gap-2">
         <button
-          onClick={onToggleSidebar}
+          onClick={() => { haptic(); onToggleSidebar(); }}
           className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg"
           title="菜单"
         >

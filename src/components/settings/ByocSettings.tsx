@@ -6,7 +6,8 @@
  * 代价是需要用户在自己的存储控制台配置 CORS（见失败提示文案）。
  */
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import PasswordInput from './PasswordInput';
+import { haptic } from '../../utils/haptics';
 import {
   getByocConfig,
   updateByocConfig,
@@ -37,7 +38,6 @@ const ENDPOINT_HINTS: Record<ByocProvider, string> = {
 
 export default function ByocSettings() {
   const [cfg, setCfg] = useState<ByocConfig>(getByocConfig());
-  const [showSecrets, setShowSecrets] = useState(false);
 
   // 配置变更后防抖自动检测连通性，结果通过自定义事件上报给 SettingsPanel 显示状态图标
   useEffect(() => {
@@ -101,7 +101,7 @@ export default function ByocSettings() {
           role="switch"
           aria-checked={cfg.enabled}
           aria-label="自动同步"
-          onClick={() => patch({ enabled: !cfg.enabled })}
+          onClick={() => { haptic(); patch({ enabled: !cfg.enabled }); }}
           className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${
             cfg.enabled ? 'bg-[var(--color-accent)]' : 'bg-white/15'
           }`}
@@ -141,12 +141,6 @@ export default function ByocSettings() {
             className="flex-1 min-w-0 bg-white/5 border border-[var(--color-border)] rounded-lg px-4 py-4 text-sm text-white placeholder-gray-500 focus:border-[var(--color-accent)] focus:outline-none transition-colors"
           />
         </div>
-        <input
-          value={cfg.prefix}
-          onChange={e => patch({ prefix: e.target.value.trim() || 'aishop' })}
-          placeholder="前缀（默认 aishop）"
-          className={inputClass}
-        />
       </div>
 
       {/* 凭证 */}
@@ -157,22 +151,13 @@ export default function ByocSettings() {
           placeholder="Access Key"
           className={inputClass}
         />
-        <div className="relative">
-          <input
-            type={showSecrets ? 'text' : 'password'}
-            value={cfg.secretKey}
-            onChange={e => patch({ secretKey: e.target.value })}
-            placeholder="Secret Key"
-            className={inputClass}
-          />
-          <button
-            type="button"
-            onClick={() => setShowSecrets(v => !v)}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white transition-colors"
-          >
-            {showSecrets ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
-        </div>
+        {/* Secret Key（PasswordInput：带明暗切换，密码框长按弹自定义粘贴菜单） */}
+        <PasswordInput
+          value={cfg.secretKey}
+          onValueChange={v => patch({ secretKey: v })}
+          placeholder="Secret Key"
+          className={inputClass}
+        />
       </div>
     </section>
   );

@@ -2,12 +2,11 @@
  * 设置服务 - 基于 localStorage 存储
  */
 import type { ByocConfig } from './byoc/types';
-import { DEFAULT_BYOC_CONFIG } from './byoc/types';
+import { DEFAULT_BYOC_CONFIG, BYOC_KEY_PREFIX } from './byoc/types';
 
 export interface ProviderConfig {
   llm: string;
   image: string;
-  video: string;
   search: string;
 }
 
@@ -41,7 +40,6 @@ const STORAGE_KEY = 'aishop_settings';
 const DEFAULT_PROVIDERS: ProviderConfig = {
   llm: 'fastapi',
   image: 'fastapi',
-  video: 'fastapi',
   search: 'bocha',
 };
 
@@ -51,7 +49,7 @@ function getLocalSettings(): AppSettings {
     if (raw) return JSON.parse(raw);
   } catch { /* ignore */ }
   return {
-    providers: { llm: 'fastapi', image: 'fastapi', video: 'fastapi', search: 'bocha' },
+    providers: { llm: 'fastapi', image: 'fastapi', search: 'bocha' },
     apiKeys: {},
   };
 }
@@ -93,7 +91,11 @@ export const settingsService = {
 
   getCompactSettings(): CompactSettings {
     const stored = getLocalSettings().compact;
-    return { ...DEFAULT_COMPACT_SETTINGS, ...(stored || {}) };
+    // 触发阈值与热窗口已写死为推荐值（不再向用户暴露），仅压缩模型可配置
+    return {
+      ...DEFAULT_COMPACT_SETTINGS,
+      model: stored?.model || DEFAULT_COMPACT_SETTINGS.model,
+    };
   },
 
   setCompactSettings(patch: Partial<CompactSettings>): void {
@@ -103,7 +105,9 @@ export const settingsService = {
   },
 
   getByocSettings(): ByocConfig {
-    return { ...DEFAULT_BYOC_CONFIG, ...(getLocalSettings().byoc ?? {}) };
+    const stored = getLocalSettings().byoc;
+    // 对象前缀写死为 PortAI（不向用户暴露），忽略存储中的旧值
+    return { ...DEFAULT_BYOC_CONFIG, ...(stored ?? {}), prefix: BYOC_KEY_PREFIX };
   },
 
   setByocSettings(patch: Partial<ByocConfig>): void {

@@ -11,6 +11,7 @@
 import type { Message } from '../types';
 import { settingsService } from './settingsService';
 import { getProviderConfig } from '../config/providers';
+import { getCachedCity } from './locationService';
 
 /** 判断本身只是个分类任务，用便宜快模型即可，和 titleGenerator 使用同一个模型 */
 const JUDGE_MODEL = 'doubao-1-5-pro-32k-250115';
@@ -90,9 +91,15 @@ export async function judgeSearchNeed(
     if (!apiKey) return FAIL_OPEN;
 
     const context = buildContext(recentMessages);
+    // 附上用户所在城市：让判断模型输出的搜索词自动带上城市，
+    // 天气、本地服务这类问题才能搜到用户所在地的结果
+    const city = getCachedCity();
+    const cityHint = city
+      ? `\n（用户所在城市：${city}；若问题涉及本地实时信息如天气、出行等，请结合该城市给出搜索词）`
+      : '';
     const userContent = context
-      ? `【最近对话背景】\n${context}\n\n【用户最新问题】\n${userText}`
-      : userText;
+      ? `【最近对话背景】\n${context}\n\n【用户最新问题】\n${userText}${cityHint}`
+      : `${userText}${cityHint}`;
 
     const response = await fetch(`${config.chatBaseUrl}/chat/completions`, {
       method: 'POST',

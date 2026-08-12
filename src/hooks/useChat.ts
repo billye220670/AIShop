@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Message, MessageVersion, Conversation, FileAttachment, MessageContent, ChatFeatureSettings, ContextSegment, ContextSummary, TokenUsage } from '../types';
 import { streamChat } from '../services/api';
+import { haptic } from '../utils/haptics';
 import { CHAT_MODELS } from '../config/models';
 import { BASE_SYSTEM_PROMPT, ARTIFACT_PROMPT, WEB_SEARCH_PROMPT, buildContextInfo } from '../config/prompts';
 import {
@@ -37,6 +38,7 @@ import type { RoleData } from '../db';
 import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
 import { judgeSearchNeed } from '../services/searchJudge';
+import { ensureCity, prefetchCity } from '../services/locationService';
 import { settingsService } from '../services/settingsService';
 import { syncNow, getByocConfig, validateConfig, recordLocalDeletions, recordLocalRoleDeletions } from '../services/byoc';
 import { compactMessages } from '../services/contextCompactor';
@@ -312,6 +314,11 @@ export function useChat() {
       }
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // 启动后台预热：IP 定位用户城市并写缓存，让首次发消息时系统提示词就能带上城市
+  useEffect(() => {
+    prefetchCity();
   }, []);
 
   /**
@@ -720,12 +727,8 @@ export function useChat() {
 
       setIsLoading(true);
 
-      // 移动端的触觉反馈 - AI 开始回答时触发两次清脆有力的振动
-      if ('vibrate' in navigator) {
-        setTimeout(() => {
-          navigator.vibrate([50, 30, 50]); // 双重短振：50ms 振动 + 30ms 暂停 + 50ms 振动
-        }, 100);
-      }
+      // 移动端的触觉反馈 - AI 开始回答：与点击汉堡菜单图标一致的短促轻触感
+      setTimeout(() => haptic(), 100);
 
       try {
         abortControllerRef.current = new AbortController();
@@ -787,6 +790,9 @@ export function useChat() {
               ? content
               : content.find((p) => p.type === 'text')?.text || '';
           if (userText) {
+            // 确保用户所在城市已就绪（IP 定位，失败静默）——
+            // 系统提示词与搜索判断都会用到它，天气等本地问题才能精准搜索
+            await ensureCity();
             // 开关只表示"允许联网"，是否真的要搜由小模型按问题内容判断，
             // 避免闲聊、写代码这类明显不需要实时信息的问题也去联网
             const judge = await judgeSearchNeed(userText, messages);
@@ -844,6 +850,7 @@ export function useChat() {
           currentRole
         );
         let realUsage: TokenUsage | undefined;
+        let firstChunkDone = false;
         for await (const chunk of streamChat(
           allMessages,
           selectedModel,
@@ -852,6 +859,11 @@ export function useChat() {
           systemPrompt,
           u => { realUsage = u; }
         )) {
+          if (!firstChunkDone) {
+            firstChunkDone = true;
+            // AI 开始回答（第一次流式返回收到）：与汉堡菜单一致的短促轻触感
+            haptic();
+          }
           fullContent += chunk;
           const displayContent = getDisplayContent(fullContent);
           updateActiveConversation(conv => {
@@ -875,12 +887,8 @@ export function useChat() {
         // 流式结束，清除流式 artifact 状态
         setStreamingArtifact(null);
 
-        // 移动端的触觉反馈 - AI 回答结束时再触发两次清脆有力的振动
-        if ('vibrate' in navigator) {
-          setTimeout(() => {
-            navigator.vibrate([50, 30, 50]); // 双重短振：50ms 振动 + 30ms 暂停 + 50ms 振动
-          }, 100);
-        }
+        // 移动端的触觉反馈 - AI 回答结束：与汉堡菜单一致的短促轻触感
+        setTimeout(() => haptic(), 100);
 
         // 先去除 artifact 标记，再清理过度反引号，最后解析 suggestions
         const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
@@ -1306,6 +1314,7 @@ export function useChat() {
         );
 
         let realUsage: TokenUsage | undefined;
+        let firstChunkDone = false;
         for await (const chunk of streamChat(
           contextMessages,
           conv.messages[msgIndex].model || selectedModel,
@@ -1314,6 +1323,11 @@ export function useChat() {
           systemPrompt,
           u => { realUsage = u; }
         )) {
+          if (!firstChunkDone) {
+            firstChunkDone = true;
+            // AI 开始回答（第一次流式返回收到）：与汉堡菜单一致的短促轻触感
+            haptic();
+          }
           fullContent += chunk;
           const displayContent = getDisplayContent(fullContent);
 

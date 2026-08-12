@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Search, ChevronRight, X } from 'lucide-react';
 
-import type { Conversation, Message, FileAttachment, ChatFeatureSettings } from '../../types';
+import type { Conversation, Message, FileAttachment, ChatFeatureSettings, Model } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
 import { useArtifact, parseArtifactFromContent } from '../../hooks/useArtifact';
 import { useStickToBottom } from '../../hooks/useStickToBottom';
@@ -14,6 +14,8 @@ import ArtifactPanel from '../artifact/ArtifactPanel';
 import CompactionMarker from './CompactionMarker';
 import ContextSummarySheet from './ContextSummarySheet';
 import type { ContextSegment, ContextSummary } from '../../types';
+import type { RoleData } from '../../db';
+import type { UsageTotals } from '../../utils/tokenEstimate';
 
 interface ChatPanelProps {
   messages: Message[];
@@ -27,6 +29,8 @@ interface ChatPanelProps {
   stopGeneration: () => void;
   conversationTitle?: string;
   conversation?: Conversation;
+  /** 历史记录面板开关（桌面形态透传给 ChatInput 工具栏） */
+  onToggleHistory?: () => void;
   onNewConversation?: () => void;
   streamingArtifact?: { title: string; code: string } | null;
   regenerateMessage?: (messageId: string) => void;
@@ -44,6 +48,22 @@ interface ChatPanelProps {
   /** 外部请求打开某个 segment 的摘要面板（例如压缩完成 toast 的"查看"按钮） */
   openSegmentIdRequest?: string | null;
   onOpenSegmentIdRequestHandled?: () => void;
+  // 模型与角色选择（桌面形态透传给 ChatInput 工具栏）
+  models?: Model[];
+  selectedModel?: string;
+  onModelChange?: (modelId: string) => void;
+  roles?: RoleData[];
+  selectedRoleId?: string;
+  onRoleSelect?: (roleId: string) => void;
+  onRolesChanged?: () => void;
+  // 上下文占用环（桌面形态透传给 ChatInput 工具栏）
+  realUsage?: UsageTotals;
+  contextLimit?: number;
+  isCompacting?: boolean;
+  isAwaitingUsage?: boolean;
+  onCompactActive?: () => void;
+  onOpenSegment?: (segmentId: string) => void;
+  onDeleteSegment?: (segmentId: string) => void;
 }
 
 export default function ChatPanel({
@@ -52,6 +72,7 @@ export default function ChatPanel({
   sendMessage,
   stopGeneration,
   conversation,
+  onToggleHistory,
   onNewConversation,
   streamingArtifact,
   regenerateMessage,
@@ -67,6 +88,20 @@ export default function ChatPanel({
   onUpdateSegment,
   openSegmentIdRequest,
   onOpenSegmentIdRequestHandled,
+  models,
+  selectedModel,
+  onModelChange,
+  roles,
+  selectedRoleId,
+  onRoleSelect,
+  onRolesChanged,
+  realUsage,
+  contextLimit,
+  isCompacting,
+  isAwaitingUsage,
+  onCompactActive,
+  onOpenSegment,
+  onDeleteSegment,
 }: ChatPanelProps) {
   const [openSegmentId, setOpenSegmentId] = useState<string | null>(null);
 
@@ -585,6 +620,7 @@ export default function ChatPanel({
           onSend={(...args) => { if (searchOpen) closeSearch(); return sendMessage(...args); }}
           isLoading={isLoading}
           onStop={stopGeneration}
+          onToggleHistory={onToggleHistory}
           onNewConversation={onNewConversation}
           quotedMessage={quotedMessage}
           onRemoveQuote={() => setQuotedMessage(null)}
@@ -592,6 +628,22 @@ export default function ChatPanel({
           onFeatureSettingsChange={onFeatureSettingsChange}
           webSearchEnabled={webSearchEnabled}
           onWebSearchEnabledChange={onWebSearchEnabledChange}
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={onModelChange}
+          roles={roles}
+          selectedRoleId={selectedRoleId}
+          onRoleSelect={onRoleSelect}
+          onRolesChanged={onRolesChanged}
+          realUsage={realUsage}
+          contextLimit={contextLimit}
+          isCompacting={isCompacting}
+          isAwaitingUsage={isAwaitingUsage}
+          conversationId={conversation?.id}
+          segments={segments}
+          onCompactActive={onCompactActive}
+          onOpenSegment={onOpenSegment}
+          onDeleteSegment={onDeleteSegment}
         />
       </div>
 

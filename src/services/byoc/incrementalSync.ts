@@ -6,7 +6,7 @@
  * `updatedAt > syncedAt`：流式覆盖写会保留旧 syncedAt 但更新 updatedAt，
  * 只查 null 会漏掉这类变更。
  *
- * 桶内布局（prefix = 用户配置的 prefix，默认 aishop）：
+ * 桶内布局（prefix 写死为 PortAI，不向用户暴露）：
  *   sync/v1/manifest.json                 云端"目录"，每轮推送整体重写
  *   sync/v1/convs/{convId}.json           会话元数据
  *   sync/v1/msgs/{convId}/{msgId}.json    单条消息（原样存盘格式）
@@ -59,7 +59,7 @@ import {
   setCloudManifest,
   getCloudManifest,
   getLocalTombstones,
-  setLocalTombstones,
+  updateLocalTombstones,
 } from './state';
 
 const SCHEMA = 'aishop-sync-v1';
@@ -165,23 +165,29 @@ export async function pushLocal(
   manifest.tombstones.convs = manifest.tombstones.convs.filter(id => !localIds.has(id));
 
   // 1. 删除检测：云端有而本地没有的会话 → tombstone，清理云端对象。
-  //    只处理"之前同步过"或"本机明确删除过"的会话（缓存清单/本地 tombstone
+  //    只处理"缓存清单里同步过"或"本机明确删除过"的会话（本地 tombstone
   //    里有记录）：云端新增、本机还没拉过的不能当删除处理，否则 pull 失败时
   //    会把其他设备新建的会话误删。
-  //    同步记本地 tombstone（pullRemote 靠它跳过拉取，防止删了又拉回来）。
+  //    每次迭代重读最新 tombstone：删除动作可能发生在本轮同步进行期间，
+  //    用开始时的快照会漏掉它——刚删的会话会被当成普通变更推回云端。
   const cached = await getCloudManifest();
   const knownRemote = new Set(cached ? Object.keys(cached.convs) : []);
-  const localTombstones = await getLocalTombstones();
-  let tombstoneChanged = false;
   for (const convId of Object.keys(manifest.convs)) {
     if (localIds.has(convId)) continue;
-    if (!knownRemote.has(convId) && !localTombstones.convs.includes(convId)) continue;
+    const tombstones = await getLocalTombstones();
+    const localDeleted = tombstones.convs.some(t => t.id === convId);
+    if (!knownRemote.has(convId) && !localDeleted) continue;
     if (manifest.tombstones.convs.includes(convId)) continue;
     manifest.tombstones.convs.push(convId);
     delete manifest.convs[convId];
-    if (!localTombstones.convs.includes(convId)) {
-      localTombstones.convs.push(convId);
-      tombstoneChanged = true;
+    if (!localDeleted) {
+      // 缓存清单里已知、本地却已消失且无删除记录：视为本机删过，补记
+      // tombstone（at 取缓存值，撤销判定退化为缓存对比，保持原行为）
+      await updateLocalTombstones(t => {
+        if (!t.convs.some(x => x.id === convId)) {
+          t.convs.push({ id: convId, at: cached?.convs[convId] ?? 0 });
+        }
+      });
     }
     result.deletedConvs += 1;
     // 云端对象清理失败只警告、不阻塞 tombstone 写回——否则删除永远无法
@@ -196,7 +202,6 @@ export async function pushLocal(
       console.warn(`[byoc] 会话 ${convId} 云端对象清理失败（下轮重试）`, e);
     }
   }
-  if (tombstoneChanged) await setLocalTombstones(localTombstones);
 
   // 2. 变更会话
   const targets = localConvs.filter(c => c.updatedAt > (c.syncedAt ?? 0));
@@ -276,10 +281,9 @@ export async function pushLocal(
   for (const id of manifest.historyIds) {
     if (!historyIds.includes(id) && !manifest.tombstones.history.includes(id)) {
       manifest.tombstones.history.push(id);
-      if (!localTombstones.history.includes(id)) {
-        localTombstones.history.push(id);
-        tombstoneChanged = true;
-      }
+      await updateLocalTombstones(t => {
+        if (!t.history.includes(id)) t.history.push(id);
+      });
     }
   }
   // 本地重新有了的条目从 tombstone 移除（删除回退，数据优先于删除）
@@ -301,10 +305,9 @@ export async function pushLocal(
   for (const id of manifest.favIds) {
     if (!favIds.includes(id) && !manifest.tombstones.favs.includes(id)) {
       manifest.tombstones.favs.push(id);
-      if (!localTombstones.favs.includes(id)) {
-        localTombstones.favs.push(id);
-        tombstoneChanged = true;
-      }
+      await updateLocalTombstones(t => {
+        if (!t.favs.includes(id)) t.favs.push(id);
+      });
     }
   }
   manifest.tombstones.favs = manifest.tombstones.favs.filter(
@@ -324,10 +327,9 @@ export async function pushLocal(
   for (const id of manifest.roleIds ?? []) {
     if (!roleIds.includes(id) && !(manifest.tombstones.roles ?? []).includes(id)) {
       (manifest.tombstones.roles ??= []).push(id);
-      if (!localTombstones.roles.includes(id)) {
-        localTombstones.roles.push(id);
-        tombstoneChanged = true;
-      }
+      await updateLocalTombstones(t => {
+        if (!t.roles.includes(id)) t.roles.push(id);
+      });
     }
   }
   manifest.tombstones.roles = (manifest.tombstones.roles ?? []).filter(
@@ -339,7 +341,6 @@ export async function pushLocal(
   await markRolesSynced(roles, now);
 
   // 6. 重写清单
-  if (tombstoneChanged) await setLocalTombstones(localTombstones);
   manifest.updatedAt = Date.now();
   await client.putObject(syncKey(cfg.prefix, 'manifest.json'), jsonBlob(manifest));
   await setCloudManifest(manifest);
@@ -407,7 +408,9 @@ export async function pullRemote(
   //    → 记本地 tombstone（否则下面"拉缺失"会把刚删的又拉回来）。
   //    缓存清单里没有的是别处新建、本机还没拉过的，绝不能当删除处理。
   //    云端 updatedAt 超过缓存记录的说明删除后又有新数据，数据优先，不记。
-  const localTombstones = await getLocalTombstones();
+  //    用事务化更新（读-改-写原子）：删除动作可能与本轮同步并发发生，
+  //    快照式"读→改→整体写回"会把 recordLocalDeletions 刚写入的记录覆盖掉，
+  //    导致拉取阶段看不到 tombstone、把刚删的会话又拉回来。
   const cached = await getCloudManifest();
   const cachedConvs = new Map<string, number>(
     cached ? Object.entries(cached.convs) : []
@@ -419,38 +422,35 @@ export async function pullRemote(
   const localHistIds = new Set((await listStoredImageHistory()).map(h => h.id));
   const localFavIds = new Set((await listStoredFavorites()).map(f => f.id));
   const localRoleIds = new Set((await listStoredRoles()).map(r => r.id));
-  let tombstoneChanged = false;
   for (const convId of Object.keys(manifest.convs)) {
     if (localConvIds.has(convId)) continue;
     if (!cachedConvs.has(convId)) continue;
     if (manifest.convs[convId] > (cachedConvs.get(convId) ?? 0)) continue;
-    if (!localTombstones.convs.includes(convId)) {
-      localTombstones.convs.push(convId);
-      tombstoneChanged = true;
-    }
+    // at 取缓存记录值：撤销判定时 max(at, cachedAt) = cachedAt，退化为缓存对比
+    await updateLocalTombstones(t => {
+      if (!t.convs.some(x => x.id === convId)) {
+        t.convs.push({ id: convId, at: cachedConvs.get(convId) ?? 0 });
+      }
+    });
   }
   for (const id of manifest.historyIds) {
     if (localHistIds.has(id) || !cachedHistIds.has(id)) continue;
-    if (!localTombstones.history.includes(id)) {
-      localTombstones.history.push(id);
-      tombstoneChanged = true;
-    }
+    await updateLocalTombstones(t => {
+      if (!t.history.includes(id)) t.history.push(id);
+    });
   }
   for (const id of manifest.favIds) {
     if (localFavIds.has(id) || !cachedFavIds.has(id)) continue;
-    if (!localTombstones.favs.includes(id)) {
-      localTombstones.favs.push(id);
-      tombstoneChanged = true;
-    }
+    await updateLocalTombstones(t => {
+      if (!t.favs.includes(id)) t.favs.push(id);
+    });
   }
   for (const id of manifest.roleIds ?? []) {
     if (localRoleIds.has(id) || !cachedRoleIds.has(id)) continue;
-    if (!localTombstones.roles.includes(id)) {
-      localTombstones.roles.push(id);
-      tombstoneChanged = true;
-    }
+    await updateLocalTombstones(t => {
+      if (!t.roles.includes(id)) t.roles.push(id);
+    });
   }
-  if (tombstoneChanged) await setLocalTombstones(localTombstones);
 
   // 1. tombstone：删本地对应记录（云端已确认删除，顺带清本机删除记录）
   for (const convId of manifest.tombstones.convs) {
@@ -458,33 +458,28 @@ export async function pullRemote(
       await deleteConversation(convId);
       result.deletedConvs += 1;
     }
-    if (localTombstones.convs.includes(convId)) {
-      localTombstones.convs = localTombstones.convs.filter(x => x !== convId);
-      tombstoneChanged = true;
-    }
+    await updateLocalTombstones(t => {
+      t.convs = t.convs.filter(x => x.id !== convId);
+    });
   }
   for (const id of manifest.tombstones.history) {
     await deleteImageHistoryItem(id);
-    if (localTombstones.history.includes(id)) {
-      localTombstones.history = localTombstones.history.filter(x => x !== id);
-      tombstoneChanged = true;
-    }
+    await updateLocalTombstones(t => {
+      t.history = t.history.filter(x => x !== id);
+    });
   }
   for (const id of manifest.tombstones.favs) {
     await removeFavorite(id);
-    if (localTombstones.favs.includes(id)) {
-      localTombstones.favs = localTombstones.favs.filter(x => x !== id);
-      tombstoneChanged = true;
-    }
+    await updateLocalTombstones(t => {
+      t.favs = t.favs.filter(x => x !== id);
+    });
   }
   for (const id of manifest.tombstones.roles ?? []) {
     await deleteRole(id);
-    if (localTombstones.roles.includes(id)) {
-      localTombstones.roles = localTombstones.roles.filter(x => x !== id);
-      tombstoneChanged = true;
-    }
+    await updateLocalTombstones(t => {
+      t.roles = t.roles.filter(x => x !== id);
+    });
   }
-  if (tombstoneChanged) await setLocalTombstones(localTombstones);
 
   // 2. 会话
   const convIds = Object.keys(manifest.convs);
@@ -492,14 +487,19 @@ export async function pullRemote(
   for (let i = 0; i < convIds.length; i++) {
     const convId = convIds[i];
     const cloudUpdatedAt = manifest.convs[convId];
-    if (localTombstones.convs.includes(convId)) {
+    // 每次重读最新 tombstone：删除动作可能发生在本轮同步开始之后，
+    // 用快照判断会把刚删的会话拉回来（"删了又拉"）。
+    const tomb = (await getLocalTombstones()).convs.find(t => t.id === convId);
+    if (tomb) {
       const cachedAt = cachedConvs.get(convId);
-      // 本机已删：缓存清单里没有该会话（缓存丢失等）或云端没有更新 →
-      // 保持删除（push 阶段会清云端对象）；
-      // 云端 updatedAt 晚于缓存记录 → 其他设备恢复了会话，数据优先，撤销删除。
-      if (cachedAt === undefined || cloudUpdatedAt <= cachedAt) continue;
-      localTombstones.convs = localTombstones.convs.filter(x => x !== convId);
-      await setLocalTombstones(localTombstones);
+      // 本机已删：缓存清单里没有该会话（缓存丢失等）→ 保持删除；
+      // 云端 updatedAt 晚于「删除时刻」且晚于缓存记录 → 删除之后其他设备
+      // 恢复了会话（新数据），数据优先，撤销删除；否则保持删除（push 阶段
+      // 会清云端对象）。at=0 的旧记录（无删除时刻）退化为缓存对比。
+      if (cachedAt === undefined || cloudUpdatedAt <= Math.max(tomb.at, cachedAt)) continue;
+      await updateLocalTombstones(t => {
+        t.convs = t.convs.filter(x => x.id !== convId);
+      });
     }
     const local = await getConversation(convId);
     if (local && (local.syncedAt ?? 0) >= cloudUpdatedAt) continue; // 已是最新
@@ -523,7 +523,8 @@ export async function pullRemote(
   const localHist = new Map((await listStoredImageHistory()).map(h => [h.id, h]));
   const histStat = { blobCount: 0 };
   for (const id of histIndex) {
-    if (localTombstones.history.includes(id)) continue; // 本机已删，不拉
+    const tombstones = await getLocalTombstones();
+    if (tombstones.history.includes(id)) continue; // 本机已删，不拉
     if (localHist.has(id)) continue;
     const raw = await client.getObject(syncKey(cfg.prefix, 'history', `${id}.json`));
     if (!raw) continue;
@@ -538,7 +539,8 @@ export async function pullRemote(
   const localFavs = new Map((await listStoredFavorites()).map(f => [f.id, f]));
   const favStat = { blobCount: 0 };
   for (const id of favIndex) {
-    if (localTombstones.favs.includes(id)) continue; // 本机已删，不拉
+    const tombstones = await getLocalTombstones();
+    if (tombstones.favs.includes(id)) continue; // 本机已删，不拉
     if (localFavs.has(id)) continue;
     const raw = await client.getObject(syncKey(cfg.prefix, 'favs', `${id}.json`));
     if (!raw) continue;
@@ -554,7 +556,8 @@ export async function pullRemote(
   const roleIndex = await readIndex(client, cfg, 'roles');
   const localRoles = new Map((await listStoredRoles()).map(r => [r.id, r]));
   for (const id of roleIndex) {
-    if (localTombstones.roles.includes(id)) continue; // 本机已删，不拉
+    const tombstones = await getLocalTombstones();
+    if (tombstones.roles.includes(id)) continue; // 本机已删，不拉
     if (localRoles.has(id)) continue;
     const raw = await client.getObject(syncKey(cfg.prefix, 'roles', `${id}.json`));
     if (!raw) continue;

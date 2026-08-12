@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PortAI</string>
+    <string name="title_activity_main">PortAI</string>
+    <string name="package_name">com.portai.app</string>
+    <string name="custom_url_scheme">com.portai.app</string>
+</resources>

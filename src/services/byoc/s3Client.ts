@@ -54,7 +54,7 @@ function awsUriEncode(value: string): string {
 /**
  * canonical query 编码：AWS UriEncode 标准规则，斜杠也要编码为 %2F。
  * 与 URI 不同——腾讯云 COS 严格按此验签，若 query 值里的斜杠保留原样
- * （如 prefix=aishop/），会报 SignatureDoesNotMatch（已实测定位）。
+ * （如 prefix=PortAI/），会报 SignatureDoesNotMatch（已实测定位）。
  */
 function awsQueryEncode(value: string): string {
   return encodeURIComponent(value).replace(/[!'()*]/g, c =>

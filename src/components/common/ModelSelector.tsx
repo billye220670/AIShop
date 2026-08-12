@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Settings2 } from 'lucide-react';
+import { Settings2, ChevronDown } from 'lucide-react';
+import { haptic } from '../../utils/haptics';
 import ModelBottomSheet from './ModelBottomSheet';
 import type { Model } from '../../types';
 import type { RoleData } from '../../db';
@@ -54,6 +55,8 @@ const GROUP_ORDER = ['Anthropic', 'OpenAI', 'Google', 'xAI', '国内模型'];
 
 // 需要圆形背景的深色图标 provider
 const DARK_ICON_PROVIDERS = ['OpenAI', 'xAI', 'Xiaomi'];
+// 仅浅色模式需要纯黑圆形背景的 provider（Kimi 白底彩色图标）
+const BLACK_BG_PROVIDERS = ['Moonshot'];
 
 function getProviderIcon(provider: string): string | null {
   const file = PROVIDER_ICON_MAP[provider];
@@ -93,6 +96,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
 
   // 打开菜单：同步挂载 DOM
   const toggle = () => {
+    haptic();
     // 如果是 compact 模式，打开 bottom sheet
     if (compact) {
       setShowBottomSheet(true);
@@ -219,8 +223,8 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
           }`}
         >
           {icon ? (
-            DARK_ICON_PROVIDERS.includes(model.provider) ? (
-              <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-white/70">
+            DARK_ICON_PROVIDERS.includes(model.provider) || BLACK_BG_PROVIDERS.includes(model.provider) ? (
+              <span className={`w-5 h-5 shrink-0 flex items-center justify-center rounded-full ${BLACK_BG_PROVIDERS.includes(model.provider) ? 'model-icon-bg-black' : 'model-icon-bg bg-white/70'}`}>
                 <img src={icon} alt={model.provider} className="w-3 h-3" />
               </span>
             ) : (
@@ -238,9 +242,9 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
   // 渲染触发器上的图标
   const renderTriggerIcon = () => {
     if (!currentIcon) return <span className="w-4 h-4 shrink-0" />;
-    if (DARK_ICON_PROVIDERS.includes(current.provider)) {
+    if (DARK_ICON_PROVIDERS.includes(current.provider) || BLACK_BG_PROVIDERS.includes(current.provider)) {
       return (
-        <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-white/70">
+        <span className={`w-5 h-5 shrink-0 flex items-center justify-center rounded-full ${BLACK_BG_PROVIDERS.includes(current.provider) ? 'model-icon-bg-black' : 'model-icon-bg bg-white/70'}`}>
           <img src={currentIcon} alt={current.provider} className="w-3 h-3" />
         </span>
       );
@@ -254,16 +258,18 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
         ref={buttonRef}
         type="button"
         onClick={toggle}
-        className={`flex items-center gap-2 text-sm cursor-pointer ${
-          compact
-            ? 'rounded-full bg-[var(--color-bg-button)]/80 text-white px-4 py-2 hover:bg-[var(--color-bg-button)] ml-0 transition-colors'
-            : 'bg-gray-700 text-white rounded-lg px-3 py-1.5 border border-gray-600 hover:border-gray-500 focus:outline-none focus:border-blue-500'
-        }`}
+        className={`flex items-center gap-2 text-sm cursor-pointer ${compact
+          ? 'rounded-full bg-[var(--color-bg-button)]/80 text-white px-4 py-2 hover:bg-[var(--color-bg-button)] ml-0 transition-colors'
+          : 'rounded-full h-9 bg-[var(--color-bg-button)]/80 px-4 hover:bg-[var(--color-bg-button)] transition-colors'}`}
       >
         {renderTriggerIcon()}
         <span className="whitespace-nowrap">{current.name}</span>
-        <div className="w-px h-4 bg-white/10" />
-        <Settings2 className="w-3.5 h-3.5" />
+        <div className="w-px h-5 bg-white/10" />
+        {compact ? (
+          <Settings2 className="w-3.5 h-3.5" />
+        ) : (
+          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        )}
       </button>
 
       {/* Compact 模式使用 Bottom Sheet */}

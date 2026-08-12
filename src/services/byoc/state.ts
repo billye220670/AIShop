@@ -47,21 +47,58 @@ export async function setCloudManifest(manifest: SyncManifestV1): Promise<void> 
  * 先拉后推时把刚删的又拉回来"——pullRemote 需要区分"本地删了"与
  * "从未拉过"，没有这份记录会把本地删除过的会话/历史/收藏重新拉回。
  */
+
+/** 会话删除记录：at 为删除时刻，用于判断"云端新数据是否晚于删除" */
+export interface ConvTombstone {
+  id: string;
+  at: number;
+}
+
 export interface LocalTombstones {
-  convs: string[];
+  convs: ConvTombstone[];
   history: string[];
   favs: string[];
   roles: string[];
 }
 
+/** 兼容旧格式（convs 为 string[]）：at 用 0，撤销判定时退化为缓存清单对比 */
+function normalizeTombstones(raw: LocalTombstones | undefined): LocalTombstones {
+  const t = raw ?? { convs: [], history: [], favs: [], roles: [] };
+  const convs = Array.isArray(t.convs)
+    ? (t.convs as unknown[]).map(item =>
+        typeof item === 'string' ? { id: item, at: 0 } : (item as ConvTombstone)
+      )
+    : [];
+  return { convs, history: t.history ?? [], favs: t.favs ?? [], roles: t.roles ?? [] };
+}
+
 export async function getLocalTombstones(): Promise<LocalTombstones> {
-  return (
-    (await kvGet<LocalTombstones>('localTombstones')) ?? { convs: [], history: [], favs: [], roles: [] }
-  );
+  return normalizeTombstones(await kvGet<LocalTombstones>('localTombstones'));
 }
 
 export async function setLocalTombstones(t: LocalTombstones): Promise<void> {
   await kvSet('localTombstones', t);
+}
+
+/**
+ * 事务化更新本地 tombstone：读-改-写在同一个 IDB 事务内完成。
+ *
+ * 旧实现是"读快照 → 改 → 整体写回"，同步（启动拉取/60 秒轮询/回前台）
+ * 与删除动作并发时，同步进程会用旧快照覆盖掉 recordLocalDeletions 刚写入
+ * 的删除记录，导致 pullRemote 看不到 tombstone、把已删会话又拉回来。
+ */
+export async function updateLocalTombstones(
+  fn: (t: LocalTombstones) => void
+): Promise<LocalTombstones> {
+  return withDB(async db => {
+    const tx = db.transaction('kv', 'readwrite');
+    const rec = await tx.store.get(KV_PREFIX + 'localTombstones');
+    const t = normalizeTombstones(rec?.value as LocalTombstones | undefined);
+    fn(t);
+    await tx.store.put({ key: KV_PREFIX + 'localTombstones', value: t });
+    await tx.done;
+    return t;
+  });
 }
 
 /** 最近一次成功同步时刻（UI 展示用） */

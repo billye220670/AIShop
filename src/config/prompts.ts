@@ -2,6 +2,7 @@
  * 系统提示词统一管理配置
  * 修改此文件即可更改所有 AI 模型的系统行为
  */
+import { getCachedCity } from '../services/locationService';
 
 /** 基础系统提示词（不含 Artifact 能力） */
 export const BASE_SYSTEM_PROMPT = `回复格式要求：
@@ -66,8 +67,9 @@ export function getSystemPrompt(key: keyof typeof SYSTEM_PROMPTS = 'default'): s
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 /**
- * 构建基础上下文信息块（时间、时区、语言、设备、当前模型），拼接到系统提示词最前面。
- * 应用目前没有登录/用户资料体系，因此仅提供浏览器可获取的环境信息。
+ * 构建基础上下文信息块（时间、时区、语言、设备、所在城市、当前模型），拼接到系统提示词最前面。
+ * 应用目前没有登录/用户资料体系，因此仅提供浏览器可获取的环境信息；
+ * 城市来自 locationService（IP 自动定位或设置页手动填写）。
  */
 export function buildContextInfo(modelName?: string): string {
   const now = new Date();
@@ -89,6 +91,7 @@ export function buildContextInfo(modelName?: string): string {
   const language = typeof navigator !== 'undefined' ? navigator.language : '未知';
   const isMobile = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
   const device = isMobile ? '移动设备' : '桌面设备';
+  const city = getCachedCity();
 
   const lines = [
     '【基础信息（供参考，非用户主动提供，不要在回复中主动提及）】',
@@ -96,6 +99,10 @@ export function buildContextInfo(modelName?: string): string {
     `用户语言偏好：${language}`,
     `设备类型：${device}`,
   ];
+  if (city) {
+    // 天气、出行等本地实时问题需要知道用户所在城市（IP 自动定位或手动设置）
+    lines.push(`用户所在城市：${city}`);
+  }
   if (modelName) {
     lines.push(`当前对话模型：${modelName}`);
   }

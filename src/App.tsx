@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
+import { App as CapApp } from '@capacitor/app';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import MainLayout from './components/layout/MainLayout';
 import ChatPanel from './components/chat/ChatPanel';
+import HistoryPanel from './components/chat/HistoryPanel';
 import ImagePanel from './components/image/ImagePanel';
 import SettingsPanel from './components/settings/SettingsPanel';
 import FavoritesPanel from './components/artifact/FavoritesPanel';
@@ -11,6 +14,8 @@ import { CHAT_MODELS } from './config/models';
 import { loadTheme, loadMode } from './services/storage';
 import { requestPersistentStorage } from './utils/pwa';
 import { scheduleAutoSync, safeSync, BYOC_SYNC_DONE_EVENT } from './services/byoc';
+import { useDeviceMode } from './platform/useDeviceMode';
+import { isNativePlatform } from './platform/capabilities';
 import { messageCountOf } from './utils/conversationView';
 import type { TabMode } from './types';
 
@@ -27,6 +32,32 @@ function App() {
       const darkColor = theme === 'purple' ? '#0d0a1a' : '#121211';
       meta.content = mode === 'light' ? '#f5f5f7' : darkColor;
     }
+    // Android 壳：状态栏颜色与文字明暗跟随应用主题
+    if (isNativePlatform()) {
+      const darkColor = theme === 'purple' ? '#0d0a1a' : '#121211';
+      void StatusBar.setStyle({ style: mode === 'light' ? Style.Dark : Style.Light });
+      void StatusBar.setBackgroundColor({ color: mode === 'light' ? '#f5f5f7' : darkColor });
+      // 读取真实状态栏高度（dp，Android WebView 中 1dp = 1 css px）注入 CSS 变量：
+      // edge-to-edge 下 env(safe-area-inset-top) 在 WebView 中不可靠，必须显式获取
+      void StatusBar.getInfo().then(info => {
+        if (info.height > 0) {
+          document.documentElement.style.setProperty('--status-bar-height', `${info.height}px`);
+        }
+      });
+    }
+  }, []);
+
+  // Android 壳返回键：先发事件给布局层关闭已打开的 UI（侧边栏等），未消费则最小化到后台
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    const listener = CapApp.addListener('backButton', () => {
+      const evt = new CustomEvent('back-requested', { cancelable: true });
+      if (!window.dispatchEvent(evt)) return; // 已消费：布局层关闭了某个面板
+      void CapApp.minimizeApp();
+    });
+    return () => {
+      void listener.then(l => l.remove());
+    };
   }, []);
 
   // 申请持久化存储，降低数据被系统回收的概率。
@@ -39,6 +70,9 @@ function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState<TabMode>('chat');
+  // 桌面模式右侧历史记录面板开关
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const mode = useDeviceMode();
 
   const chat = useChat();
   const { favorites, isFavorite, toggleFavorite, removeFavorite, renameFavorite } = useFavoriteArtifacts();
@@ -52,6 +86,11 @@ function App() {
     window.addEventListener(BYOC_SYNC_DONE_EVENT, handler);
     return () => window.removeEventListener(BYOC_SYNC_DONE_EVENT, handler);
   }, [chat.reloadConversations, chat.refreshRoles]);
+
+  // 桌面模式历史面板打开时主动同步一次（与移动端抽屉侧边栏打开行为一致）
+  useEffect(() => {
+    if (historyOpen) void safeSync();
+  }, [historyOpen]);
 
   const activeConversation = chat.conversations.find(
     c => c.id === chat.activeConversationId
@@ -87,6 +126,7 @@ function App() {
             stopGeneration={chat.stopGeneration}
             conversationTitle={conversationTitle}
             conversation={activeConversation}
+            onToggleHistory={() => setHistoryOpen(v => !v)}
             onNewConversation={chat.newConversation}
             streamingArtifact={chat.streamingArtifact}
             regenerateMessage={chat.regenerateMessage}
@@ -102,6 +142,20 @@ function App() {
             onUpdateSegment={(segmentId, summary) => { if (chat.activeConversationId) chat.updateSegment(chat.activeConversationId, segmentId, summary); }}
             openSegmentIdRequest={openSegmentIdRequest}
             onOpenSegmentIdRequestHandled={() => setOpenSegmentIdRequest(null)}
+            models={CHAT_MODELS}
+            selectedModel={activeConversation?.selectedModel || CHAT_MODELS[0].id}
+            onModelChange={chat.setSelectedModel}
+            roles={chat.roles}
+            selectedRoleId={chat.selectedRoleId}
+            onRoleSelect={chat.setSelectedRole}
+            onRolesChanged={chat.refreshRoles}
+            realUsage={chat.realUsageTotals}
+            contextLimit={chat.contextUsage.limit}
+            isCompacting={chat.isCompacting}
+            isAwaitingUsage={chat.isLoading}
+            onCompactActive={handleCompactActive}
+            onOpenSegment={setOpenSegmentIdRequest}
+            onDeleteSegment={(segmentId) => { if (chat.activeConversationId) chat.revertSegment(chat.activeConversationId, segmentId); }}
           />
         );
       case 'image':
@@ -164,6 +218,27 @@ function App() {
               ? { label: '查看', onClick: () => setOpenSegmentIdRequest(compactToast.segmentId!) }
               : undefined
           }
+        />
+      )}
+      {/* 桌面模式右侧历史记录面板（fixed 定位挂在 App 层，不受布局裁剪；移动端仍用抽屉侧边栏） */}
+      {mode === 'desktop' && (
+        <HistoryPanel
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          conversations={chat.conversations}
+          activeConversationId={chat.activeConversationId}
+          onSwitchConversation={(id) => {
+            // 历史会话属于聊天：切换时回到聊天模式并收起面板
+            setActiveTab('chat');
+            chat.switchConversation(id);
+            setHistoryOpen(false);
+          }}
+          onNewConversation={chat.newConversation}
+          onDeleteConversation={chat.deleteConversation}
+          onDeleteConversations={chat.deleteConversations}
+          onToggleConversationFavorite={chat.toggleConversationFavorite}
+          onRenameConversation={chat.renameConversation}
+          onRefreshConversations={chat.reloadConversations}
         />
       )}
     </>

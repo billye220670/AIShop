@@ -19,12 +19,10 @@
 
 ## 更新摘要
 **所做更改**
-- 增强了角色数据同步功能，新增自动角色变更检测机制
-- 实现了角色删除传播功能，通过本地tombstone确保跨设备删除一致性
-- 添加了角色同步状态计数功能，支持精确的待同步数量统计
-- 新增了rolesRef状态变量用于跟踪角色变更历史
-- 实现了recordLocalRoleDeletions()函数处理本地角色删除检测
-- 完善了markRolesSynced()函数批量标记角色同步状态
+- 增强了putStoredMessage函数，现在显式设置updatedAt和syncedAt字段为当前本地时间
+- 防止无限同步循环并改善本地与云端消息状态的冲突解决
+- 通过更新时间戳确保消息同步的收敛性和稳定性
+- 增强了消息同步的可靠性，避免云端seq错乱导致的覆盖问题
 
 ## 目录
 1. [简介](#简介)
@@ -68,7 +66,7 @@ USECHAT["角色变更检测<br/>useChat.ts"] --> API
 
 **图表来源**
 - [src/services/byoc/index.ts:1-239](file://src/services/byoc/index.ts#L1-L239)
-- [src/services/byoc/incrementalSync.ts:1-734](file://src/services/byoc/incrementalSync.ts#L1-L734)
+- [src/services/byoc/incrementalSync.ts:1-737](file://src/services/byoc/incrementalSync.ts#L1-L737)
 - [src/services/byoc/backupSync.ts:1-69](file://src/services/byoc/backupSync.ts#L1-L69)
 - [src/services/byoc/state.ts:1-103](file://src/services/byoc/state.ts#L1-L103)
 - [src/services/settingsService.ts:1-115](file://src/services/settingsService.ts#L1-L115)
@@ -91,7 +89,7 @@ USECHAT["角色变更检测<br/>useChat.ts"] --> API
 
 章节来源
 - [src/services/byoc/index.ts:1-239](file://src/services/byoc/index.ts#L1-L239)
-- [src/services/byoc/incrementalSync.ts:1-734](file://src/services/byoc/incrementalSync.ts#L1-L734)
+- [src/services/byoc/incrementalSync.ts:1-737](file://src/services/byoc/incrementalSync.ts#L1-L737)
 - [src/services/byoc/backupSync.ts:1-69](file://src/services/byoc/backupSync.ts#L1-L69)
 - [src/services/byoc/state.ts:1-103](file://src/services/byoc/state.ts#L1-L103)
 - [src/services/settingsService.ts:1-115](file://src/services/settingsService.ts#L1-L115)
@@ -204,7 +202,7 @@ S1 --> Z["结束"]
 - [src/services/byoc/incrementalSync.ts:139-323](file://src/services/byoc/incrementalSync.ts#L139-L323)
 
 章节来源
-- [src/services/byoc/incrementalSync.ts:1-734](file://src/services/byoc/incrementalSync.ts#L1-L734)
+- [src/services/byoc/incrementalSync.ts:1-737](file://src/services/byoc/incrementalSync.ts#L1-L737)
 
 ### 全量备份层（backupSync.ts）
 - 备份：构建应用内备份文件（自包含 JSON），以时间戳命名上传至 backups 目录。
@@ -273,6 +271,29 @@ S1 --> Z["结束"]
 章节来源
 - [src/services/settingsService.ts:105-113](file://src/services/settingsService.ts#L105-L113)
 
+### 消息同步增强（putStoredMessage函数更新）
+**重要更新**：putStoredMessage函数现在显式设置updatedAt和syncedAt字段为当前本地时间，这一改进解决了以下关键问题：
+
+- **防止无限同步循环**：通过将updatedAt设置为本地时间，避免了云端推送时刻恒小于云端对象lastModified导致的全量重拉覆盖问题。
+- **改善冲突解决**：当云端seq因任何原因错乱时，本地能够正确识别并避免被持续覆盖，实现了自愈能力。
+- **增强同步稳定性**：确保消息同步的收敛性，防止由于时间戳不一致导致的同步循环。
+
+```mermaid
+flowchart TD
+A["收到云端消息"] --> B["计算seq处理冲突"]
+B --> C["设置updatedAt = Date.now()"]
+C --> D["设置syncedAt = Date.now()"]
+D --> E["保存到IndexedDB"]
+E --> F["重建检索索引"]
+F --> G["完成同步"]
+```
+
+**图表来源**
+- [src/services/byoc/incrementalSync.ts:643-672](file://src/services/byoc/incrementalSync.ts#L643-L672)
+
+章节来源
+- [src/services/byoc/incrementalSync.ts:643-672](file://src/services/byoc/incrementalSync.ts#L643-L672)
+
 ## 依赖关系分析
 - 入口模块依赖：
   - settingsService 获取/更新 BYOC 配置
@@ -334,6 +355,9 @@ USECHAT["useChat.ts"] --> IDX
 - **增强的角色同步性能**：
   - **markRolesSynced() 函数批量标记角色同步状态，减少数据库操作次数**。
   - **rolesRef 状态变量避免重复的角色变更检测**。
+- **消息同步性能优化**：
+  - **putStoredMessage函数通过设置本地时间戳，避免了不必要的重复同步**。
+  - **减少了由于时间戳不一致导致的无效同步操作**。
 
 [本节为通用指导，无需特定文件来源]
 
@@ -358,6 +382,11 @@ USECHAT["useChat.ts"] --> IDX
   - 排查：确认 manifest.roleIds 字段存在；检查 roles/index.json 是否正确更新；验证角色 tombstone 机制是否正常工作；**检查 rolesRef 状态变量是否正确跟踪角色变更**。
   - 现象：角色删除未传播到其他设备。
   - 排查：确认 recordLocalRoleDeletions() 函数被正确调用；检查本地 tombstones.roles 是否正确记录删除；**验证 useChat 中的角色变更检测逻辑是否正常工作**。
+- **消息同步问题**：
+  - 现象：出现无限同步循环或消息被反复覆盖。
+  - 排查：确认putStoredMessage函数正确设置了updatedAt和syncedAt为本地时间；检查云端seq是否出现错乱；验证消息同步的时间戳处理逻辑。
+  - 现象：消息同步后无法自愈。
+  - 排查：确认putStoredMessage函数中的时间戳设置逻辑；检查云端对象lastModified与本地updatedAt的关系；验证同步收敛机制是否正常工作。
 
 章节来源
 - [src/services/byoc/index.ts:40-54](file://src/services/byoc/index.ts#L40-L54)
@@ -371,7 +400,7 @@ USECHAT["useChat.ts"] --> IDX
 - [test-byoc-s3.mjs:1-86](file://test-byoc-s3.mjs#L1-L86)
 
 ## 结论
-本 BYOC 系统以"清单驱动 + 增量同步 + 全量备份"的组合，实现了在浏览器端对任意 S3 兼容存储的安全、可靠、低侵入的数据同步。**最新的增强功能包括全面的角色数据自动同步**，通过现有的 BYOC 基础设施，系统现在能够无缝同步用户的自定义角色（系统提示词预设）。通过 rolesRef 状态变量跟踪角色变更、recordLocalRoleDeletions() 函数处理本地角色删除、markRolesSynced() 函数批量标记角色同步状态等改进，系统提供了更完善的角色同步体验。通过 tombstone 与本地 tombstone 的配合，删除可跨设备传播；通过 Web Locks 与 mapLimit，保障并发与限流；通过自动调度，提升用户体验。建议在生产环境结合服务端日志与监控，持续优化并发度与重试策略。
+本 BYOC 系统以"清单驱动 + 增量同步 + 全量备份"的组合，实现了在浏览器端对任意 S3 兼容存储的安全、可靠、低侵入的数据同步。**最新的增强功能包括全面的角色数据自动同步和消息同步稳定性改进**，通过现有的 BYOC 基础设施，系统现在能够无缝同步用户的自定义角色（系统提示词预设）。通过 rolesRef 状态变量跟踪角色变更、recordLocalRoleDeletions() 函数处理本地角色删除、markRolesSynced() 函数批量标记角色同步状态等改进，系统提供了更完善的角色同步体验。**特别是putStoredMessage函数的更新，通过显式设置updatedAt和syncedAt字段为当前本地时间，有效防止了无限同步循环并改善了本地与云端消息状态的冲突解决**。通过 tombstone 与本地 tombstone 的配合，删除可跨设备传播；通过 Web Locks 与 mapLimit，保障并发与限流；通过自动调度，提升用户体验。建议在生产环境结合服务端日志与监控，持续优化并发度与重试策略。
 
 [本节为总结性内容，无需特定文件来源]
 

@@ -17,7 +17,7 @@ export interface ByocConfig {
   endpoint: string;
   region: string;
   bucket: string;
-  /** 桶内对象统一前缀，默认 aishop */
+  /** 桶内对象统一前缀（写死 PortAI，不向用户暴露） */
   prefix: string;
   /** MinIO 等自建服务需要 path-style（endpoint/{bucket}/{key}）访问 */
   pathStyle: boolean;
@@ -27,13 +27,16 @@ export interface ByocConfig {
   lastSyncAt: number | null;
 }
 
+/** 桶内对象统一前缀：写死为 PortAI，不向用户暴露（多设备/多环境隔离靠独立 bucket） */
+export const BYOC_KEY_PREFIX = 'PortAI';
+
 export const DEFAULT_BYOC_CONFIG: ByocConfig = {
   enabled: false,
   provider: 'cos',
   endpoint: '',
   region: '',
   bucket: '',
-  prefix: 'aishop',
+  prefix: BYOC_KEY_PREFIX,
   pathStyle: false,
   accessKey: '',
   secretKey: '',

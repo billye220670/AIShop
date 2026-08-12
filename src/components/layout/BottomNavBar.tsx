@@ -1,5 +1,6 @@
 import { MessageSquare, Star, User } from 'lucide-react';
 import type { TabMode } from '../../types';
+import { isNativeAndroid } from '../../platform/capabilities';
 
 interface BottomNavBarProps {
   activeTab: TabMode;
@@ -14,7 +15,11 @@ const navItems: { id: TabMode; label: string; Icon: typeof MessageSquare }[] = [
 
 export default function BottomNavBar({ activeTab, onTabChange }: BottomNavBarProps) {
   return (
-    <div className="flex items-center justify-around shrink-0 bg-[var(--color-bg-base)] pb-[env(safe-area-inset-bottom,0px)]">
+    <div
+      className="flex items-center justify-around shrink-0 bg-[var(--color-bg-base)] pb-[env(safe-area-inset-bottom,0px)]"
+      // Android 壳：底部避让手势条（原生注入的 --native-inset-bottom）+ 额外 12px 视觉间距；其他端用 env() 兜底
+      style={isNativeAndroid() ? { paddingBottom: 'calc(var(--native-inset-bottom, env(safe-area-inset-bottom, 0px)) + 12px)' } : undefined}
+    >
       {navItems.map(item => {
         const isActive = activeTab === item.id;
         const Icon = item.Icon;

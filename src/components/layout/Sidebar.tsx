@@ -121,6 +121,7 @@ export default function Sidebar({
       setMenuOpenId(id);
       // 长按已选中的文本会残留，主动清掉
       window.getSelection?.()?.removeAllRanges();
+      // 与点击汉堡菜单图标一致的轻触感（键盘级），菜单弹出瞬间触发
       haptic();
     }, LONG_PRESS_MS);
   };

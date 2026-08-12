@@ -14,14 +14,15 @@
 - [MessageBubble.tsx（消息气泡组件）](file://src/components/chat/MessageBubble.tsx)
 - [incrementalSync.ts（增量同步）](file://src/services/byoc/incrementalSync.ts)
 - [state.ts（BYOC状态管理）](file://src/services/byoc/state.ts)
+- [monotonic.ts（单调递增时钟）](file://src/utils/monotonic.ts)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 新增角色变更检测机制，通过 rolesRef 状态变量维护角色列表快照
-- 实现角色元数据变更检测（名称、系统提示词、创建时间）
-- 增强角色同步流程，支持自动检测和传播角色变更
-- 集成本地墓碑记录机制，确保角色删除的可靠同步
+- **新增**：消息创建逻辑使用单调递增时钟(monotonicNow)替代Date.now()，确保用户消息和助手消息的时间戳严格递增
+- **新增**：解决IndexedDB排序问题，避免同毫秒时间戳导致的排序错误
+- **新增**：保证user < assistant恒成立、id恒唯一，提升数据一致性
+- **增强**：消息生命周期管理的时序可靠性
 
 ## 目录
 1. [简介](#简介)
@@ -36,10 +37,10 @@
 10. [附录：API 参考](#附录api-参考)
 
 ## 简介
-本文件为 useChat Hook 的状态管理文档，聚焦聊天状态设计、消息生命周期、流式 API 调用、网络请求与错误处理、会话管理与数据持久化、上下文压缩与自动保存、历史加载等。同时提供完整的 API 参考、错误处理策略、性能优化建议、调试技巧以及与其他组件和服务的集成方式说明。**最新更新**：集成了角色变更检测机制，通过智能对比角色列表快照，自动检测角色创建、删除和元数据变更，并触发相应的同步流程，确保多设备间角色数据的实时一致性。
+本文件为 useChat Hook 的状态管理文档，聚焦聊天状态设计、消息生命周期、流式 API 调用、网络请求与错误处理、会话管理与数据持久化、上下文压缩与自动保存、历史加载等。同时提供完整的 API 参考、错误处理策略、性能优化建议、调试技巧以及与其他组件和服务的集成方式说明。**最新更新**：集成了角色变更检测机制，通过智能对比角色列表快照，自动检测角色创建、删除和元数据变更，并触发相应的同步流程，确保多设备间角色数据的实时一致性；**重要改进**：消息创建逻辑已更新为使用单调递增时钟(monotonicNow)替代Date.now()，确保用户消息和助手消息的时间戳严格递增，解决IndexedDB排序问题。
 
 ## 项目结构
-useChat Hook 位于 src/hooks 下，负责整个聊天应用的核心状态与流程编排；类型定义在 src/types；流式 API 封装在 src/services/api.ts；本地小体积设置保存在 src/services/storage.ts；模型列表在 src/config/models.ts；**新增**：角色存储在 src/db/roleRepo.ts；UI 层通过 ChatPanel 和 MessageBubble 消费 Hook 暴露的状态与方法，并通过 ModelBottomSheet 进行角色和模型选择。**新增**：BYOC 同步服务通过 incrementalSync.ts 和 state.ts 提供角色数据的增量同步和本地墓碑记录功能。
+useChat Hook 位于 src/hooks 下，负责整个聊天应用的核心状态与流程编排；类型定义在 src/types；流式 API 封装在 src/services/api.ts；本地小体积设置保存在 src/services/storage.ts；模型列表在 src/config/models.ts；**新增**：角色存储在 src/db/roleRepo.ts；UI 层通过 ChatPanel 和 MessageBubble 消费 Hook 暴露的状态与方法，并通过 ModelBottomSheet 进行角色和模型选择。**新增**：BYOC 同步服务通过 incrementalSync.ts 和 state.ts 提供角色数据的增量同步和本地墓碑记录功能。**新增**：单调递增时钟工具 monotonic.ts 用于确保消息时间戳的唯一性和有序性。
 
 ```mermaid
 graph TB
@@ -51,16 +52,18 @@ Hook --> Models["模型配置<br/>models.ts"]
 Hook --> Roles["角色管理<br/>roleRepo.ts"]
 Hook --> BYOC["BYOC 同步<br/>incrementalSync.ts / state.ts"]
 Hook --> Utils["工具与上下文压缩<br/>buildApiMessages / compactPlan / tokenEstimate"]
+Hook --> Monotonic["单调递增时钟<br/>monotonic.ts"]
 UI --> RoleSelector["角色选择器<br/>ModelBottomSheet"]
 RoleSelector --> Hook
 ```
 
 **图表来源**
-- [useChat.ts:172-1650](file://src/hooks/useChat.ts#L172-L1650)
+- [useChat.ts:172-1680](file://src/hooks/useChat.ts#L172-L1680)
 - [roleRepo.ts:14-71](file://src/db/roleRepo.ts#L14-L71)
 - [ModelBottomSheet.tsx:128-671](file://src/components/common/ModelBottomSheet.tsx#L128-L671)
 - [incrementalSync.ts:316-335](file://src/services/byoc/incrementalSync.ts#L316-L335)
 - [state.ts:50-65](file://src/services/byoc/state.ts#L50-L65)
+- [monotonic.ts:1-17](file://src/utils/monotonic.ts#L1-L17)
 
 ## 核心组件
 - 聊天状态与生命周期
@@ -85,7 +88,7 @@ RoleSelector --> Hook
   - **新增**：角色管理方法：setSelectedRole、refreshRoles、rolesRef 变更检测
 
 **章节来源**
-- [useChat.ts:172-1650](file://src/hooks/useChat.ts#L172-L1650)
+- [useChat.ts:172-1680](file://src/hooks/useChat.ts#L172-L1680)
 - [index.ts:84-175](file://src/types/index.ts#L84-L175)
 
 ## 架构总览
@@ -95,6 +98,7 @@ useChat 作为状态中枢，协调 UI、API、存储与工具模块：
 - 发送消息：检查上下文水位并触发压缩（可配置），构造用户消息与占位助手消息，构建 API 消息（含压缩区间），**根据选中角色构建系统提示词**，可选联网搜索，调用 streamChat 流式输出，实时更新显示内容与 artifact，最终解析 suggestions/artifact 并写入真实用量
 - **新增**：角色变更检测：每次刷新角色列表时对比 rolesRef 快照，检测创建、删除和元数据变更
 - **新增**：自动同步：检测到角色变更时记录本地墓碑并触发防抖同步，确保跨设备一致性
+- **新增**：单调递增时间戳：使用 monotonicNow() 确保消息时间戳严格递增，解决 IndexedDB 排序问题
 - 持久化：diff 变化后异步落盘，页面隐藏/离开时 flushPendingWrites
 - 历史加载：切换会话按需 hydrate，向上滚动分页加载更早消息
 - 多版本：支持对同一消息进行重新生成或多模型对比，维护 versions 与 activeVersionIndex
@@ -103,12 +107,17 @@ useChat 作为状态中枢，协调 UI、API、存储与工具模块：
 sequenceDiagram
 participant UI as "ChatPanel"
 participant Hook as "useChat"
+participant Monotonic as "单调时钟"
 participant RoleMgr as "角色管理器"
 participant BYOC as "BYOC 同步"
 participant API as "streamChat"
 participant Store as "会话存储"
 participant DB as "IndexedDB"
 UI->>Hook : sendMessage(content, attachments)
+Hook->>Monotonic : monotonicNow() (用户消息)
+Monotonic-->>Hook : userTimestamp
+Hook->>Monotonic : monotonicNow() (助手消息)
+Monotonic-->>Hook : assistantTimestamp
 Hook->>RoleMgr : 获取选中角色(system prompt)
 RoleMgr-->>Hook : role.systemPrompt
 Hook->>Hook : 计算上下文水位/决定是否压缩
@@ -130,13 +139,60 @@ BYOC->>BYOC : 触发防抖同步
 ```
 
 **图表来源**
+- [useChat.ts:692-713](file://src/hooks/useChat.ts#L692-L713)
 - [useChat.ts:623-936](file://src/hooks/useChat.ts#L623-L936)
 - [useChat.ts:53-72](file://src/hooks/useChat.ts#L53-L72)
 - [useChat.ts:391-411](file://src/hooks/useChat.ts#L391-L411)
 - [api.ts:44-172](file://src/services/api.ts#L44-L172)
 - [state.ts:86-102](file://src/services/byoc/state.ts#L86-L102)
+- [monotonic.ts:12-16](file://src/utils/monotonic.ts#L12-L16)
 
 ## 详细组件分析
+
+### 单调递增时间戳系统
+**新增功能**：为解决 Date.now() 在同一毫秒内返回相同值导致的问题，引入了严格的单调递增时钟系统。这确保了用户消息和助手消息的时间戳严格递增，解决了 IndexedDB 排序问题。
+
+- **问题背景**
+  - Date.now() 在连续调用时可能返回相同值
+  - user 与 assistant 消息在同一毫秒创建时 timestamp 相等
+  - 所有按 timestamp 排序的路径失去区分度
+  - IndexedDB 索引按主键（id）排序时可能出现 '-assistant' < '-user' 的错误排序
+  - 依赖稳定排序的合并失去纠错能力
+
+- **解决方案**
+  - 实现 monotonicNow() 函数，保证每次调用至少 +1
+  - 维护全局 last 变量跟踪最后使用时间戳
+  - 使用 Math.max(now, last + 1) 确保严格递增
+  - 在消息创建时分别为用户消息和助手消息获取独立的时间戳
+
+- **应用场景**
+  - 用户消息创建：const userNow = monotonicNow();
+  - 助手消息创建：const assistantNow = monotonicNow();
+  - 确保 user < assistant 恒成立
+  - 保证 id 恒唯一（基于时间戳生成）
+
+```mermaid
+flowchart TD
+Start(["消息创建"]) --> UserMsg["创建用户消息"]
+UserMsg --> GetUserTime["调用 monotonicNow()"]
+GetUserTime --> UserTime["userTimestamp"]
+UserTime --> AssistantMsg["创建助手消息"]
+AssistantMsg --> GetAsstTime["调用 monotonicNow()"]
+GetAsstTime --> AsstTime["assistantTimestamp"]
+AsstTime --> Verify{"验证顺序"}
+Verify -- 正确 --> Success["消息创建成功"]
+Verify -- 错误 --> Error["抛出异常"]
+Success --> End(["完成"])
+Error --> End
+```
+
+**图表来源**
+- [useChat.ts:692-713](file://src/hooks/useChat.ts#L692-L713)
+- [monotonic.ts:12-16](file://src/utils/monotonic.ts#L12-L16)
+
+**章节来源**
+- [monotonic.ts:1-17](file://src/utils/monotonic.ts#L1-L17)
+- [useChat.ts:692-713](file://src/hooks/useChat.ts#L692-L713)
 
 ### 角色系统与个性化AI人格
 **新增功能**：角色系统允许用户创建和选择自定义AI人格，每个角色拥有独立的系统提示词，这些提示词会作为对话上下文的一部分发送给AI模型。**最新更新**：增强了角色变更检测机制，通过 rolesRef 状态变量维护角色列表快照，智能检测角色创建、删除和元数据变更。
@@ -206,6 +262,10 @@ TriggerSync --> End
   - 流式期间：逐块拼接 displayContent，实时更新最后一条 assistant 消息
   - 流式结束：清理 artifact 标记、去除多余反引号、解析 suggestions、记录 usage、关闭 isStreaming
   - 取消/失败：标记 stoppedByUser 或错误提示，保持已生成内容
+- **新增**：时间戳保证
+  - 使用 monotonicNow() 确保时间戳严格递增
+  - 用户消息和助手消息获得不同的时间戳
+  - 避免同毫秒创建导致的排序问题
 
 ```mermaid
 flowchart TD
@@ -224,11 +284,13 @@ Persist --> Done(["完成"])
 ```
 
 **图表来源**
+- [useChat.ts:692-713](file://src/hooks/useChat.ts#L692-L713)
 - [useChat.ts:623-936](file://src/hooks/useChat.ts#L623-L936)
 - [api.ts:44-172](file://src/services/api.ts#L44-L172)
 
 **章节来源**
 - [index.ts:84-175](file://src/types/index.ts#L84-L175)
+- [useChat.ts:692-713](file://src/hooks/useChat.ts#L692-L713)
 - [useChat.ts:623-936](file://src/hooks/useChat.ts#L623-L936)
 
 ### 流式 API 调用与网络请求管理
@@ -280,6 +342,7 @@ API-->>Hook : usage若有
 - 用户取消：AbortError，将最后一条 assistant 消息标记为 stoppedByUser，保留已有内容
 - 其他异常：设置 error 状态，并在消息中标注失败提示
 - **新增**：角色同步错误：记录本地墓碑确保删除操作不会丢失，即使同步失败也能通过轮询兜底
+- **新增**：时间戳错误处理：单调递增时钟确保时间戳始终有效，避免排序异常
 
 **章节来源**
 - [api.ts:102-118](file://src/services/api.ts#L102-L118)
@@ -293,6 +356,7 @@ API-->>Hook : usage若有
 - 历史加载：切换会话时按需 hydrate；向上滚动加载更多更早消息
 - 删除与会话重建：先删库再改 state，防止持久化副作用
 - **新增**：角色数据持久化：角色变更通过 BYOC 同步机制持久化，支持跨设备一致性
+- **新增**：时间戳持久化：单调递增时间戳确保持久化后的消息排序正确性
 
 **章节来源**
 - [useChat.ts:219-312](file://src/hooks/useChat.ts#L219-L312)
@@ -348,6 +412,7 @@ API-->>Hook : usage若有
   - 配置：CHAT_MODELS、BASE_SYSTEM_PROMPT、ARTIFACT_PROMPT
   - **新增**：角色管理：listRoles、createRole、deleteRole、newRoleId
   - **新增**：BYOC 同步：syncNow、getByocConfig、validateConfig、recordLocalDeletions、recordLocalRoleDeletions
+  - **新增**：单调递增时钟：monotonicNow
 - 耦合与内聚
   - 高内聚：消息生命周期、流式处理、压缩策略集中在 Hook
   - 低耦合：通过 services 与 utils 抽象网络、存储、压缩、估算等能力
@@ -361,6 +426,7 @@ Hook --> Models["config/models.ts"]
 Hook --> Roles["db/roleRepo.ts"]
 Hook --> BYOC["services/byoc/*"]
 Hook --> Utils["utils/* 与 services/*"]
+Hook --> Monotonic["utils/monotonic.ts"]
 UI["ChatPanel/MessageBubble"] --> Hook
 RoleSelector["ModelBottomSheet"] --> Hook
 ```
@@ -369,6 +435,7 @@ RoleSelector["ModelBottomSheet"] --> Hook
 - [useChat.ts:1-48](file://src/hooks/useChat.ts#L1-L48)
 - [roleRepo.ts:1-71](file://src/db/roleRepo.ts#L1-L71)
 - [ModelBottomSheet.tsx:128-671](file://src/components/common/ModelBottomSheet.tsx#L128-L671)
+- [monotonic.ts:1-17](file://src/utils/monotonic.ts#L1-L17)
 
 **章节来源**
 - [useChat.ts:1-48](file://src/hooks/useChat.ts#L1-L48)
@@ -384,6 +451,7 @@ RoleSelector["ModelBottomSheet"] --> Hook
 - **新增**：角色加载优化：角色列表懒加载，避免启动时阻塞
 - **新增**：变更检测优化：通过 rolesRef 快照避免不必要的同步触发，只在真正发生变更时记录墓碑并触发同步
 - **新增**：防抖同步：角色变更后 3 秒内合并多次变更成一次同步，减少网络开销
+- **新增**：时间戳优化：单调递增时钟避免重复时间戳计算，提升消息创建性能
 
 ## 故障排查指南
 - 无法获取 API Key：检查设置中 provider 与 apiKey 配置
@@ -395,6 +463,7 @@ RoleSelector["ModelBottomSheet"] --> Hook
 - **新增**：角色相关问题：检查角色列表加载、角色ID持久化、角色提示词格式验证
 - **新增**：角色同步问题：检查 BYOC 配置、网络连接、本地墓碑记录是否正确更新
 - **新增**：角色变更检测：确认 rolesRef 快照正确维护，变更检测逻辑正常工作
+- **新增**：时间戳问题：确认 monotonicNow() 正常工作，检查消息时间戳是否严格递增
 
 **章节来源**
 - [api.ts:57-59](file://src/services/api.ts#L57-L59)
@@ -402,9 +471,10 @@ RoleSelector["ModelBottomSheet"] --> Hook
 - [useChat.ts:750-805](file://src/hooks/useChat.ts#L750-L805)
 - [useChat.ts:320-344](file://src/hooks/useChat.ts#L320-L344)
 - [roleRepo.ts:48-67](file://src/db/roleRepo.ts#L48-L67)
+- [monotonic.ts:12-16](file://src/utils/monotonic.ts#L12-L16)
 
 ## 结论
-useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周期、流式输出、上下文压缩、会话持久化、联网搜索、多版本与多模型比较等核心功能。**最新更新**：集成了角色变更检测机制，通过 rolesRef 状态变量维护角色列表快照，智能检测角色创建、删除和元数据变更，并自动触发同步流程，确保多设备间角色数据的实时一致性。通过清晰的职责划分与模块化设计，实现了高性能、可扩展且易维护的聊天体验。
+useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周期、流式输出、上下文压缩、会话持久化、联网搜索、多版本与多模型比较等核心功能。**最新更新**：集成了角色变更检测机制，通过 rolesRef 状态变量维护角色列表快照，智能检测角色创建、删除和元数据变更，并自动触发同步流程，确保多设备间角色数据的实时一致性；**重要改进**：消息创建逻辑已更新为使用单调递增时钟(monotonicNow)替代Date.now()，确保用户消息和助手消息的时间戳严格递增，解决IndexedDB排序问题。通过清晰的职责划分与模块化设计，实现了高性能、可扩展且易维护的聊天体验。
 
 ## 附录：API 参考
 
@@ -431,7 +501,7 @@ useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周�
 - **新增**：rolesRef：useRef<RoleData[] | null>，角色列表快照引用
 
 **章节来源**
-- [useChat.ts:1597-1650](file://src/hooks/useChat.ts#L1597-L1650)
+- [useChat.ts:1597-1680](file://src/hooks/useChat.ts#L1597-L1680)
 - [index.ts:84-175](file://src/types/index.ts#L84-L175)
 - [roleRepo.ts:14-19](file://src/db/roleRepo.ts#L14-L19)
 
@@ -460,14 +530,14 @@ useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周�
 - **新增**：refreshRoles()：刷新角色列表并检测变更
 
 **章节来源**
-- [useChat.ts:623-1650](file://src/hooks/useChat.ts#L623-L1650)
+- [useChat.ts:647-1680](file://src/hooks/useChat.ts#L647-L1680)
 
 ### 返回值与副作用
 - sendMessage：无返回值；副作用包括更新消息、流式渲染、持久化、错误处理
 - 其他方法：多数为副作用操作，更新状态并持久化
 
 **章节来源**
-- [useChat.ts:623-1650](file://src/hooks/useChat.ts#L623-L1650)
+- [useChat.ts:647-1680](file://src/hooks/useChat.ts#L647-L1680)
 
 ### 使用示例（概念性）
 - 发送消息：调用 sendMessage 传入文本或包含图片的多部分内容
@@ -478,3 +548,4 @@ useChat Hook 提供了健壮的聊天状态管理能力，涵盖消息生命周�
 - **新增**：角色切换：调用 setSelectedRole 选择自定义角色，或传入空字符串使用默认角色
 - **新增**：角色管理：通过 refreshRoles 刷新角色列表，在UI中创建、删除和管理自定义角色
 - **新增**：角色同步：角色变更后自动触发防抖同步，确保跨设备一致性
+- **新增**：时间戳保证：消息创建时自动使用单调递增时间戳，确保排序正确性

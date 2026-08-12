@@ -25,6 +25,7 @@
   --color-scrollbar-thumb: rgb(64, 64, 60);
   --color-scrollbar-hover: rgb(88, 88, 83);
   --color-code-bg: rgb(18, 18, 17);
+  --color-ring-track: rgba(255, 255, 255, 0.15);
 }
 
 [data-theme="purple"] {
@@ -48,6 +49,7 @@
   --color-scrollbar-thumb: rgb(60, 56, 82);
   --color-scrollbar-hover: rgb(84, 78, 112);
   --color-code-bg: #161b22;
+  --color-ring-track: rgba(255, 255, 255, 0.15);
 }
 
 [data-theme="green"] {
@@ -71,6 +73,7 @@
   --color-scrollbar-thumb: rgb(64, 64, 60);
   --color-scrollbar-hover: rgb(88, 88, 83);
   --color-code-bg: rgb(18, 18, 17);
+  --color-ring-track: rgba(255, 255, 255, 0.15);
 }
 
 /* ================================================================
@@ -103,6 +106,7 @@
 
   /* --- 代码块背景 --- */
   --color-code-bg: #f1f1f4;
+  --color-ring-track: rgba(0, 0, 0, 0.12);
 
   /* ======== 覆盖组件中残留的硬编码 Tailwind 暗色类 ======== */
 
@@ -202,6 +206,22 @@
   /* bg-black/5 dark:bg-white/5 这类模式：data-mode 亮色时按浅色处理 */
   & .bg-black\/5  { background-color: rgba(0, 0, 0, 0.04); }
   & .bg-black\/10 { background-color: rgba(0, 0, 0, 0.06); }
+
+  /* 设置页（settings-panel 容器）：卡片背景与分割线比全局更淡一档 */
+  & .settings-panel .bg-white\/5  { background-color: rgba(0, 0, 0, 0.02); }
+  & .settings-panel .bg-white\/10 { background-color: rgba(0, 0, 0, 0.035); }
+  & .settings-panel .bg-white\/15 { background-color: rgba(0, 0, 0, 0.05); }
+  & .settings-panel .hover\:bg-white\/5:hover  { background-color: rgba(0, 0, 0, 0.02); }
+  & .settings-panel .hover\:bg-white\/10:hover { background-color: rgba(0, 0, 0, 0.035); }
+  & .settings-panel .active\:bg-white\/10:active { background-color: rgba(0, 0, 0, 0.035); }
+  & .settings-panel .active\:bg-white\/15:active { background-color: rgba(0, 0, 0, 0.05); }
+  /* 分割线 / 输入框边框：用更淡的黑色半透覆盖继承值 */
+  & .settings-panel { --color-border: rgba(0, 0, 0, 0.045); }
+
+  /* 模型图标圆形背景：浅色模式下深色图标（gpt/grok/小米）改纯白底 */
+  & .model-icon-bg { background-color: #ffffff; }
+  /* Kimi：仅浅色模式加纯黑圆形背景（深色模式保持无背景彩色图标） */
+  & .model-icon-bg-black { background-color: #000000; }
 }
 
 /* 全局：禁止页面级滚动与下拉刷新/橡皮筋效果，禁止缩放 */

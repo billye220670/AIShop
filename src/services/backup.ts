@@ -25,6 +25,9 @@ import {
   type StoredConversation,
   type StoredContextNode,
 } from '../db';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
+import { isNativePlatform } from '../platform/capabilities';
 import type { Message, MessageContent } from '../types';
 
 /** 备份文件格式版本。恢复时据此判断兼容性。 */
@@ -139,17 +142,38 @@ function timestampName(): string {
  *
  * 在 iOS 上「下载」会走系统分享面板，用户可以存到文件 App 或 iCloud Drive，
  * 那才是真正离开了浏览器沙箱、清除网站数据也带不走的地方。
+ *
+ * Android/iOS 壳（Capacitor）里 WebView 的 a.download 不可靠（可能静默失败或
+ * 落入系统下载目录），改为先写入应用缓存目录，再调起系统分享面板让用户自己存。
  */
 export async function exportBackup(
   opts: ExportOptions & { filename?: string } = {}
 ): Promise<void> {
   const backup = await buildBackup(opts);
+  const filename = opts.filename ?? `portai-backup-${timestampName()}.json`;
   const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
+
+  if (isNativePlatform()) {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    const saved = await Filesystem.writeFile({
+      path: filename,
+      data: dataUrl.split(',')[1],
+      directory: Directory.Cache,
+    });
+    await Share.share({ url: saved.uri, title: filename });
+    return;
+  }
+
   const url = URL.createObjectURL(blob);
   try {
     const a = document.createElement('a');
     a.href = url;
-    a.download = opts.filename ?? `portai-backup-${timestampName()}.json`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
