@@ -1,0 +1,533 @@
+import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+import { Star, X, ArrowLeft, Loader2, Pencil, Trash2, FileText, Image as ImageIcon, LayoutTemplate, Download } from 'lucide-react';
+import { isNativePlatform } from '../../platform/capabilities';
+import { useDeviceMode } from '../../platform/useDeviceMode';
+import type { AssetItem } from '../../types';
+import { haptic } from '../../utils/haptics';
+import PromptModal from '../common/PromptModal';
+import ConfirmModal from '../common/ConfirmModal';
+import BlobImage from '../common/BlobImage';
+import { useBlobUrl } from '../../hooks/useBlobUrl';
+import { getBlob, parseBlobRefUrl } from '../../db';
+
+interface LibraryPanelProps {
+  assets: AssetItem[];
+  onRemoveAsset: (id: string) => void;
+  onRenameAsset: (id: string, newTitle: string) => void;
+}
+
+type KindFilter = 'all' | AssetItem['kind'];
+
+const KIND_FILTERS: { id: KindFilter; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'artifact', label: '应用' },
+  { id: 'markdown', label: '文档' },
+  { id: 'image', label: '图片' },
+];
+
+const KIND_META: Record<AssetItem['kind'], { label: string; Icon: typeof FileText }> = {
+  artifact: { label: '应用', Icon: LayoutTemplate },
+  markdown: { label: '文档', Icon: FileText },
+  image: { label: '图片', Icon: ImageIcon },
+};
+
+function kindLabel(kind: AssetItem['kind']): string {
+  return KIND_META[kind].label;
+}
+
+/** 触发下载（与图片页同一套：aishop-blob: 地址先取出 blob 建临时 URL） */
+async function triggerDownload(url: string, name: string): Promise<void> {
+  const blobId = parseBlobRefUrl(url);
+  let href = url;
+  let temporary = false;
+  if (blobId) {
+    const record = await getBlob(blobId);
+    if (!record) return;
+    href = URL.createObjectURL(record.blob);
+    temporary = true;
+  }
+  try {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = name;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } finally {
+    if (temporary) setTimeout(() => URL.revokeObjectURL(href), 60_000);
+  }
+}
+
+/** markdown 预览：只读阅读视图 */
+function MarkdownPreviewView({ asset, onDownload }: { asset: AssetItem; onDownload: () => void }) {
+  return (
+    <div className="h-full overflow-auto">
+      <div className="max-w-3xl mx-auto px-4 py-6">
+        <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+            urlTransform={(url) => url}
+          >
+            {asset.content ?? ''}
+          </ReactMarkdown>
+        </div>
+        <button
+          onClick={onDownload}
+          className="mt-6 flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-[var(--color-bg-elevated)] hover:bg-[var(--color-bg-hover)] text-gray-300 transition-colors"
+        >
+          <Download className="w-4 h-4" />
+          下载 Markdown
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 图片预览：大图 + prompt */
+function ImagePreviewView({ asset, onDownload }: { asset: AssetItem; onDownload: () => void }) {
+  const src = useBlobUrl(asset.urls?.[0] ?? '');
+  return (
+    <div className="h-full overflow-auto flex flex-col items-center gap-4 p-6">
+      {src ? (
+        <img
+          src={src}
+          alt={asset.title}
+          className="max-w-full max-h-[70vh] object-contain rounded-lg bg-black/20"
+        />
+      ) : (
+        <div className="flex items-center justify-center h-[40vh]">
+          <Loader2 className="w-8 h-8 text-[var(--color-accent)] animate-spin" />
+        </div>
+      )}
+      <p className="text-sm text-gray-300 text-center max-w-lg break-words">{asset.title}</p>
+      <button
+        onClick={onDownload}
+        className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-[var(--color-bg-elevated)] hover:bg-[var(--color-bg-hover)] text-gray-300 transition-colors"
+      >
+        <Download className="w-4 h-4" />
+        下载图片
+      </button>
+    </div>
+  );
+}
+
+/** 预览内容分发：artifact 走 iframe，md/图片走阅读视图 */
+function PreviewBody({ asset }: { asset: AssetItem }) {
+  const safeName = asset.title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || 'asset';
+  if (asset.kind === 'artifact' && asset.artifact) {
+    return (
+      <iframe
+        srcDoc={asset.artifact.code}
+        sandbox="allow-scripts allow-forms allow-same-origin allow-downloads allow-popups allow-modals allow-pointer-lock"
+        allow="camera; microphone; fullscreen; clipboard-write; clipboard-read; autoplay; geolocation; accelerometer; gyroscope"
+        className="w-full h-full border-0 bg-white"
+        title={asset.title}
+      />
+    );
+  }
+  if (asset.kind === 'image') {
+    return (
+      <ImagePreviewView
+        asset={asset}
+        onDownload={() => {
+          const url = asset.urls?.[0];
+          if (url) void triggerDownload(url, `${safeName}.png`);
+        }}
+      />
+    );
+  }
+  return (
+    <MarkdownPreviewView
+      asset={asset}
+      onDownload={() => {
+        if (!asset.content) return;
+        const blob = new Blob([asset.content], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${safeName}.md`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }}
+    />
+  );
+}
+
+export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: LibraryPanelProps) {
+  const [filter, setFilter] = useState<KindFilter>('all');
+  const [previewItem, setPreviewItem] = useState<AssetItem | null>(null);
+  const [isEntering, setIsEntering] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 桌面端预览为沉浸式（悬浮返回按钮 + Esc 关闭），移动端保持顶部导航栏式返回
+  const isDesktop = useDeviceMode() === 'desktop';
+
+  // 长按上下文菜单
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<AssetItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AssetItem | null>(null);
+
+  // 长按逻辑
+  const LONG_PRESS_MS = 450;
+  const LONG_PRESS_MOVE_TOLERANCE = 10;
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  const visibleAssets = filter === 'all' ? assets : assets.filter(a => a.kind === filter);
+
+  const clearPressTimer = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+    pressOriginRef.current = null;
+  };
+
+  const handlePressStart = (id: string, e: React.PointerEvent) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    clearPressTimer();
+    pressOriginRef.current = { x: e.clientX, y: e.clientY };
+    pressTimerRef.current = setTimeout(() => {
+      pressTimerRef.current = null;
+      suppressClickRef.current = true;
+      setMenuOpenId(id);
+      window.getSelection?.()?.removeAllRanges();
+      haptic();
+    }, LONG_PRESS_MS);
+  };
+
+  const handlePressMove = (e: React.PointerEvent) => {
+    const origin = pressOriginRef.current;
+    if (!origin || !pressTimerRef.current) return;
+    const dx = Math.abs(e.clientX - origin.x);
+    const dy = Math.abs(e.clientY - origin.y);
+    if (dx > LONG_PRESS_MOVE_TOLERANCE || dy > LONG_PRESS_MOVE_TOLERANCE) {
+      clearPressTimer();
+    }
+  };
+
+  useEffect(() => () => clearPressTimer(), []);
+
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const handleClick = () => setMenuOpenId(null);
+    document.addEventListener('click', handleClick);
+    document.addEventListener('pointerdown', handleClick);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('pointerdown', handleClick);
+    };
+  }, [menuOpenId]);
+
+  const handleClose = () => {
+    setIsEntering(false);
+    // 等待动画结束后再真正关闭
+    setTimeout(() => {
+      setPreviewItem(null);
+      setIsLoading(false);
+    }, 300);
+  };
+
+  // 桌面端：Esc 关闭预览。
+  // - Web 下 window keydown 已够用（焦点不在 iframe 内时）
+  // - Electron 下焦点可能落在 iframe 内部，页面收不到键盘事件，改由主进程
+  //   before-input-event 捕获 Escape 后经 IPC 转发（onAppEscape）
+  useEffect(() => {
+    if (!previewItem || !isDesktop) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    const unsubscribe = window.electronAPI?.onAppEscape?.(handleClose);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      unsubscribe?.();
+    };
+  }, [previewItem, isDesktop]);
+
+  const handleOpenPreview = (item: AssetItem) => {
+    setPreviewItem(item);
+    setIsLoading(item.kind === 'artifact');
+    // 下一帧触发进入动画
+    requestAnimationFrame(() => {
+      setIsEntering(true);
+    });
+    // 延迟隐藏loading（给iframe时间加载）
+    if (item.kind === 'artifact') {
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 800);
+    }
+  };
+
+  // Preview 模式
+  if (previewItem) {
+    const MetaIcon = KIND_META[previewItem.kind].Icon;
+    return (
+      <div
+        className={`fixed inset-0 z-[100] bg-[var(--color-bg-base)] flex flex-col transition-transform duration-300 ease-out ${
+          isEntering ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        style={{ pointerEvents: isEntering ? 'auto' : 'none' }}
+      >
+        {/* 顶部导航栏：仅移动端显示；桌面端为沉浸式预览，返回按钮悬浮在内容左上角 */}
+        {!isDesktop && (
+          <div
+            className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-700/50 bg-[var(--color-bg-primary)]"
+            style={{
+              // 原生壳（Capacitor）edge-to-edge：预览 fixed 全屏覆盖，不经过 MainLayout，
+              // 需自身避让系统状态栏（高度由 MainActivity 注入的 --native-inset-top 提供）
+              ...(isNativePlatform() ? { paddingTop: 'var(--native-inset-top, var(--status-bar-height, env(safe-area-inset-top)))' } : {}),
+            }}
+          >
+            {/* 左侧：返回按钮 */}
+            <button
+              onClick={handleClose}
+              className="p-2 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10"
+              title="返回"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+
+            {/* 中间：标题 */}
+            <h1 className="absolute left-1/2 -translate-x-1/2 text-white font-medium text-base truncate max-w-[60%] flex items-center gap-1.5">
+              <MetaIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              {previewItem.title}
+            </h1>
+
+            {/* 右侧：占位保持布局平衡 */}
+            <div className="w-9" />
+          </div>
+        )}
+
+        {/* 内容 */}
+        <div className="flex-1 overflow-hidden relative">
+          {isLoading && (
+            <div className="absolute inset-0 bg-[var(--color-bg-base)] flex items-center justify-center z-10">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="w-8 h-8 text-[var(--color-accent)] animate-spin" />
+                <span className="text-sm text-gray-400">加载中...</span>
+              </div>
+            </div>
+          )}
+          {/* 桌面端：左上角悬浮返回按钮（Esc 等效）。
+              Electron 中顶栏 52px 为 -webkit-app-region: drag 拖拽区，会拦截覆盖其上的
+              （含更高 z-index 的）元素鼠标事件，必须显式声明 no-drag 才能点击 */}
+          {isDesktop && (
+            <button
+              onClick={handleClose}
+              className="absolute top-4 left-4 z-20 p-2.5 rounded-full bg-black/50 hover:bg-black/70 text-white shadow-lg backdrop-blur-sm transition-colors"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              title="返回（Esc）"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
+          <PreviewBody asset={previewItem} />
+        </div>
+      </div>
+    );
+  }
+
+  // Gallery 模式
+  return (
+    <>
+      <div className="flex flex-col h-full bg-[var(--color-bg-base)] overflow-hidden">
+        {/* 顶部标题 */}
+        <div className="px-4 py-3 bg-[var(--color-bg-base)] flex items-center justify-between">
+          <h2 className="text-white font-medium text-lg">我的库</h2>
+          {/* 类型筛选 */}
+          <div className="flex items-center bg-[var(--color-bg-primary)] rounded-full p-0.5 gap-0.5">
+            {KIND_FILTERS.map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={`px-3 py-1 rounded-full text-xs transition-colors ${
+                  filter === f.id
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 长按呼出上下文菜单时的背景模糊遮罩 */}
+        {menuOpenId && (
+          <div
+            className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay"
+            onClick={() => setMenuOpenId(null)}
+            onPointerDown={() => setMenuOpenId(null)}
+          />
+        )}
+
+        {/* 内容区域 */}
+        <div className="flex-1 overflow-auto p-4">
+          {visibleAssets.length === 0 ? (
+            /* 空状态 */
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <Star className="w-12 h-12 text-gray-600 mb-3" />
+              <p className="text-gray-500 text-sm">
+                {filter === 'all'
+                  ? '还没有保存的内容，对话中收藏应用、保存文档或图片后会出现在这里'
+                  : `还没有${kindLabel(filter)}，去对话或图片页保存一个吧`}
+              </p>
+            </div>
+          ) : (
+            /* 网格布局 */
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              {visibleAssets.map(item => {
+                const isMenuOpen = menuOpenId === item.id;
+                return (
+                  <div
+                    key={item.id}
+                    className={`group relative rounded-xl overflow-hidden bg-[var(--color-bg-secondary)] shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer select-none [-webkit-touch-callout:none] [-webkit-user-select:none] ${
+                      isMenuOpen ? 'relative z-[201] context-menu-pop' : ''
+                    }`}
+                    onPointerDown={e => handlePressStart(item.id, e)}
+                    onPointerMove={handlePressMove}
+                    onPointerUp={clearPressTimer}
+                    onPointerCancel={clearPressTimer}
+                    onPointerLeave={clearPressTimer}
+                    onContextMenu={e => e.preventDefault()}
+                    onTouchStart={e => {
+                      // 阻止触摸默认行为（如长按选择文本、保存图片等）
+                      if (e.touches.length === 1) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onDragStart={e => e.preventDefault()}
+                    onClick={() => {
+                      if (suppressClickRef.current) {
+                        suppressClickRef.current = false;
+                        return;
+                      }
+                      handleOpenPreview(item);
+                    }}
+                  >
+                    {/* 缩略图区 - 1:1 */}
+                    <div className="aspect-square overflow-hidden pointer-events-none flex items-center justify-center">
+                      {item.kind === 'markdown' ? (
+                        <div className="w-full h-full p-3">
+                          <p className="text-xs text-[var(--color-text-secondary)] break-all leading-snug">
+                            {item.content}
+                          </p>
+                        </div>
+                      ) : item.thumbnail ? (
+                        <BlobImage
+                          src={item.thumbnail}
+                          alt={item.title}
+                          className="w-full h-full object-cover"
+                          draggable={false}
+                        />
+                      ) : (
+                        <ImageIcon className="w-8 h-8 text-[var(--color-text-secondary)]" />
+                      )}
+                    </div>
+
+                    {/* 底部标题 */}
+                    <div className="px-3 py-3 pointer-events-none">
+                      <p className="text-sm text-[var(--color-text-primary)] truncate font-medium">
+                        {item.title}
+                      </p>
+                    </div>
+
+                    {/* 悬浮移除按钮 - 非菜单打开时显示 */}
+                    {!isMenuOpen && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveAsset(item.id);
+                        }}
+                        className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white/80 hover:text-white hover:bg-red-500/80 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                        title="移除"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    {/* 浮动菜单 */}
+                    {isMenuOpen && (
+                      <div
+                        className="absolute right-2 top-2 z-[200] w-40 bg-[var(--color-bg-elevated)] border border-white/10 rounded-2xl shadow-2xl py-2 select-none context-menu-pop"
+                        onClick={e => e.stopPropagation()}
+                        onPointerDown={e => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => {
+                            setRenameTarget(item);
+                            setMenuOpenId(null);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+                        >
+                          <Pencil className="w-4 h-4 flex-shrink-0" />
+                          <span>重命名</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDeleteTarget(item);
+                            setMenuOpenId(null);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 active:bg-white/10 hover:bg-white/10 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4 flex-shrink-0" />
+                          <span>删除</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 重命名弹窗 */}
+      <PromptModal
+        open={renameTarget !== null}
+        title={`重命名${renameTarget ? kindLabel(renameTarget.kind) : ''}`}
+        initialValue={renameTarget?.title ?? ''}
+        placeholder="新标题"
+        confirmText="保存"
+        cancelText="取消"
+        maxLength={50}
+        onConfirm={value => {
+          if (renameTarget) {
+            onRenameAsset(renameTarget.id, value);
+          }
+          setRenameTarget(null);
+        }}
+        onCancel={() => setRenameTarget(null)}
+      />
+
+      {/* 删除确认弹窗 */}
+      <ConfirmModal
+        open={deleteTarget !== null}
+        title={`删除${deleteTarget ? kindLabel(deleteTarget.kind) : ''}`}
+        message={`确定要从我的库删除「${deleteTarget?.title ?? ''}」吗？此操作无法撤销。`}
+        confirmText="删除"
+        cancelText="取消"
+        onConfirm={() => {
+          if (deleteTarget) onRemoveAsset(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </>
+  );
+}

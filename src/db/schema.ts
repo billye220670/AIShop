@@ -22,7 +22,7 @@ import type {
 } from '../types';
 
 export const DB_NAME = 'aishop';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /** 同步预留字段，conversations 与 messages 共用 */
 export interface SyncMeta {
@@ -218,6 +218,39 @@ export interface StoredFavoriteArtifact {
   favoritedAt: number;
 }
 
+// ---------- 我的库（assets） ----------
+
+/**
+ * 「我的库」统一资产条目：用户主动保存的 artifact / markdown / 图片。
+ *
+ * 各 kind 使用自己的字段，其余留空：
+ * - artifact：artifact（含 code）+ thumbnailBlobId（缩略图）
+ * - markdown：content 纯文本内联（不占 blob）
+ * - image：blobIds（blob 引用或 http 链接，沿用 imageHistory 的约定）
+ *
+ * 复用 SyncMeta：assets 随 BYOC 增量同步跨设备。id 语义按 kind 区分——
+ * artifact 用 artifact.id、image 用源生成历史 id（重复保存 = 无操作），
+ * markdown 用随机 id 且以 sourceRef 去重。
+ */
+export type AssetKind = 'artifact' | 'markdown' | 'image';
+
+export interface StoredAsset extends SyncMeta {
+  id: string;
+  kind: AssetKind;
+  /** 展示名（重命名即改这里；artifact 需同步改 artifact.title） */
+  title: string;
+  /** 入库时刻，列表排序键 */
+  createdAt: number;
+  artifact?: ArtifactBlock;
+  content?: string;
+  /** kind=image：blob 的 sha-256 或上游 http 链接，靠 http 前缀区分 */
+  blobIds?: string[];
+  /** kind=artifact：缩略图 blob 引用 */
+  thumbnailBlobId?: string;
+  /** 来源引用：markdown 存源消息 id（去重用），image 存源历史 id */
+  sourceRef?: string;
+}
+
 // ---------- 角色 ----------
 
 /**
@@ -288,6 +321,14 @@ export interface AiShopDB extends DBSchema {
     value: StoredFavoriteArtifact;
     indexes: {
       by_favoritedAt: number;
+    };
+  };
+  assets: {
+    key: string;
+    value: StoredAsset;
+    indexes: {
+      by_createdAt: number;
+      by_kind: string;
     };
   };
   roles: {

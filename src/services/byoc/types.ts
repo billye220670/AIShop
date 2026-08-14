@@ -74,14 +74,37 @@ export interface SyncManifestV1 {
     history: string[];
     favs: string[];
     roles: string[];
+    /** 资产删除记录（favs 是 artifact 资产的旧版镜像，删除同时命中 assets） */
+    assets: string[];
   };
   /** imageHistory 当前 id 集合（index 文件，拉取方以它为准删减） */
   historyIds: string[];
-  /** 收藏当前 id 集合 */
+  /** 收藏当前 id 集合（artifact 资产的兼容镜像） */
   favIds: string[];
   /** 角色当前 id 集合 */
   roleIds: string[];
+  /** 「我的库」资产当前 id 集合（旧版本清单没有，读侧兜底空数组） */
+  assetIds: string[];
+  /** API 设置（providers + apiKeys）最后推送时刻；旧版本清单没有，读侧兜底 0 */
+  settingsUpdatedAt?: number;
 }
+
+/**
+ * 随 BYOC 同步的 API 设置子集：只含供应商选择与 API Key。
+ *
+ * 排除 byoc 配置本身（新设备必须先配 BYOC 才能连桶，鸡生蛋问题）、
+ * 主题/压缩等纯本机偏好。整体作为一个对象上传 sync/v1/settings.json，
+ * 冲突策略为 LWW（updatedAt 大者胜），与会话元数据一致。
+ */
+export interface SyncedSettings {
+  providers: { llm: string; image: string; search: string };
+  apiKeys: Record<string, string>;
+}
+
+/** 本地 API 设置变更后触发立即同步的事件名（设置写入侧 dispatch，同步调度侧监听） */
+export const BYOC_SETTINGS_DIRTY_EVENT = 'aishop:byoc-settings-dirty';
+/** 云端 API 设置拉回写进本地后的事件名（同步侧 dispatch，设置面板监听重读） */
+export const SETTINGS_SYNCED_EVENT = 'aishop:settings-synced';
 
 /** 单轮同步的统计结果，供 UI 展示 */
 export interface SyncResult {

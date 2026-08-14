@@ -100,6 +100,19 @@ export {
 export type { FavoriteArtifactData } from './favoriteRepo';
 
 export {
+  listAssets,
+  listStoredAssets,
+  putStoredAsset,
+  saveArtifact,
+  saveMarkdown,
+  saveImageHistory,
+  removeAsset,
+  renameAsset,
+  findMarkdownBySourceRef,
+} from './assetRepo';
+export type { AssetData } from './assetRepo';
+
+export {
   newRoleId,
   listRoles,
   listStoredRoles,

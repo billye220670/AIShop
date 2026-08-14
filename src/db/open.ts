@@ -13,7 +13,9 @@ let dbPromise: Promise<IDBPDatabase<AiShopDB>> | null = null;
 
 function create(): Promise<IDBPDatabase<AiShopDB>> {
   return openDB<AiShopDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
+    // 迁移涉及跨 store 读改写，回调做成 async：所有 request 都在同一个
+    // versionchange 事务内同步发起，await 只是控制执行顺序，不影响事务活性。
+    async upgrade(db, _oldVersion, _newVersion, tx) {
       // 旧版本库升级时会重跑本回调，已存在的 store 必须跳过，否则重复创建抛错
       if (!db.objectStoreNames.contains('conversations')) {
         const conversations = db.createObjectStore('conversations', { keyPath: 'id' });
@@ -56,6 +58,30 @@ function create(): Promise<IDBPDatabase<AiShopDB>> {
       if (!db.objectStoreNames.contains('favoriteArtifacts')) {
         const favorites = db.createObjectStore('favoriteArtifacts', { keyPath: 'id' });
         favorites.createIndex('by_favoritedAt', 'favoritedAt');
+      }
+
+      if (!db.objectStoreNames.contains('assets')) {
+        const assets = db.createObjectStore('assets', { keyPath: 'id' });
+        assets.createIndex('by_createdAt', 'createdAt');
+        assets.createIndex('by_kind', 'kind');
+
+        // 一次性迁移旧收藏 → assets（kind=artifact）。旧 store 保留不删，
+        // 万一回退旧版本 App 数据仍在。blob 引用原样带过，引用计数不动。
+        if (db.objectStoreNames.contains('favoriteArtifacts')) {
+          const recs = await tx.objectStore('favoriteArtifacts').getAll();
+          for (const rec of recs) {
+            await tx.objectStore('assets').put({
+              id: rec.id,
+              kind: 'artifact',
+              title: rec.artifact.title,
+              createdAt: rec.favoritedAt,
+              artifact: rec.artifact,
+              thumbnailBlobId: rec.thumbnailBlobId,
+              updatedAt: rec.favoritedAt,
+              syncedAt: null,
+            });
+          }
+        }
       }
 
       if (!db.objectStoreNames.contains('roles')) {

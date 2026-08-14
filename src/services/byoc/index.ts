@@ -12,6 +12,7 @@
  */
 import { settingsService } from '../settingsService';
 import type { ByocConfig, SyncResult, CloudBackupResult, ProgressFn } from './types';
+import { BYOC_SETTINGS_DIRTY_EVENT, SETTINGS_SYNCED_EVENT } from './types';
 import { pushLocal, pullRemote } from './incrementalSync';
 import { backupToCloud, restoreFromCloud, hasCloudBackup } from './backupSync';
 import {
@@ -26,6 +27,8 @@ import { createS3Client } from './s3Client';
 export const BYOC_STATUS_EVENT = 'aishop:byoc-status-changed';
 /** 自动同步完成事件（App 层监听后刷新会话列表） */
 export const BYOC_SYNC_DONE_EVENT = 'aishop:byoc-sync-done';
+/** 云端 API 设置拉回写进本地的事件（设置面板监听后重读 providers/apiKeys） */
+export { SETTINGS_SYNCED_EVENT };
 
 export function getByocConfig(): ByocConfig {
   return settingsService.getByocSettings();
@@ -166,7 +169,7 @@ export async function cloudHasBackup(cfg: ByocConfig = getByocConfig()): Promise
 
 export interface ByocStatus {
   lastSyncAt: number | null;
-  pending: { convs: number; messages: number; roles: number };
+  pending: { convs: number; messages: number; roles: number; settings: number };
 }
 
 export async function getSyncStatus(): Promise<ByocStatus> {
@@ -214,9 +217,24 @@ export function scheduleAutoSync(): void {
   setInterval(() => {
     if (!getByocConfig().enabled) return;
     void countPending().then(pending => {
-      if (pending.convs > 0 || pending.messages > 0 || pending.roles > 0) void safeSync();
+      if (
+        pending.convs > 0 ||
+        pending.messages > 0 ||
+        pending.roles > 0 ||
+        pending.settings > 0
+      ) {
+        void safeSync();
+      }
     });
   }, 60000);
+
+  // API 设置（providers/apiKeys）写入后立即同步：防抖 2 秒合并连续输入
+  let settingsDirtyTimer: ReturnType<typeof setTimeout> | undefined;
+  const onSettingsDirty = () => {
+    clearTimeout(settingsDirtyTimer);
+    settingsDirtyTimer = setTimeout(() => void safeSync(), 2000);
+  };
+  window.addEventListener(BYOC_SETTINGS_DIRTY_EVENT, onSettingsDirty);
 
   // 回到前台立即拉取，赶上其他设备的变更
   document.addEventListener('visibilitychange', () => {

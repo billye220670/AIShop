@@ -35,8 +35,12 @@ export default function DesktopLayout(props: MainLayoutProps) {
 
   return (
     <div className="h-[100dvh] flex flex-col bg-[var(--color-bg-base)] text-[var(--color-text-primary)] overflow-hidden">
-      {/* 顶部 52px 栏：左侧首页区（与侧边栏等宽，折叠时同步收窄），右侧留白 */}
-      <div className="h-[52px] shrink-0 w-full flex pt-2">
+      {/* 顶部 52px 栏：左侧首页区（与侧边栏等宽，折叠时同步收窄），右侧留白。
+          Electron 下整条为窗口拖拽区（原生窗口按钮由 titleBarOverlay 绘制在右上角） */}
+      <div
+        className="h-[52px] shrink-0 w-full flex pt-2"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      >
         <div
           className="shrink-0 h-full flex items-center px-3 transition-all duration-200"
           style={{ width: `${sidebarWidth}px` }}

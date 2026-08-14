@@ -309,6 +309,8 @@ interface MessageBubbleProps {
   onOpenArtifact?: (artifact: ArtifactBlock) => void;
   onRegenerate?: (messageId: string) => void;
   onQuote?: (message: Message) => void;
+  /** 保存为 Markdown 时同步存入「我的库」：消息 id + 标题 + 纯文本内容 */
+  onSaveMarkdown?: (messageId: string, title: string, content: string) => void;
   isStreaming?: boolean;
   onCompareWithModel?: (messageId: string, modelId: string) => void;
   onSwitchVersion?: (messageId: string, index: number) => void;
@@ -324,7 +326,7 @@ interface MessageBubbleProps {
   activeMatchOccurrence?: number;
 }
 
-export default function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName, modelProvider, onOpenArtifact, onRegenerate, onQuote, isStreaming, onCompareWithModel, onSwitchVersion, collapsed, onOpenSearch, onFold, searchQuery, activeMatchOccurrence }: MessageBubbleProps) {
+export default function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName, modelProvider, onOpenArtifact, onRegenerate, onQuote, onSaveMarkdown, isStreaming, onCompareWithModel, onSwitchVersion, collapsed, onOpenSearch, onFold, searchQuery, activeMatchOccurrence }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false); // 新增：控制搜索结果展开/折叠
@@ -505,6 +507,25 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
   const displaySearchResults = activeVersion ? activeVersion.searchResults : message.searchResults;
   const displayWebSearching = activeVersion ? activeVersion.webSearching : message.webSearching;
   const displayStoppedByUser = activeVersion ? activeVersion.stoppedByUser : message.stoppedByUser;
+
+  // 保存为 Markdown：下载 .md 文件，同时存入「我的库」（markdown 资产，
+  // 按 sourceRef=消息 id 去重，重复保存不会产生重复资产）
+  const handleSaveMarkdown = () => {
+    const content = getPlainText(displayContent);
+    const title = content.slice(0, 20).replace(/[\\/:*?"<>|\n]/g, '_').trim() || '文档';
+    onSaveMarkdown?.(message.id, title, content);
+    const fileName = `${title}.md`;
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+    setToastMessage('已保存到我的库');
+    setToastType('success');
+    setShowToast(true);
+  };
 
   // AI消息内容为空且正在流式输出 → 显示加载状态
   const isAiLoading = !isUser && displayIsStreaming && (
@@ -1000,20 +1021,9 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                   >
                     {copied ? <Check className="w-5 h-5 text-green-400" /> : <Copy className="w-5 h-5" />}
                   </button>
-                  {/* 保存为 Markdown */}
+                  {/* 保存为 Markdown（下载 .md 文件 + 存入我的库） */}
                   <button
-                    onClick={() => {
-                      const content = getPlainText(displayContent);
-                      const defaultName = content.slice(0, 20).replace(/[\\/:*?"<>|\n]/g, '_').trim() || 'message';
-                      const fileName = `${defaultName}.md`;
-                      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = fileName;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
+                    onClick={handleSaveMarkdown}
                     className="p-2.5 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors"
                     title="保存为 Markdown"
                   >
@@ -1076,16 +1086,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             <button
               onClick={() => {
                 setMenuOpen(false);
-                const content = getPlainText(displayContent);
-                const defaultName = content.slice(0, 20).replace(/[\\/:*?"<>|\n]/g, '_').trim() || 'message';
-                const fileName = `${defaultName}.md`;
-                const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                a.click();
-                URL.revokeObjectURL(url);
+                handleSaveMarkdown();
               }}
               className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
             >

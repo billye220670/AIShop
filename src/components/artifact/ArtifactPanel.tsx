@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Code, Eye, RefreshCw, Download, Star, Loader2, ArrowLeft } from 'lucide-react';
+import { Code, Eye, RefreshCw, Download, Bookmark, Loader2, ArrowLeft } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import { isNativePlatform } from '../../platform/capabilities';
 import type { ArtifactBlock } from '../../types';
 
 interface ArtifactPanelProps {
@@ -116,7 +117,14 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
   return (
     <div className="flex flex-col h-full bg-[var(--color-bg-base)] overflow-hidden">
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50 bg-[var(--color-bg-primary)]">
+      <div
+        className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50 bg-[var(--color-bg-primary)]"
+        style={{
+          // 原生壳（Capacitor）edge-to-edge：本面板 fixed 全屏覆盖，不经过 MainLayout，
+          // 需自身避让系统状态栏（高度由 MainActivity 注入的 --native-inset-top 提供）
+          ...(isNativePlatform() ? { paddingTop: 'var(--native-inset-top, var(--status-bar-height, env(safe-area-inset-top)))' } : {}),
+        }}
+      >
         {/* 左侧：返回按钮 */}
         <button
           onClick={onClose}
@@ -141,14 +149,14 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
             </button>
           )}
 
-          {/* 收藏按钮 */}
+          {/* 保存到库按钮 */}
           <button
             onClick={async () => {
               if (!onToggleFavorite) return;
               if (isFavorite) {
                 onToggleFavorite();
               } else {
-                // 截图后收藏
+                // 截图后保存
                 try {
                   setCapturing(true);
                   if (iframeRef.current) {
@@ -170,12 +178,12 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
             className={`p-2 transition-colors rounded-md hover:bg-white/10 ${
               isFavorite ? 'text-yellow-500' : 'text-gray-400 hover:text-white'
             } ${capturing ? 'opacity-50 cursor-not-allowed' : ''}`}
-            title={isFavorite ? '取消收藏' : '收藏'}
+            title={isFavorite ? '从我的库移除' : '保存到我的库'}
           >
             {capturing ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <Star className="w-4 h-4" fill={isFavorite ? 'currentColor' : 'none'} />
+              <Bookmark className="w-4 h-4" fill={isFavorite ? 'currentColor' : 'none'} />
             )}
           </button>
 

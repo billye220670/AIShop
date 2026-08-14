@@ -42,6 +42,8 @@ interface ChatPanelProps {
   onWebSearchEnabledChange?: (enabled: boolean) => void;
   isFavorite?: boolean;
   onToggleFavorite?: (thumbnail?: string) => void;
+  /** 把消息纯文本保存到「我的库」（markdown 资产） */
+  onSaveMarkdown?: (messageId: string, title: string, content: string) => void;
   // 上下文压缩（水位指示已移到顶栏，这里只保留区间标记与摘要面板所需）
   segments?: ContextSegment[];
   onUpdateSegment?: (segmentId: string, summary: ContextSummary) => void;
@@ -84,6 +86,7 @@ export default function ChatPanel({
   onWebSearchEnabledChange,
   isFavorite = false,
   onToggleFavorite,
+  onSaveMarkdown,
   segments,
   onUpdateSegment,
   openSegmentIdRequest,
@@ -573,6 +576,7 @@ export default function ChatPanel({
                 onOpenArtifact={openArtifact}
                 onRegenerate={msg.role === 'assistant' ? regenerateMessage : undefined}
                 onQuote={msg.role === 'assistant' ? (m) => setQuotedMessage(m) : undefined}
+                onSaveMarkdown={msg.role === 'assistant' ? onSaveMarkdown : undefined}
                 isStreaming={isLoading}
                 onCompareWithModel={msg.role === 'assistant' ? compareWithModel : undefined}
                 onSwitchVersion={msg.role === 'assistant' ? switchVersion : undefined}

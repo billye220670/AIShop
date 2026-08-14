@@ -1,20 +1,25 @@
-import { useState, useRef, useEffect, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { useState, useRef, useEffect, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Plus, Square, X, FileText, MessageSquareQuote, ArrowUp, Globe, Paperclip, SlidersHorizontal, SendHorizontal, Clock } from 'lucide-react';
 import { Camera, MediaTypeSelection } from '@capacitor/camera';
 import { FilePicker } from '@capawesome/capacitor-file-picker';
 import { haptic } from '../../utils/haptics';
 import { isNativeAndroid } from '../../platform/capabilities';
-import type { MessageContent, FileAttachment, Message, ChatFeatureSettings, Model, ContextSegment } from '../../types';
+import type { MessageContent, FileAttachment, Message, ChatFeatureSettings, Model, ContextSegment, AssetItem } from '../../types';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
 import { compressImageFile } from '../../utils/imageCompress';
 import { useDeviceMode } from '../../platform/useDeviceMode';
+import { useAssets } from '../../hooks/useAssets';
 import ModelSelector from '../common/ModelSelector';
 import RoleSelector from '../common/RoleSelector';
+import BlobImage from '../common/BlobImage';
 import type { RoleData } from '../../db';
 import type { UsageTotals } from '../../utils/tokenEstimate';
 import ContextRing from './ContextRing';
 import ContextPanel from './ContextPanel';
 import AttachmentSheet from './AttachmentSheet';
+import LibraryPickerSheet from './LibraryPickerSheet';
+import LibraryAtPanel from './LibraryAtPanel';
+import PinyinMatch from 'pinyin-match';
 
 interface ChatInputProps {
   onSend: (content: string | MessageContent[], attachments?: FileAttachment[]) => void;
@@ -90,6 +95,8 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 最近一次经 @ 面板插入的引用位置：防止选中后紧跟的输入（如补空格）导致面板重新弹出
+  const acceptedAtRef = useRef<{ atIndex: number; title: string } | null>(null);
   // 控制是否应该自动聚焦：用户主动聚焦时为 true，主动失焦时为 false
   const shouldFocusRef = useRef(false);
   // 桌面形态聊天控件面板（Artifact/联网搜索开关弹层）
@@ -98,8 +105,24 @@ export default function ChatInput({
   const featureButtonRef = useRef<HTMLButtonElement>(null);
   // 上下文详情面板开关（桌面形态：点击工具栏环按钮上浮展开）
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
-  // 安卓端附件面板开关（+ 号按钮弹出底部选择：相册/拍摄/文件）
+  // 安卓端附件面板开关（+ 号按钮弹出底部选择：相册/拍摄/文件/库）
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
+  // 安卓端「库」选择面板开关（附件面板点「库」后切换出的更高面板）
+  const [showLibrarySheet, setShowLibrarySheet] = useState(false);
+  // PC 端 @ 引用「我的库」面板状态：open 时 atIndex 是 @ 在完整文本中的位置，query 是 @ 后的搜索词，
+  // pos 是 @ 光标的像素坐标（viewport，面板 Portal 到 body 后 fixed 定位直接使用）
+  const [atPanel, setAtPanel] = useState<{
+    open: boolean;
+    atIndex: number;
+    query: string;
+    selectedIndex: number;
+    pos: { left: number; bottom: number } | null;
+  }>({ open: false, atIndex: 0, query: '', selectedIndex: 0, pos: null });
+  // @ 面板 DOM 引用：全局 mousedown 判断点击是否落在面板内
+  const atPanelRef = useRef<HTMLDivElement>(null);
+
+  // 「我的库」资产：附件面板选「库」时打开选择器，进入时 refresh 保证拿到最新数据
+  const { assets: libraryAssets, refresh: refreshLibrary } = useAssets();
 
   // 桌面形态：输入框呈现 electron 版两行结构（工具栏 + 圆角边框输入容器），功能逻辑与移动形态共用
   const desktop = useDeviceMode() === 'desktop';
@@ -120,6 +143,21 @@ export default function ChatInput({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showFeaturePanel]);
+
+  // @ 引用面板：全局 mousedown 关闭——点击面板自身或 textarea 内部保持（textarea 内继续输入过滤），
+  // 点击输入框其他区域（工具栏/预览区/发送按钮）或页面任意处均关闭；
+  // onBlur 只在焦点迁移时触发，点击不可聚焦元素不会失焦，因此必须用全局 mousedown 兜底
+  useEffect(() => {
+    if (!atPanel.open) return;
+    const handleGlobalMouseDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (atPanelRef.current?.contains(t)) return;
+      if (textareaRef.current?.contains(t)) return;
+      setAtPanel(prev => (prev.open ? { ...prev, open: false } : prev));
+    };
+    document.addEventListener('mousedown', handleGlobalMouseDown);
+    return () => document.removeEventListener('mousedown', handleGlobalMouseDown);
+  }, [atPanel.open]);
 
   // 点击面板外部关闭上下文面板（仅桌面形态使用）
   useEffect(() => {
@@ -185,20 +223,43 @@ export default function ChatInput({
       onRemoveQuote?.();
     }
 
-    if (images.length > 0) {
+    // 兜底解析：文本中手动输入的 @标题 命中库资产 → 内容进附件（图片进图片通道）；
+    // 通过 @ 面板选中的资产已走附件通道（files/images），文本不再含 @，不会重复附加
+    const allImages = [...images];
+    const allAttachments = [...attachments];
+    if (trimmedText.includes('@')) {
+      const refTitles = new Set<string>();
+      for (const asset of libraryAssets) {
+        const token = `@${asset.title}`;
+        if (refTitles.has(asset.title) || !trimmedText.includes(token)) continue;
+        refTitles.add(asset.title);
+        if (asset.kind === 'image') {
+          const url = asset.urls?.[0];
+          if (url) allImages.push(url);
+          continue;
+        }
+        const content = asset.kind === 'markdown' ? (asset.content ?? '') : (asset.artifact?.code ?? '');
+        const ext = asset.kind === 'markdown' ? 'md' : 'html';
+        const safeName = asset.title.replace(/[/\\?%*:|"<>]/g, ' ').trim() || `库内容_${asset.id.slice(0, 6)}`;
+        allAttachments.push({ name: `${safeName}.${ext}`, size: content.length, textContent: content, truncated: false });
+      }
+    }
+
+    if (allImages.length > 0) {
       const content: MessageContent[] = [];
       content.push({ type: 'text', text: finalText || '' });
-      images.forEach(img => {
+      allImages.forEach(img => {
         content.push({ type: 'image_url', image_url: { url: img } });
       });
-      onSend(content, attachments.length > 0 ? attachments : undefined);
+      onSend(content, allAttachments.length > 0 ? allAttachments : undefined);
     } else {
-      onSend(finalText, attachments.length > 0 ? attachments : undefined);
+      onSend(finalText, allAttachments.length > 0 ? allAttachments : undefined);
     }
 
     setText('');
     setImages([]);
     setFiles([]);
+    closeAtPanel();
     // 发送后立即失焦，关闭键盘
     if (blurTimerRef.current) {
       clearTimeout(blurTimerRef.current);
@@ -213,15 +274,197 @@ export default function ChatInput({
   };
 
   const handleTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
+    const value = e.target.value;
+    setText(value);
+    // 输入时按光标位置同步 @ 引用面板（过滤/自动关闭）
+    updateAtPanel(value, e.target.selectionStart ?? value.length);
     // Auto-resize
     const textarea = e.target;
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
   };
 
-  // Enter 发送（仅桌面形态，electron 版同款交互）
+  // 光标纯移动（方向键/点击）时同步 @ 引用面板；
+  // 注意读 DOM 实时值而非 text state：onChange 后紧接着的 onSelect 里 state 尚未刷新
+  const handleSelect = (e: SyntheticEvent<HTMLTextAreaElement>) => {
+    const el = e.target as HTMLTextAreaElement;
+    updateAtPanel(el.value, el.selectionStart ?? el.value.length);
+  };
+
+  // ---- @ 引用「我的库」面板逻辑（PC 端，仿 AI IDE 输入框） ----
+
+  // 按标题过滤库资产，最多展示 8 项；支持拼音/拼音首字母匹配中文标题（与侧边栏会话搜索同款方案）
+  const filterAtAssets = (query: string): AssetItem[] => {
+    const q = query.trim().toLowerCase();
+    return libraryAssets
+      .filter(a => {
+        if (!q) return true;
+        if (a.title.toLowerCase().includes(q)) return true;
+        return PinyinMatch.match(a.title, q) !== false;
+      })
+      .slice(0, 8);
+  };
+
+  const closeAtPanel = () => setAtPanel(prev => (prev.open ? { ...prev, open: false } : prev));
+
+  // 用不可见的镜像节点复刻 textarea 排版，并定位到 textarea 所在位置，
+  // 算出光标相对 textarea 边框的像素坐标（已含 padding、已扣滚动），供 @ 面板跟随定位
+  const getCaretPosition = (el: HTMLTextAreaElement): { left: number; top: number } | null => {
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    const mirror = document.createElement('div');
+    mirror.style.cssText = [
+      'position:absolute',
+      'visibility:hidden',
+      'pointer-events:none',
+      'white-space:pre-wrap',
+      'word-break:break-word',
+      'overflow-wrap:break-word',
+      `font:${style.font}`,
+      `line-height:${style.lineHeight}`,
+      `padding:${style.padding}`,
+      `border:${style.border}`,
+      `width:${style.width}`,
+      'box-sizing:border-box',
+      `top:${rect.top + window.scrollY}px`,
+      `left:${rect.left + window.scrollX}px`,
+    ].join(';');
+    const caret = el.selectionStart ?? el.value.length;
+    const span = document.createElement('span');
+    span.textContent = '\u200b';
+    mirror.appendChild(document.createTextNode(el.value.slice(0, caret)));
+    mirror.appendChild(span);
+    document.body.appendChild(mirror);
+    const left = span.offsetLeft;
+    const top = span.offsetTop - el.scrollTop;
+    document.body.removeChild(mirror);
+    return { left, top };
+  };
+
+  // 检测光标前最后一个 @ 是否构成引用触发：@ 前必须是开头或非字母数字（避免邮箱等误触发，
+  // 中文后直接打 @ 也能弹出面板），query 为 @ 后到光标前的文本；过滤后无结果 → 面板自动关闭
+  const updateAtPanel = (value: string, caret: number) => {
+    if (!desktop) return;
+    const before = value.slice(0, caret);
+    const lastAt = before.lastIndexOf('@');
+    if (lastAt === -1) {
+      closeAtPanel();
+      return;
+    }
+    const prev = lastAt > 0 ? before[lastAt - 1] : '';
+    if (prev && /\w/.test(prev)) {
+      closeAtPanel();
+      return;
+    }
+    const query = before.slice(lastAt + 1);
+    if (query.includes('\n')) {
+      closeAtPanel();
+      return;
+    }
+    // 刚插入的引用后紧跟的输入（如补个空格）不再重新弹面板，其他改动走正常过滤
+    const acc = acceptedAtRef.current;
+    if (acc && lastAt === acc.atIndex && (query === acc.title || query === `${acc.title} `)) {
+      closeAtPanel();
+      return;
+    }
+    if (libraryAssets.length === 0 || filterAtAssets(query).length === 0) {
+      closeAtPanel();
+      return;
+    }
+    // 计算 @ 光标像素位置（viewport 坐标，面板 Portal 到 body 后 fixed 定位直接使用）：
+    // 面板始终在 @ 正上方 overlay 弹出（输入框位于窗口底部，上方聊天区空间充足）
+    const ta = textareaRef.current;
+    let pos: { left: number; bottom: number } | null = null;
+    if (ta) {
+      const p = getCaretPosition(ta);
+      if (p) {
+        const taRect = ta.getBoundingClientRect();
+        const gap = 8;
+        pos = { left: taRect.left + p.left, bottom: window.innerHeight - (taRect.top + p.top) + gap };
+      }
+    }
+    setAtPanel(prev => {
+      // 同一触发点输入变化时保留选中索引（夹紧），新触发点从第一项开始
+      const selectedIndex = prev.open && prev.atIndex === lastAt && prev.query === query
+        ? Math.min(prev.selectedIndex, filterAtAssets(query).length - 1)
+        : 0;
+      return { open: true, atIndex: lastAt, query, selectedIndex, pos };
+    });
+  };
+
+  // 确认选中：删除文本中的 @query 引用标记，资产内容进附件/图片通道，
+  // 与导入「我的库」同一形态——输入框上方预览区显示 chip，可单独移除
+  const acceptAtAsset = (asset: AssetItem) => {
+    const el = textareaRef.current;
+    if (!el) {
+      closeAtPanel();
+      return;
+    }
+    const caret = el.selectionStart ?? text.length;
+    const atIdx = text.slice(0, caret).lastIndexOf('@');
+    if (atIdx === -1) {
+      closeAtPanel();
+      return;
+    }
+    // 1) 移除文本中的 @query（内容改由下方附件通道携带，发送时不重复附加）
+    const newText = text.slice(0, atIdx) + text.slice(caret);
+    setText(newText);
+    // 2) 资产进对应通道：图片 → 图片 chip；md/artifact → 附件 chip（完整内容不截断）；
+    //    同一资产不允许重复添加（图片按 url、附件按文件名去重，函数式更新避免闭包过期）
+    if (asset.kind === 'image') {
+      const url = asset.urls?.[0];
+      if (url) setImages(prev => (prev.includes(url) ? prev : [...prev, url]));
+    } else {
+      const content = asset.kind === 'markdown' ? (asset.content ?? '') : (asset.artifact?.code ?? '');
+      const ext = asset.kind === 'markdown' ? 'md' : 'html';
+      const safeName = asset.title.replace(/[/\\?%*:|"<>]/g, ' ').trim() || `库内容_${asset.id.slice(0, 6)}`;
+      const name = `${safeName}.${ext}`;
+      setFiles(prev => (prev.some(f => f.name === name) ? prev : [...prev, { name, size: content.length, textContent: content, truncated: false }]));
+    }
+    acceptedAtRef.current = null;
+    closeAtPanel();
+    // 光标移到删除点，恢复聚焦并重算高度
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(atIdx, atIdx);
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+    });
+  };
+
+  // 鼠标悬停同步键盘选中项
+  const handleAtHover = (index: number) => {
+    setAtPanel(prev => (prev.open ? { ...prev, selectedIndex: index } : prev));
+  };
+
+  // Enter 发送（仅桌面形态，electron 版同款交互）；@ 面板打开时 ↑↓/Enter/Esc 接管选择
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (atPanel.open) {
+      const items = filterAtAssets(atPanel.query);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAtPanel(prev => ({ ...prev, selectedIndex: Math.min(prev.selectedIndex + 1, items.length - 1) }));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAtPanel(prev => ({ ...prev, selectedIndex: Math.max(prev.selectedIndex - 1, 0) }));
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const asset = items[atPanel.selectedIndex];
+        if (asset) acceptAtAsset(asset);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeAtPanel();
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -358,6 +601,43 @@ export default function ChatInput({
     }
   };
 
+  // 附件面板「库」：先收起矮面板（等关闭动画播完）再弹出更高的库选择面板；
+  // 点击瞬间就刷新资产，利用关闭动画的 300ms 让数据先加载完，打开时不闪空状态
+  const handlePickLibrary = () => {
+    setShowAttachmentSheet(false);
+    refreshLibrary();
+    setTimeout(() => {
+      setShowLibrarySheet(true);
+    }, 300); // 与 BottomSheet 关闭动画时长一致
+  };
+
+  // 库选择确认：图片进 images（blob 引用发送时自动内联），文档/应用转成 ParsedFile 进 files，
+  // 与系统文件选择共用同一套附件形态与数量限制
+  const handleLibraryConfirm = (selected: AssetItem[]) => {
+    const remaining = MAX_TOTAL_FILES - images.length - files.length;
+    if (selected.length > remaining) {
+      alert(`最多只能添加 ${MAX_TOTAL_FILES} 个文件（图片+文档合计），超出部分已忽略`);
+    }
+    let added = 0;
+    for (const item of selected) {
+      if (added >= remaining) break;
+      if (item.kind === 'image') {
+        const url = item.urls?.[0];
+        if (!url) continue;
+        setImages(prev => [...prev, url]);
+        added++;
+        continue;
+      }
+      const content = item.kind === 'markdown' ? (item.content ?? '') : (item.artifact?.code ?? '');
+      const ext = item.kind === 'markdown' ? 'md' : 'html';
+      const safeName = item.title.replace(/[/\\?%*:|"<>]/g, ' ').trim() || `库内容_${item.id.slice(0, 6)}`;
+      // 库内容完整上传：用户显式选择的资产不截断，保证模型拿到完整内容
+      setFiles(prev => [...prev, { name: `${safeName}.${ext}`, size: content.length, textContent: content, truncated: false }]);
+      added++;
+    }
+    setShowLibrarySheet(false);
+  };
+
   // + 号按钮统一入口：安卓端先收起键盘/恢复输入框位置，再弹底部附件面板；其余平台沿用 web 文件选择
   const handlePlusClick = () => {
     haptic();
@@ -423,6 +703,7 @@ export default function ChatInput({
   const handleBlur = () => {
     // 延迟重置，确保发送按钮等点击事件能正常触发
     shouldFocusRef.current = false;
+    closeAtPanel();
     blurTimerRef.current = setTimeout(() => setIsFocused(false), 150);
   };
 
@@ -647,21 +928,22 @@ export default function ChatInput({
             {/* 预览区 */}
             {(images.length > 0 || files.length > 0) && (
               <>
-                <div className="flex gap-2 p-3 pb-2 flex-wrap">
+                <div className="flex gap-2 p-3 pb-2 overflow-x-auto [&::-webkit-scrollbar]:h-[2px]">
                   {images.map((img, idx) => (
-                    <div key={`img-${idx}`} className="relative group">
-                      <img src={img} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-600" draggable={false} />
+                    <div key={`img-${idx}`} className="relative group shrink-0">
+                      <img src={img} alt="" className="w-16 h-16 object-cover rounded-lg" draggable={false} />
                       <button
                         onClick={() => removeImage(idx)}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center transition-colors"
+                        title="移除"
                       >
                         ×
                       </button>
                     </div>
                   ))}
                   {files.map((file, idx) => (
-                    <div key={`file-${idx}`} className="relative group min-w-[200px] max-w-[280px]">
-                      <div className="flex items-center gap-3 px-3 py-2.5 bg-[var(--color-bg-secondary)] border border-gray-700/50 rounded-lg">
+                    <div key={`file-${idx}`} className="relative group shrink-0 min-w-[200px] max-w-[280px]">
+                      <div className="flex items-center gap-3 px-3 py-2.5 bg-[var(--color-bg-secondary)] rounded-lg">
                         <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-[var(--color-accent-soft)]">
                           <FileText className="w-5 h-5 text-[var(--color-accent)]" />
                         </div>
@@ -672,7 +954,8 @@ export default function ChatInput({
                       </div>
                       <button
                         onClick={() => removeFile(idx)}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-gray-700 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-gray-700 hover:bg-red-500 text-white rounded-full transition-colors"
+                        title="移除"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -690,6 +973,7 @@ export default function ChatInput({
                 value={text}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
+                onSelect={handleSelect}
                 onPaste={handlePaste}
                 placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
                 className="w-full bg-transparent text-white px-4 py-3.5 pr-14 resize-none placeholder-gray-500 max-h-[200px] min-h-[80px] focus:outline-none"
@@ -715,6 +999,18 @@ export default function ChatInput({
                   </button>
                 )}
               </div>
+
+              {/* @ 引用「我的库」上浮面板：固定宽度，始终在 @ 光标正上方 overlay 弹出，随输入实时过滤，无匹配自动关闭 */}
+              {atPanel.open && atPanel.pos && filterAtAssets(atPanel.query).length > 0 && (
+                <LibraryAtPanel
+                  items={filterAtAssets(atPanel.query)}
+                  selectedIndex={atPanel.selectedIndex}
+                  onSelect={acceptAtAsset}
+                  onHover={handleAtHover}
+                  panelRef={atPanelRef}
+                  position={atPanel.pos}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -775,10 +1071,10 @@ export default function ChatInput({
           {/* Desktop: unified preview area */}
           {(images.length > 0 || files.length > 0) && (
             <>
-              <div className="flex gap-3 p-3 pb-2 flex-wrap">
+              <div className="flex gap-3 p-3 pb-2 overflow-x-auto [&::-webkit-scrollbar]:h-[2px]">
                 {images.map((img, idx) => (
-                  <div key={`img-${idx}`} className="relative">
-                    <img src={img} alt="" className="w-[4.5rem] h-[4.5rem] object-cover rounded-2xl" draggable={false} />
+                  <div key={`img-${idx}`} className="relative shrink-0">
+                    <BlobImage src={img} alt="" className="w-[4.5rem] h-[4.5rem] object-cover rounded-2xl" draggable={false} />
                     <button
                       onClick={() => removeImage(idx)}
                       className="absolute top-1 right-1 w-5 h-5 bg-gray-600/80 hover:bg-gray-500 text-white rounded-full flex items-center justify-center"
@@ -788,8 +1084,8 @@ export default function ChatInput({
                   </div>
                 ))}
                 {files.map((file, idx) => (
-                  <div key={`file-${idx}`} className="relative group min-w-[200px] max-w-[280px]">
-                    <div className="flex items-center gap-3 px-3 py-2.5 bg-[var(--color-bg-secondary)] border border-gray-700/50 rounded-lg">
+                  <div key={`file-${idx}`} className="relative group shrink-0 min-w-[200px] max-w-[280px]">
+                    <div className="flex items-center gap-3 px-3 py-2.5 bg-[var(--color-bg-secondary)] rounded-lg">
                       <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-md bg-[var(--color-accent-soft)]">
                         <FileText className="w-5 h-5 text-[var(--color-accent)]" />
                       </div>
@@ -800,7 +1096,8 @@ export default function ChatInput({
                     </div>
                     <button
                       onClick={() => removeFile(idx)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-gray-700 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center bg-gray-700 hover:bg-red-500 text-white rounded-full transition-colors"
+                      title="移除"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -938,13 +1235,23 @@ export default function ChatInput({
 
         {/* 安卓端附件底部面板：仅 Android 原生壳渲染，web/Electron 不受影响 */}
         {isNativeAndroid() && (
-          <AttachmentSheet
-            isOpen={showAttachmentSheet}
-            onClose={() => setShowAttachmentSheet(false)}
-            onPickGallery={() => { setShowAttachmentSheet(false); handleNativeGallery(); }}
-            onTakePhoto={() => { setShowAttachmentSheet(false); handleNativeCamera(); }}
-            onPickFiles={() => { setShowAttachmentSheet(false); handleNativeFiles(); }}
-          />
+          <>
+            <AttachmentSheet
+              isOpen={showAttachmentSheet}
+              onClose={() => setShowAttachmentSheet(false)}
+              onPickGallery={() => { setShowAttachmentSheet(false); handleNativeGallery(); }}
+              onTakePhoto={() => { setShowAttachmentSheet(false); handleNativeCamera(); }}
+              onPickFiles={() => { setShowAttachmentSheet(false); handleNativeFiles(); }}
+              onPickLibrary={handlePickLibrary}
+            />
+            {/* 附件面板「库」二级面板：更高，多选后确定上传到输入框 */}
+            <LibraryPickerSheet
+              isOpen={showLibrarySheet}
+              onClose={() => setShowLibrarySheet(false)}
+              assets={libraryAssets}
+              onConfirm={handleLibraryConfirm}
+            />
+          </>
         )}
     </div>
   );

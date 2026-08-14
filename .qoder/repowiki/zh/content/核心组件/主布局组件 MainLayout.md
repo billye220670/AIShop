@@ -6,10 +6,21 @@
 - [src/components/layout/Sidebar.tsx](file://src/components/layout/Sidebar.tsx)
 - [src/components/layout/TopNavBar.tsx](file://src/components/layout/TopNavBar.tsx)
 - [src/components/layout/BottomNavBar.tsx](file://src/components/layout/BottomNavBar.tsx)
+- [src/components/layout/DesktopLayout.tsx](file://src/components/layout/DesktopLayout.tsx)
+- [src/components/layout/DesktopSidebar.tsx](file://src/components/layout/DesktopSidebar.tsx)
 - [src/hooks/useDrawerSwipe.ts](file://src/hooks/useDrawerSwipe.ts)
+- [src/platform/useDeviceMode.ts](file://src/platform/useDeviceMode.ts)
+- [src/platform/capabilities.ts](file://src/platform/capabilities.ts)
 - [src/App.tsx](file://src/App.tsx)
 - [src/types/index.ts](file://src/types/index.ts)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 新增设备模式检测功能，支持自动在移动端和桌面端布局间切换
+- 添加 DesktopLayout 组件用于桌面端布局展示
+- 增强 MainLayout 作为布局分发外壳的功能
+- 更新响应式布局架构说明
 
 ## 目录
 1. [简介](#简介)
@@ -25,90 +36,104 @@
 
 ## 简介
 MainLayout 是应用的根布局容器，负责：
-- 响应式全屏布局与视口高度冻结，避免键盘弹起导致页面抖动
-- 侧边栏抽屉的滑动手势交互（任意位置横滑打开/收起）
-- 顶部导航栏与底部导航栏的集成
-- 输入框焦点管理（聚焦时隐藏底部导航，失焦后恢复）
-- 将业务数据（会话、模型、上下文用量等）透传给子组件
+- **设备模式检测**：自动识别当前设备类型（移动/桌面），并动态切换相应的布局方案
+- **响应式全屏布局**：根据设备形态提供优化的视口高度冻结和布局适配
+- **移动端抽屉导航**：侧边栏抽屉的滑动手势交互（任意位置横滑打开/收起）
+- **桌面端侧边栏导航**：可折叠的左侧导航面板，支持状态持久化
+- **顶部导航栏与底部导航栏的集成**：移动端特有的导航元素
+- **输入框焦点管理**：聚焦时隐藏底部导航，失焦后恢复
+- **业务数据透传**：将会话、模型、上下文用量等数据传递给子组件
 
-该组件通过组合 Sidebar、TopNavBar、BottomNavBar 以及手势 Hook useDrawerSwipe，形成统一的页面骨架。
+该组件通过组合 MobileLayout、DesktopLayout、Sidebar、TopNavBar、BottomNavBar 以及手势 Hook useDrawerSwipe，形成统一的跨平台页面框架。
 
 ## 项目结构
-MainLayout 位于 layout 目录下，与 Sidebar、TopNavBar、BottomNavBar 共同构成应用外壳；App 作为入口将业务状态注入到 MainLayout。
+MainLayout 位于 layout 目录下，作为布局分发器，根据设备模式选择相应的布局实现；App 作为入口将业务状态注入到 MainLayout。
 
 ```mermaid
 graph TB
 App["App.tsx"] --> MainLayout["MainLayout.tsx"]
-MainLayout --> Sidebar["Sidebar.tsx"]
-MainLayout --> TopNavBar["TopNavBar.tsx"]
-MainLayout --> BottomNavBar["BottomNavBar.tsx"]
-MainLayout --> SwipeHook["useDrawerSwipe.ts"]
-MainLayout --> Types["types/index.ts"]
+MainLayout --> DeviceMode["useDeviceMode.ts"]
+DeviceMode --> Capabilities["capabilities.ts"]
+MainLayout --> DesktopLayout["DesktopLayout.tsx"]
+MainLayout --> MobileLayout["MobileLayout (内部)"]
+DesktopLayout --> DesktopSidebar["DesktopSidebar.tsx"]
+MobileLayout --> Sidebar["Sidebar.tsx"]
+MobileLayout --> TopNavBar["TopNavBar.tsx"]
+MobileLayout --> BottomNavBar["BottomNavBar.tsx"]
+MobileLayout --> SwipeHook["useDrawerSwipe.ts"]
 ```
 
-图表来源
-- [src/App.tsx:97-128](file://src/App.tsx#L97-L128)
-- [src/components/layout/MainLayout.tsx:1-10](file://src/components/layout/MainLayout.tsx#L1-L10)
+**图表来源**
+- [src/App.tsx:174-209](file://src/App.tsx#L174-L209)
+- [src/components/layout/MainLayout.tsx:287-294](file://src/components/layout/MainLayout.tsx#L287-L294)
+- [src/platform/useDeviceMode.ts:18-20](file://src/platform/useDeviceMode.ts#L18-L20)
 
-章节来源
-- [src/App.tsx:97-128](file://src/App.tsx#L97-L128)
-- [src/components/layout/MainLayout.tsx:1-10](file://src/components/layout/MainLayout.tsx#L1-L10)
+**章节来源**
+- [src/App.tsx:174-209](file://src/App.tsx#L174-L209)
+- [src/components/layout/MainLayout.tsx:287-294](file://src/components/layout/MainLayout.tsx#L287-L294)
 
 ## 核心组件
-- MainLayout：根布局容器，管理侧边栏开关、输入焦点、手势拖动、遮罩层、顶部/底部导航集成
-- Sidebar：会话列表、搜索、筛选、批量操作、长按上下文菜单、重命名与删除确认
-- TopNavBar：汉堡菜单、模型选择器、上下文用量环、新建对话按钮、上下文详情面板
-- BottomNavBar：底部 Tab 切换（对话、收藏、我的）
-- useDrawerSwipe：左侧抽屉横向滑动手势 Hook，处理触摸事件、主轴判定、速度/距离吸附、点击抑制
+- **MainLayout**：布局分发外壳，根据设备模式选择 MobileLayout 或 DesktopLayout
+- **MobileLayout**：移动端布局实现，包含抽屉侧边栏、顶栏、底栏和手势交互
+- **DesktopLayout**：桌面端布局实现，包含可折叠侧边栏和主内容区域
+- **DesktopSidebar**：桌面端侧边栏，支持折叠/展开状态和模式页签
+- **Sidebar**：移动端侧边栏，包含会话列表、搜索、筛选等功能
+- **TopNavBar**：顶部导航栏，汉堡菜单、模型选择器、上下文用量环
+- **BottomNavBar**：底部导航栏，Tab 切换功能
+- **useDeviceMode**：设备模式检测 Hook，实时监听窗口变化
+- **useDrawerSwipe**：左侧抽屉横向滑动手势 Hook
 
-章节来源
-- [src/components/layout/MainLayout.tsx:10-43](file://src/components/layout/MainLayout.tsx#L10-L43)
-- [src/components/layout/Sidebar.tsx:12-26](file://src/components/layout/Sidebar.tsx#L12-L26)
-- [src/components/layout/TopNavBar.tsx:9-32](file://src/components/layout/TopNavBar.tsx#L9-L32)
-- [src/components/layout/BottomNavBar.tsx:4-13](file://src/components/layout/BottomNavBar.tsx#L4-L13)
-- [src/hooks/useDrawerSwipe.ts:34-42](file://src/hooks/useDrawerSwipe.ts#L34-L42)
+**章节来源**
+- [src/components/layout/MainLayout.tsx:15-57](file://src/components/layout/MainLayout.tsx#L15-L57)
+- [src/components/layout/MobileLayout.tsx:59-285](file://src/components/layout/MainLayout.tsx#L59-L285)
+- [src/components/layout/DesktopLayout.tsx:19-65](file://src/components/layout/DesktopLayout.tsx#L19-L65)
+- [src/components/layout/DesktopSidebar.tsx:27-132](file://src/components/layout/DesktopSidebar.tsx#L27-L132)
 
 ## 架构总览
-MainLayout 在渲染时：
-- 使用 useDrawerSwipe 提供 ref、dragOffset、dragging、shouldSuppressClick
-- 根据 dragOffset 动态计算侧边栏与内容区的 transform，实现跟随手指的滑动效果
-- 在侧边栏打开时显示半透明遮罩，支持点击关闭
-- 监听输入框焦点变化控制底部导航显示
-- 将 models、selectedModel、webSearchEnabled、artifactEnabled、上下文用量等属性透传到 TopNavBar
+MainLayout 采用**布局分发模式**，根据设备模式动态选择最优布局方案：
 
 ```mermaid
 sequenceDiagram
 participant U as "用户"
+participant DM as "useDeviceMode"
 participant ML as "MainLayout"
+participant DL as "DesktopLayout"
+participant MML as "MobileLayout"
 participant SW as "useDrawerSwipe"
-participant SB as "Sidebar"
-participant TN as "TopNavBar"
-participant BN as "BottomNavBar"
-U->>ML : 触摸屏幕并横滑
-ML->>SW : onTouchStart/onTouchMove/onTouchEnd
-SW-->>ML : dragOffset/dragging/shouldSuppressClick
-ML->>ML : 计算进度与transform
-ML->>SB : 渲染侧边栏(可选打开)
-ML->>TN : 传递模型/用量等属性
-ML->>BN : 根据inputFocused决定是否渲染
-U->>ML : 点击遮罩
-ML->>ML : setSidebarOpen(false)
+U->>DM : 窗口大小/方向变化
+DM-->>ML : 设备模式变化
+alt 桌面模式
+ML->>DL : 渲染桌面布局
+DL->>DL : 处理侧边栏折叠状态
+else 移动模式
+ML->>MML : 渲染移动布局
+MML->>SW : 初始化手势监听
+MML->>MML : 处理抽屉滑动手势
+end
 ```
 
-图表来源
-- [src/components/layout/MainLayout.tsx:108-172](file://src/components/layout/MainLayout.tsx#L108-L172)
-- [src/hooks/useDrawerSwipe.ts:107-197](file://src/hooks/useDrawerSwipe.ts#L107-L197)
-- [src/components/layout/TopNavBar.tsx:77-165](file://src/components/layout/TopNavBar.tsx#L77-L165)
-- [src/components/layout/BottomNavBar.tsx:15-36](file://src/components/layout/BottomNavBar.tsx#L15-L36)
+**图表来源**
+- [src/components/layout/MainLayout.tsx:287-294](file://src/components/layout/MainLayout.tsx#L287-L294)
+- [src/platform/useDeviceMode.ts:4-20](file://src/platform/useDeviceMode.ts#L4-L20)
+- [src/platform/capabilities.ts:36-43](file://src/platform/capabilities.ts#L36-L43)
+
+设备模式检测规则：
+- **原生 Android**：始终返回 mobile
+- **Electron 环境**：始终返回 desktop  
+- **精确指针设备**（鼠标/触控板）：返回 desktop
+- **触摸设备**：宽度 ≥1024px 为 desktop，否则为 mobile
+- **兜底保护**：宽度 <480px 强制为 mobile
+
+**章节来源**
+- [src/platform/capabilities.ts:36-43](file://src/platform/capabilities.ts#L36-L43)
 
 ## 详细组件分析
 
-### MainLayout 组件
+### MainLayout 组件（布局分发器）
 职责
-- 管理侧边栏打开状态与手势拖动
-- 管理输入框焦点以控制底部导航显示
-- 冻结初始视口高度防止键盘弹出导致的布局抖动
-- 透传业务数据给 TopNavBar 和 Sidebar
+- **设备模式检测**：使用 useDeviceMode Hook 实时获取当前设备类型
+- **布局分发**：根据设备模式渲染对应的 MobileLayout 或 DesktopLayout
+- **Props 透传**：保持两套布局共享相同的接口定义
 
 关键 Props
 - activeTab: TabMode，当前激活的标签页
@@ -116,229 +141,221 @@ ML->>ML : setSidebarOpen(false)
 - children: ReactNode，页面主体内容
 - conversations?: Conversation[]，会话列表
 - activeConversationId?: string，当前会话 ID
-- onSwitchConversation?: (id: string) => void，切换会话
-- onNewConversation?: () => void，新建会话
-- canCreateNewConversation?: boolean，是否允许新建会话
-- onDeleteConversation?: (id: string) => void，删除单个会话
-- onDeleteConversations?: (ids: string[]) => void，批量删除会话
-- onToggleConversationFavorite?: (id: string) => void，收藏/取消收藏
-- onRenameConversation?: (id: string, title: string) => void，重命名会话
 - models?: Model[]，可用模型列表
 - selectedModel?: string，当前选中模型
-- onModelChange?: (modelId: string) => void，模型切换回调
 - webSearchEnabled?: boolean，联网搜索开关
-- onWebSearchToggle?: () => void，切换联网搜索
 - artifactEnabled?: boolean，Artifact 功能开关
-- onArtifactToggle?: () => void，切换 Artifact
 - realUsage?: UsageTotals，真实 token 用量
 - contextLimit?: number，上下文上限
-- isCompacting?: boolean，是否正在压缩
-- isAwaitingUsage?: boolean，是否等待用量更新
-- onCompactActive?: () => void，触发压缩
 - segments?: ContextSegment[]，已压缩的上下文片段
-- onOpenSegment?: (segmentId: string) => void，打开某段摘要
-- onDeleteSegment?: (segmentId: string) => void，回退某段摘要
 
-输入框焦点管理
-- 通过 onFocusIn/onBlurOut 检测 TEXTAREA 的聚焦与失焦
-- 使用延迟定时器避免同区域元素切换时的闪烁
-- 聚焦时隐藏底部导航，提升输入体验
+**更新** 新增设备模式检测功能，支持自动布局切换
 
-侧边栏手势
-- 使用 useDrawerSwipe 获取 ref、dragOffset、dragging、shouldSuppressClick
-- 拖动中禁用 CSS transition，松手后按速度/距离吸附到最近状态
-- 遮罩层透明度随进度变化，点击遮罩可关闭侧边栏
+**章节来源**
+- [src/components/layout/MainLayout.tsx:287-294](file://src/components/layout/MainLayout.tsx#L287-L294)
+- [src/components/layout/MainLayout.tsx:15-57](file://src/components/layout/MainLayout.tsx#L15-L57)
 
-响应式与视口
-- 冻结初始 window.innerHeight，避免键盘弹出导致 dvh 变化引起整页收缩
-- 使用 touchAction: 'manipulation' 优化移动端触摸行为
-
-章节来源
-- [src/components/layout/MainLayout.tsx:10-43](file://src/components/layout/MainLayout.tsx#L10-L43)
-- [src/components/layout/MainLayout.tsx:74-114](file://src/components/layout/MainLayout.tsx#L74-L114)
-- [src/components/layout/MainLayout.tsx:116-201](file://src/components/layout/MainLayout.tsx#L116-L201)
-
-### Sidebar 组件
+### MobileLayout 组件（移动端布局）
 职责
-- 会话列表展示、搜索、筛选（全部/收藏）、批量选择与删除
-- 长按呼出上下文菜单（导出、编辑标题、收藏/取消收藏、删除）
-- 重命名与删除确认弹窗
+- **抽屉侧边栏**：实现横滑手势打开/收起侧边栏
+- **输入焦点管理**：检测输入框聚焦状态，控制底部导航显示
+- **视口高度冻结**：防止键盘弹出导致的布局抖动
+- **原生平台适配**：处理 Capacitor 壳的特殊需求
 
-交互细节
-- 点击项先本地高亮再切换，提供即时反馈
-- 长按触发上下文菜单，自动定位到可视区域内，必要时滚动或翻转方向
-- 使用 createPortal 将菜单与遮罩挂载到 body，避免被祖先 overflow 裁剪
+关键特性
+- 使用 useDrawerSwipe 实现流畅的抽屉手势
+- 支持 ESC 键关闭侧边栏
+- 处理 Android 返回键事件
+- 智能滚动定位避免键盘遮挡
 
-章节来源
-- [src/components/layout/Sidebar.tsx:12-26](file://src/components/layout/Sidebar.tsx#L12-L26)
-- [src/components/layout/Sidebar.tsx:66-84](file://src/components/layout/Sidebar.tsx#L66-L84)
-- [src/components/layout/Sidebar.tsx:109-218](file://src/components/layout/Sidebar.tsx#L109-L218)
-- [src/components/layout/Sidebar.tsx:220-263](file://src/components/layout/Sidebar.tsx#L220-L263)
-- [src/components/layout/Sidebar.tsx:365-438](file://src/components/layout/Sidebar.tsx#L365-L438)
-- [src/components/layout/Sidebar.tsx:440-554](file://src/components/layout/Sidebar.tsx#L440-L554)
+**章节来源**
+- [src/components/layout/MainLayout.tsx:59-285](file://src/components/layout/MainLayout.tsx#L59-L285)
 
-### TopNavBar 组件
+### DesktopLayout 组件（桌面端布局）
 职责
-- 汉堡菜单打开/关闭侧边栏
-- 模型选择器（含联网搜索与 Artifact 开关）
-- 上下文用量环与详情面板（压缩、查看片段）
-- 新建对话按钮（受 canCreateNewConversation 控制）
+- **可折叠侧边栏**：支持 localStorage 持久化的折叠状态
+- **模式页签导航**：聊天、图片、收藏三个主要功能入口
+- **主内容区域**：圆角卡片样式的内容展示区
+- **顶部首页区**：与侧边栏等宽的固定高度区域
 
-章节来源
-- [src/components/layout/TopNavBar.tsx:9-32](file://src/components/layout/TopNavBar.tsx#L9-L32)
-- [src/components/layout/TopNavBar.tsx:77-165](file://src/components/layout/TopNavBar.tsx#L77-L165)
+关键特性
+- 侧边栏宽度：展开 224px，折叠 60px
+- 状态持久化：折叠状态保存在 localStorage
+- 响应式设计：自适应主内容区域宽度
 
-### BottomNavBar 组件
+**新增** 桌面端专用布局实现
+
+**章节来源**
+- [src/components/layout/DesktopLayout.tsx:19-65](file://src/components/layout/DesktopLayout.tsx#L19-L65)
+
+### DesktopSidebar 组件（桌面端侧边栏）
 职责
-- 底部 Tab 切换（对话、收藏、我的）
-- 根据 activeTab 高亮当前项
+- **模式页签管理**：聊天、图片、收藏三个功能模块
+- **折叠状态控制**：按钮切换侧边栏展开/折叠
+- **BYOC 同步状态**：显示右下角同步状态指示点
+- **工具提示**：折叠态下的悬停提示功能
 
-章节来源
-- [src/components/layout/BottomNavBar.tsx:4-13](file://src/components/layout/BottomNavBar.tsx#L4-L13)
-- [src/components/layout/BottomNavBar.tsx:15-36](file://src/components/layout/BottomNavBar.tsx#L15-L36)
+关键特性
+- 自定义 Tooltip 实现
+- BYOC 同步状态可视化
+- 平滑过渡动画效果
 
-### useDrawerSwipe Hook
+**新增** 桌面端侧边栏专用组件
+
+**章节来源**
+- [src/components/layout/DesktopSidebar.tsx:27-132](file://src/components/layout/DesktopSidebar.tsx#L27-L132)
+
+### useDeviceMode Hook（设备模式检测）
 职责
-- 监听触摸事件，实现左侧抽屉的横滑打开/收起
-- 主轴锁定：首次位移超过阈值且满足方向条件才接管
-- 忽略目标：输入框、可编辑区域、横向可滚动元素优先原生滚动
-- 吸附策略：速度优先（末段窗口内速度），否则按距离阈值判断
-- 点击抑制：手势结束后短暂屏蔽 click，避免误触遮罩关闭
+- **实时设备检测**：监听窗口 resize 和 orientationchange 事件
+- **外部存储订阅**：使用 useSyncExternalStore 管理设备状态
+- **响应式更新**：设备模式变化时自动触发组件重渲染
 
-算法流程
+实现原理
 ```mermaid
 flowchart TD
-Start(["触摸开始"]) --> CheckSingle["单指检测"]
-CheckSingle --> |否| Reset["重置状态"]
-CheckSingle --> |是| RecordStart["记录起点与时间戳"]
-RecordStart --> Move["触摸移动"]
-Move --> AxisLock{"是否已锁定主轴?"}
-AxisLock --> |否| JudgeAxis["计算dx/dy<br/>判断横向/纵向"]
-JudgeAxis --> |非横向或无效方向| Abort["放弃本次手势"]
-JudgeAxis --> |有效横向| LockH["锁定为横向"]
-AxisLock --> |是| HandleMove["阻止默认滚动<br/>更新dragOffset"]
-HandleMove --> UpdateSamples["记录采样点"]
-UpdateSamples --> End["触摸结束"]
-End --> CalcVel["计算末段速度"]
-CalcVel --> Decide{"速度超过阈值?"}
-Decide --> |是| NextByVel["按速度方向决定开/关"]
-Decide --> |否| NextByDist["按距离比例决定开/关"]
-NextByVel --> Apply["重置dragOffset并调用onOpenChange"]
-NextByDist --> Apply
-Abort --> Reset
-Reset --> End(["结束"])
+Start(["组件挂载"]) --> Subscribe["订阅resize/orientationchange事件"]
+Subscribe --> GetSnapshot["调用detectDeviceMode()"]
+GetSnapshot --> UseState["useSyncExternalStore管理状态"]
+UseState --> Render["组件重新渲染"]
+Render --> Wait["等待设备模式变化"]
+Wait --> |检测到变化| GetSnapshot
+Wait --> |组件卸载| Unsubscribe["移除事件监听"]
 ```
 
-图表来源
-- [src/hooks/useDrawerSwipe.ts:107-197](file://src/hooks/useDrawerSwipe.ts#L107-L197)
+**图表来源**
+- [src/platform/useDeviceMode.ts:4-20](file://src/platform/useDeviceMode.ts#L4-L20)
 
-章节来源
-- [src/hooks/useDrawerSwipe.ts:34-42](file://src/hooks/useDrawerSwipe.ts#L34-L42)
-- [src/hooks/useDrawerSwipe.ts:44-67](file://src/hooks/useDrawerSwipe.ts#L44-L67)
-- [src/hooks/useDrawerSwipe.ts:107-197](file://src/hooks/useDrawerSwipe.ts#L107-L197)
+**章节来源**
+- [src/platform/useDeviceMode.ts:1-20](file://src/platform/useDeviceMode.ts#L1-L20)
+
+### 设备模式检测逻辑（capabilities.ts）
+职责
+- **多平台兼容**：支持 Web、Electron、Capacitor 等多种运行环境
+- **智能判断**：基于设备能力、指针类型、窗口尺寸综合判断
+- **安全兜底**：确保极端情况下的合理默认值
+
+检测规则优先级：
+1. **原生 Android**：强制 mobile
+2. **窗口宽度 <480px**：强制 mobile
+3. **Electron 环境**：强制 desktop
+4. **精确指针设备**：desktop
+5. **触摸设备宽度 ≥1024px**：desktop
+6. **其他情况**：mobile
+
+**新增** 完整的设备模式检测算法
+
+**章节来源**
+- [src/platform/capabilities.ts:1-44](file://src/platform/capabilities.ts#L1-L44)
 
 ## 依赖关系分析
-- MainLayout 依赖 useDrawerSwipe 实现手势，依赖 Sidebar、TopNavBar、BottomNavBar 完成 UI 组装
-- App 将聊天状态、模型配置、上下文用量等注入到 MainLayout
-- Sidebar 依赖类型 Conversation，TopNavBar 依赖 Model、ContextSegment、UsageTotals
-- BottomNavBar 依赖 TabMode
+- **MainLayout** 依赖 useDeviceMode 进行设备检测，根据结果选择相应布局
+- **DesktopLayout** 依赖 DesktopSidebar 实现桌面端导航
+- **MobileLayout** 依赖 Sidebar、TopNavBar、BottomNavBar 实现移动端界面
+- **所有布局** 都依赖 App 层提供的业务数据和状态管理
 
 ```mermaid
 graph LR
-App["App.tsx"] --> ML["MainLayout.tsx"]
-ML --> SW["useDrawerSwipe.ts"]
-ML --> SB["Sidebar.tsx"]
-ML --> TN["TopNavBar.tsx"]
-ML --> BN["BottomNavBar.tsx"]
-SB --> Types["types/index.ts"]
-TN --> Types
+App["App.tsx"] --> MainLayout["MainLayout.tsx"]
+MainLayout --> DeviceMode["useDeviceMode.ts"]
+DeviceMode --> Capabilities["capabilities.ts"]
+MainLayout --> DesktopLayout["DesktopLayout.tsx"]
+MainLayout --> MobileLayout["MobileLayout"]
+DesktopLayout --> DesktopSidebar["DesktopSidebar.tsx"]
+MobileLayout --> Sidebar["Sidebar.tsx"]
+MobileLayout --> TopNavBar["TopNavBar.tsx"]
+MobileLayout --> BottomNavBar["BottomNavBar.tsx"]
 ```
 
-图表来源
-- [src/App.tsx:97-128](file://src/App.tsx#L97-L128)
-- [src/components/layout/MainLayout.tsx:1-10](file://src/components/layout/MainLayout.tsx#L1-L10)
-- [src/types/index.ts:125-175](file://src/types/index.ts#L125-L175)
+**图表来源**
+- [src/App.tsx:174-209](file://src/App.tsx#L174-L209)
+- [src/components/layout/MainLayout.tsx:287-294](file://src/components/layout/MainLayout.tsx#L287-L294)
 
-章节来源
-- [src/App.tsx:97-128](file://src/App.tsx#L97-L128)
-- [src/components/layout/MainLayout.tsx:1-10](file://src/components/layout/MainLayout.tsx#L1-L10)
-- [src/types/index.ts:125-175](file://src/types/index.ts#L125-L175)
+**章节来源**
+- [src/App.tsx:174-209](file://src/App.tsx#L174-L209)
+- [src/components/layout/MainLayout.tsx:287-294](file://src/components/layout/MainLayout.tsx#L287-L294)
 
 ## 性能考量
-- 冻结视口高度：避免键盘弹出引起的 reflow 与抖动
-- 拖动中禁用 CSS transition：减少合成开销，保证跟手流畅
-- 使用 useMemo 对侧边栏数据进行过滤与分组，降低重复计算
-- 使用 createPortal 将菜单与遮罩挂载到 body，避免复杂层级下的裁剪与重绘
-- 输入焦点管理使用延迟定时器，减少频繁状态切换导致的闪烁
-- 手势 Hook 使用 ref 保存高频变化的 open/onOpenChange/onSettle，避免 effect 频繁解绑/重绑监听
-
-[本节为通用性能建议，不直接分析具体代码行]
+- **设备模式缓存**：useDeviceMode 使用 useSyncExternalStore 避免不必要的重渲染
+- **条件渲染优化**：根据设备模式只渲染对应布局，减少 DOM 节点数量
+- **localStorage 访问优化**：桌面端侧边栏状态读取使用 try-catch 包裹
+- **事件监听管理**：useDeviceMode 正确清理 resize 和 orientationchange 监听器
+- **移动端手势优化**：拖动中禁用 CSS transition，保证跟手流畅性
+- **视口高度冻结**：避免键盘弹出导致的 reflow 与抖动
 
 ## 故障排查指南
 常见问题与解决思路
-- 侧边栏无法打开/收起
-  - 检查 useDrawerSwipe 的 enabled 与 width 是否正确传入
-  - 确认手势起点未落在 INPUT/TEXTAREA/可编辑区域或横向可滚动元素内
-- 拖动卡顿或页面滚动
-  - 确保 touchmove 使用 passive: false 并正确 preventDefault
-  - 检查是否有祖先元素拦截了事件或样式影响
-- 点击遮罩后侧边栏立即关闭
-  - 手势结束后会短暂屏蔽 click，若仍误触，检查 shouldSuppressClick 的使用时机
-- 输入框聚焦时底部导航未隐藏
-  - 确认 main 容器上绑定了 onFocusIn/onBlurOut，且检测的是 TEXTAREA
-- 上下文用量环不显示或动画异常
-  - 检查 TopNavBar 是否收到 realUsage 与 contextLimit，并在切换会话时 key 变化以重置状态
+- **设备模式检测不准确**
+  - 检查浏览器环境是否正确设置
+  - 验证 window.innerWidth 和设备能力检测
+  - 确认 Electron 环境下 electronAPI 的正确暴露
+- **布局切换不生效**
+  - 检查 useDeviceMode 的事件监听是否正常注册
+  - 验证 detectDeviceMode 函数的返回值
+  - 确认 MainLayout 的条件渲染逻辑
+- **桌面端侧边栏状态丢失**
+  - 检查 localStorage 是否可用
+  - 验证 COLLAPSED_STORAGE_KEY 常量定义
+  - 确认状态读写操作的异常处理
+- **移动端手势冲突**
+  - 检查 data-swipe-ignore 属性是否正确设置
+  - 确认 INPUT/TEXTAREA 元素的特殊处理
+  - 验证 touchAction 样式配置
 
-章节来源
-- [src/hooks/useDrawerSwipe.ts:107-197](file://src/hooks/useDrawerSwipe.ts#L107-L197)
-- [src/components/layout/MainLayout.tsx:74-114](file://src/components/layout/MainLayout.tsx#L74-L114)
-- [src/components/layout/TopNavBar.tsx:77-165](file://src/components/layout/TopNavBar.tsx#L77-L165)
+**章节来源**
+- [src/platform/useDeviceMode.ts:4-20](file://src/platform/useDeviceMode.ts#L4-L20)
+- [src/platform/capabilities.ts:36-43](file://src/platform/capabilities.ts#L36-L43)
+- [src/components/layout/DesktopLayout.tsx:10-32](file://src/components/layout/DesktopLayout.tsx#L10-L32)
 
 ## 结论
-MainLayout 作为应用根布局，整合了侧边栏手势、输入焦点管理、顶部/底部导航与业务数据透传，提供了稳定、流畅且可扩展的页面框架。配合 Sidebar、TopNavBar、BottomNavBar 与 useDrawerSwipe，实现了完整的移动端交互体验。遵循本文的性能建议与最佳实践，可进一步提升用户体验与可维护性。
-
-[本节为总结性内容，不直接分析具体代码行]
+MainLayout 作为应用根布局，通过引入设备模式检测功能，实现了真正的跨平台响应式设计。它能够自动识别设备类型并在移动端抽屉导航和桌面端侧边栏导航之间无缝切换，为用户提供最适合当前设备的交互体验。配合 MobileLayout、DesktopLayout、DesktopSidebar 等组件，形成了完整的多平台布局解决方案。遵循本文的性能建议与最佳实践，可进一步提升用户体验与可维护性。
 
 ## 附录：使用示例与最佳实践
 
 ### 在应用中正确使用 MainLayout
 - 在 App 中引入 MainLayout，并将 activeTab、onTabChange、conversations、activeConversationId、模型与上下文用量等状态传入
-- 将各功能面板（ChatPanel、ImagePanel、FavoritesPanel、SettingsPanel）作为 children 渲染
+- 将各功能面板（ChatPanel、ImagePanel、LibraryPanel、SettingsPanel）作为 children 渲染
 - 根据 activeTab 条件传入 models、selectedModel、onModelChange、webSearchEnabled、artifactEnabled 等属性
 
 参考路径
-- [src/App.tsx:97-128](file://src/App.tsx#L97-L128)
+- [src/App.tsx:174-209](file://src/App.tsx#L174-L209)
 
-### 侧边栏手势最佳实践
+### 设备模式检测最佳实践
+- 利用 useDeviceMode Hook 获取实时设备状态
+- 在需要特定设备行为的组件中使用设备模式判断
+- 注意处理设备模式变化时的状态同步
+- 为不同设备模式提供合适的 UI 和行为差异
+
+参考路径
+- [src/platform/useDeviceMode.ts:18-20](file://src/platform/useDeviceMode.ts#L18-L20)
+- [src/platform/capabilities.ts:36-43](file://src/platform/capabilities.ts#L36-L43)
+
+### 桌面端布局最佳实践
+- 合理使用侧边栏折叠功能，提升空间利用率
+- 利用 localStorage 持久化用户偏好设置
+- 为折叠态提供清晰的视觉反馈和工具提示
+- 确保主内容区域的响应式适配
+
+参考路径
+- [src/components/layout/DesktopLayout.tsx:10-32](file://src/components/layout/DesktopLayout.tsx#L10-L32)
+- [src/components/layout/DesktopSidebar.tsx:54-60](file://src/components/layout/DesktopSidebar.tsx#L54-L60)
+
+### 移动端布局最佳实践
 - 在需要屏蔽手势的区域添加 data-swipe-ignore 属性
 - 避免在 INPUT/TEXTAREA/可编辑区域或横向可滚动元素上触发抽屉手势
 - 合理设置宽度与吸附阈值，确保打开/收起体验自然
+- 正确处理输入框焦点状态，优化移动端输入体验
 
 参考路径
 - [src/hooks/useDrawerSwipe.ts:44-67](file://src/hooks/useDrawerSwipe.ts#L44-L67)
-- [src/hooks/useDrawerSwipe.ts:107-197](file://src/hooks/useDrawerSwipe.ts#L107-L197)
+- [src/components/layout/MainLayout.tsx:117-142](file://src/components/layout/MainLayout.tsx#L117-L142)
 
-### 输入框焦点管理最佳实践
-- 在 main 容器上绑定 onFocusIn/onBlurOut，检测 TEXTAREA 的聚焦与失焦
-- 使用延迟定时器避免同区域切换时的闪烁
-- 聚焦时隐藏底部导航，提升输入体验
-
-参考路径
-- [src/components/layout/MainLayout.tsx:74-93](file://src/components/layout/MainLayout.tsx#L74-L93)
-
-### 顶部导航栏集成要点
-- 传入 models、selectedModel、onModelChange 以启用模型选择器
-- 传入 realUsage、contextLimit、isCompacting、isAwaitingUsage 以显示上下文用量环与面板
-- 通过 onToggleSidebar 控制侧边栏开关
+### 响应式设计最佳实践
+- 使用设备模式检测而非简单的媒体查询，提供更准确的设备识别
+- 为不同设备模式提供专门的布局和交互方案
+- 确保布局切换的平滑性和一致性
+- 考虑边缘情况和回退机制
 
 参考路径
-- [src/components/layout/TopNavBar.tsx:9-32](file://src/components/layout/TopNavBar.tsx#L9-L32)
-- [src/components/layout/TopNavBar.tsx:77-165](file://src/components/layout/TopNavBar.tsx#L77-L165)
-
-### 底部导航栏集成要点
-- 传入 activeTab 与 onTabChange，实现 Tab 切换
-- 根据 inputFocused 决定是否渲染，避免遮挡输入
-
-参考路径
-- [src/components/layout/BottomNavBar.tsx:4-13](file://src/components/layout/BottomNavBar.tsx#L4-L13)
-- [src/components/layout/BottomNavBar.tsx:15-36](file://src/components/layout/BottomNavBar.tsx#L15-L36)
+- [src/platform/capabilities.ts:31-43](file://src/platform/capabilities.ts#L31-L43)
+- [src/components/layout/MainLayout.tsx:287-294](file://src/components/layout/MainLayout.tsx#L287-L294)

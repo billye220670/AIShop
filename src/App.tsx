@@ -6,12 +6,14 @@ import ChatPanel from './components/chat/ChatPanel';
 import HistoryPanel from './components/chat/HistoryPanel';
 import ImagePanel from './components/image/ImagePanel';
 import SettingsPanel from './components/settings/SettingsPanel';
-import FavoritesPanel from './components/artifact/FavoritesPanel';
+import LibraryPanel from './components/artifact/LibraryPanel';
 import Toast from './components/common/Toast';
+import UpdateNotification from './components/common/UpdateNotification';
 import { useChat } from './hooks/useChat';
-import { useFavoriteArtifacts } from './hooks/useFavoriteArtifacts';
+import { useAssets } from './hooks/useAssets';
 import { CHAT_MODELS } from './config/models';
 import { loadTheme, loadMode } from './services/storage';
+import { syncElectronTitleBar } from './utils/electronTitleBar';
 import { requestPersistentStorage } from './utils/pwa';
 import { scheduleAutoSync, safeSync, BYOC_SYNC_DONE_EVENT } from './services/byoc';
 import { useDeviceMode } from './platform/useDeviceMode';
@@ -32,6 +34,8 @@ function App() {
       const darkColor = theme === 'purple' ? '#0d0a1a' : '#121211';
       meta.content = mode === 'light' ? '#f5f5f7' : darkColor;
     }
+    // Electron：窗口标题栏 overlay 颜色跟随主题/模式（Web 下为 no-op）
+    syncElectronTitleBar(theme, mode);
     // Android 壳：状态栏颜色与文字明暗跟随应用主题
     if (isNativePlatform()) {
       const darkColor = theme === 'purple' ? '#0d0a1a' : '#121211';
@@ -74,18 +78,41 @@ function App() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const mode = useDeviceMode();
 
-  const chat = useChat();
-  const { favorites, isFavorite, toggleFavorite, removeFavorite, renameFavorite } = useFavoriteArtifacts();
+  // Electron：新版本下载完成提示 + 启动静默检查更新（开发环境无发布源，失败静默）
+  const [updateReady, setUpdateReady] = useState(false);
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+    api.onUpdateDownloaded(() => setUpdateReady(true));
+    api.checkForUpdate().catch(() => { /* 静默 */ });
+  }, []);
 
-  // BYOC 同步完成后自动刷新会话列表与角色列表（角色可能从云端拉到/被删除）
+  // Electron：target=_blank 外链交给系统默认浏览器打开（Web 下 electronAPI 不存在，不影响原生行为）
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement).closest?.('a[href]') as HTMLAnchorElement | null;
+      if (a && a.target === '_blank' && window.electronAPI?.openExternal) {
+        e.preventDefault();
+        void window.electronAPI.openExternal(a.href);
+      }
+    };
+    document.addEventListener('click', handler, true);
+    return () => document.removeEventListener('click', handler, true);
+  }, []);
+
+  const chat = useChat();
+  const { assets, isSaved, toggleArtifact, removeAsset, renameAsset, saveMarkdown, refresh: refreshAssets } = useAssets();
+
+  // BYOC 同步完成后自动刷新会话/角色/资产列表（三者都可能从云端拉到/被删除）
   useEffect(() => {
     const handler = () => {
       void chat.reloadConversations();
       void chat.refreshRoles();
+      void refreshAssets();
     };
     window.addEventListener(BYOC_SYNC_DONE_EVENT, handler);
     return () => window.removeEventListener(BYOC_SYNC_DONE_EVENT, handler);
-  }, [chat.reloadConversations, chat.refreshRoles]);
+  }, [chat.reloadConversations, chat.refreshRoles, refreshAssets]);
 
   // 桌面模式历史面板打开时主动同步一次（与移动端抽屉侧边栏打开行为一致）
   useEffect(() => {
@@ -136,8 +163,9 @@ function App() {
             switchVersion={chat.switchVersion}
             webSearchEnabled={chat.webSearchEnabled}
             onWebSearchEnabledChange={chat.setWebSearchEnabled}
-            isFavorite={chat.streamingArtifact ? false : (() => { const msgs = chat.messages; for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].artifact) return isFavorite(msgs[i].artifact!.id); } return false; })()}
-            onToggleFavorite={(thumbnail) => { const msgs = chat.messages; for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].artifact) { toggleFavorite(msgs[i].artifact!, thumbnail); return; } } }}
+            isFavorite={chat.streamingArtifact ? false : (() => { const msgs = chat.messages; for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].artifact) return isSaved(msgs[i].artifact!.id); } return false; })()}
+            onToggleFavorite={(thumbnail) => { const msgs = chat.messages; for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].artifact) { toggleArtifact(msgs[i].artifact!, thumbnail); return; } } }}
+            onSaveMarkdown={(messageId, title, content) => saveMarkdown(messageId, title, content)}
             segments={chat.segments}
             onUpdateSegment={(segmentId, summary) => { if (chat.activeConversationId) chat.updateSegment(chat.activeConversationId, segmentId, summary); }}
             openSegmentIdRequest={openSegmentIdRequest}
@@ -160,8 +188,8 @@ function App() {
         );
       case 'image':
         return <ImagePanel />;
-      case 'favorites':
-        return <FavoritesPanel favorites={favorites} onRemoveFavorite={removeFavorite} onRenameFavorite={renameFavorite} />;
+      case 'library':
+        return <LibraryPanel assets={assets} onRemoveAsset={removeAsset} onRenameAsset={renameAsset} />;
       case 'me':
         return <SettingsPanel />;
       default:
@@ -219,6 +247,10 @@ function App() {
               : undefined
           }
         />
+      )}
+      {/* Electron：自动更新就绪提示 */}
+      {window.electronAPI && (
+        <UpdateNotification open={updateReady} onClose={() => setUpdateReady(false)} />
       )}
       {/* 桌面模式右侧历史记录面板（fixed 定位挂在 App 层，不受布局裁剪；移动端仍用抽屉侧边栏） */}
       {mode === 'desktop' && (

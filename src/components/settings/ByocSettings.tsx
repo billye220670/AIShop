@@ -16,6 +16,7 @@ import {
   BYOC_STATUS_EVENT,
 } from '../../services/byoc';
 import { BYOC_PROVIDER_PRESETS, type ByocConfig, type ByocProvider } from '../../services/byoc/types';
+import { settingsService } from '../../services/settingsService';
 import CustomSelect from '../common/CustomSelect';
 
 const PROVIDER_OPTIONS = [
@@ -38,6 +39,7 @@ const ENDPOINT_HINTS: Record<ByocProvider, string> = {
 
 export default function ByocSettings() {
   const [cfg, setCfg] = useState<ByocConfig>(getByocConfig());
+  const [syncApiSettings, setSyncApiSettings] = useState(settingsService.getSyncApiSettings());
 
   // 配置变更后防抖自动检测连通性，结果通过自定义事件上报给 SettingsPanel 显示状态图标
   useEffect(() => {
@@ -109,6 +111,37 @@ export default function ByocSettings() {
           <span
             className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
               cfg.enabled ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* 同步 API 设置开关：API Key 与供应商选择随同步带到其他设备（明文存于用户自己的桶） */}
+      <div className="flex items-center justify-between gap-4 rounded-xl bg-white/5 px-4 py-4">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-white">同步 API 设置</div>
+          <div className="mt-1 text-xs leading-relaxed text-gray-400">
+            API Key 与供应商选择将明文存储在你的云桶中，换设备后自动带过去
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={syncApiSettings}
+          aria-label="同步 API 设置"
+          onClick={() => {
+            haptic();
+            const next = !syncApiSettings;
+            setSyncApiSettings(next);
+            settingsService.setSyncApiSettings(next);
+          }}
+          className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${
+            syncApiSettings ? 'bg-[var(--color-accent)]' : 'bg-white/15'
+          }`}
+        >
+          <span
+            className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+              syncApiSettings ? 'translate-x-5' : 'translate-x-0'
             }`}
           />
         </button>

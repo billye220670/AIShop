@@ -59,17 +59,25 @@ export interface LocalTombstones {
   history: string[];
   favs: string[];
   roles: string[];
+  /** 「我的库」资产删除记录（新版本；favs 记录对 artifact 资产同样生效） */
+  assets: string[];
 }
 
 /** 兼容旧格式（convs 为 string[]）：at 用 0，撤销判定时退化为缓存清单对比 */
 function normalizeTombstones(raw: LocalTombstones | undefined): LocalTombstones {
-  const t = raw ?? { convs: [], history: [], favs: [], roles: [] };
+  const t = raw ?? { convs: [], history: [], favs: [], roles: [], assets: [] };
   const convs = Array.isArray(t.convs)
     ? (t.convs as unknown[]).map(item =>
         typeof item === 'string' ? { id: item, at: 0 } : (item as ConvTombstone)
       )
     : [];
-  return { convs, history: t.history ?? [], favs: t.favs ?? [], roles: t.roles ?? [] };
+  return {
+    convs,
+    history: t.history ?? [],
+    favs: t.favs ?? [],
+    roles: t.roles ?? [],
+    assets: t.assets ?? [],
+  };
 }
 
 export async function getLocalTombstones(): Promise<LocalTombstones> {
@@ -111,7 +119,35 @@ export async function setLastSyncAt(time: number): Promise<void> {
 }
 
 /**
- * 统计待同步数量：updatedAt 晚于 syncedAt 的会话/消息/角色 + 未传播的本地删除。
+ * API 设置（providers + apiKeys）同步元数据。
+ *
+ * settings 是 localStorage 的单一 JSON 对象，不走 IndexedDB 表的
+ * updatedAt/syncedAt 体系，这里单独记一份：updatedAt = 本机最后变更时刻
+ * （setApiKey/setProvider 时前移），syncedAt = 最近一次成功推/拉时刻。
+ * 冲突策略 LWW：updatedAt 大者胜，与角色/会话元数据一致。
+ */
+export interface SettingsSyncMeta {
+  updatedAt: number;
+  syncedAt: number;
+}
+
+export async function getSettingsSyncMeta(): Promise<SettingsSyncMeta | undefined> {
+  return kvGet<SettingsSyncMeta>('settingsSyncMeta');
+}
+
+export async function setSettingsSyncMeta(meta: SettingsSyncMeta): Promise<void> {
+  await kvSet('settingsSyncMeta', meta);
+}
+
+/** 标记本机 API 设置已变更（保留 syncedAt，push 阶段据此判定待推送） */
+export async function markSettingsDirty(): Promise<void> {
+  const meta = await getSettingsSyncMeta();
+  await setSettingsSyncMeta({ updatedAt: Date.now(), syncedAt: meta?.syncedAt ?? 0 });
+}
+
+/**
+ * 统计待同步数量：updatedAt 晚于 syncedAt 的会话/消息/角色 + 未传播的本地删除
+ * + API 设置（开关开启且标记过变更时计 1）。
  *
  * 注意不能只按 syncedAt == null 判断——流式覆盖写（putMessage）会保留旧的
  * syncedAt，但 updatedAt 已经前移，那也算待同步。
@@ -120,20 +156,36 @@ export async function setLastSyncAt(time: number): Promise<void> {
  * 会永远看不到删除。本地 tombstone 记录在云端确认删除后由 pullRemote 清除，
  * 所以「还有记录」= 删除尚未传播，必须让 60 秒轮询兜底触发同步。
  */
-export async function countPending(): Promise<{ convs: number; messages: number; roles: number }> {
-  const [tombstones, list, roles] = await Promise.all([
+export async function countPending(): Promise<{
+  convs: number;
+  messages: number;
+  roles: number;
+  settings: number;
+}> {
+  const [tombstones, list, roles, settingsMeta] = await Promise.all([
     getLocalTombstones(),
     listConversations(),
     listStoredRoles(),
+    getSettingsSyncMeta(),
   ]);
   const deleted =
     tombstones.convs.length +
     tombstones.history.length +
     tombstones.favs.length +
-    tombstones.roles.length;
+    tombstones.roles.length +
+    tombstones.assets.length;
   const convs = list.filter(c => c.updatedAt > (c.syncedAt ?? 0));
   let messages = 0;
   for (const c of convs) messages += await countMessages(c.id);
   const pendingRoles = roles.filter(r => r.updatedAt > (r.syncedAt ?? 0)).length;
-  return { convs: convs.length + deleted, messages, roles: pendingRoles };
+  // 开关缺省开启；本地直读 localStorage（与 settingsService.getSyncApiSettings
+  // 保持一致），避免 state → settingsService → state 的循环依赖
+  let settingsEnabled = true;
+  try {
+    const raw = localStorage.getItem('aishop_settings');
+    if (raw) settingsEnabled = JSON.parse(raw).syncApiSettings !== false;
+  } catch { /* 缺省开启 */ }
+  const pendingSettings =
+    settingsEnabled && settingsMeta && settingsMeta.updatedAt > settingsMeta.syncedAt ? 1 : 0;
+  return { convs: convs.length + deleted, messages, roles: pendingRoles, settings: pendingSettings };
 }

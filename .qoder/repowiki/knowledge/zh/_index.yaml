@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: master
 nodes_managed: true
-exported_at: "2026-08-10T02:56:34Z"
+exported_at: "2026-08-12T12:03:43Z"
 modules:
     "":
-        dir_name: AIShop 前端根工程
-        title: AIShop 前端根工程
+        dir_name: AIShop 前端根工程（Vite + React 单仓）
+        title: AIShop 前端根工程（Vite + React 单仓）
         scope:
             - README.md
             - .gitignore
@@ -34,9 +34,25 @@ modules:
             - 需求文档.md
         source_files: []
         children:
+            - android_capacitor
             - app_shell
         depends_on: []
         related_to: []
+    android_capacitor:
+        dir_name: PortAI Android Capacitor 原生壳与打包脚本
+        title: PortAI Android Capacitor 原生壳与打包脚本
+        scope:
+            - android/
+            - capacitor.config.ts
+            - install-apk.bat
+            - install-apk.ps1
+            - install-apk-auto.bat
+            - install-apk-auto.ps1
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: app_shell
     app_shell:
         dir_name: 应用外壳与根入口
         title: 应用外壳与根入口
@@ -50,10 +66,11 @@ modules:
             - app_shell/byoc_service
             - app_shell/image_utils
         depends_on: []
-        related_to: []
+        related_to:
+            - path: android_capacitor
     app_shell/byoc_service:
-        dir_name: BYOC（自带云存储）S3 同步与备份服务
-        title: BYOC（自带云存储）S3 同步与备份服务
+        dir_name: BYOC 自带云存储同步服务
+        title: BYOC 自带云存储同步服务
         scope:
             - src/services/byoc/
             - src/utils/sha256.ts

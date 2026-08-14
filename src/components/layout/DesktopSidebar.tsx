@@ -1,5 +1,5 @@
 import { type ComponentType } from 'react';
-import { MessageSquare, Image as ImageIcon, Star, User, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { MessageSquare, Image as ImageIcon, Library, User, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { TabMode } from '../../types';
 import { useByocStatus } from '../../hooks/useByocStatus';
 
@@ -21,10 +21,10 @@ type TabIcon = ComponentType<{ className?: string }>;
 const MODE_TABS: { id: TabMode; label: string; Icon: TabIcon }[] = [
   { id: 'chat', label: '聊天', Icon: MessageSquare },
   { id: 'image', label: '图片', Icon: ImageIcon },
-  { id: 'favorites', label: '收藏', Icon: Star },
+  { id: 'library', label: '我的库', Icon: Library },
 ];
 
-/** 桌面侧边栏：模式页签（聊天/图片/收藏）+ 折叠按钮 + 底部「我的」入口；
+/** 桌面侧边栏：模式页签（聊天/图片/我的库）+ 折叠按钮 + 底部「我的」入口；
  *  历史会话列表已移到右侧 HistoryPanel，这里不再展示 */
 export default function DesktopSidebar({
   activeTab,

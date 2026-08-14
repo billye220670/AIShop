@@ -12,6 +12,7 @@ import {
 import ModelSelector from '../common/ModelSelector';
 import { IMAGE_MODELS } from '../../config/models';
 import { useImage } from '../../hooks/useImage';
+import { useAssets } from '../../hooks/useAssets';
 import type { ImageHistoryItem, PendingImageTask } from '../../types';
 import MasonryPhotoWall from './MasonryPhotoWall';
 import type { PhotoItem } from './MasonryPhotoWall';
@@ -393,6 +394,8 @@ export default function ImagePanel() {
     qualityOptions,
     showQuality,
   } = useImage();
+  // 「我的库」图片收藏：独立实例，切到库页时会重新加载
+  const { isSaved, saveImage } = useAssets();
 
   const [prompt, setPrompt] = useState('');
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -684,6 +687,11 @@ export default function ImagePanel() {
         item={item}
         onDownload={() => handleDownload(card.url, card.prompt, card.timestamp)}
         onDelete={() => deleteHistoryItem(card.id)}
+        onSave={() => {
+          const full = history.find(h => h.id === card.id);
+          if (full) saveImage(full);
+        }}
+        saved={isSaved(card.id)}
         onDragEnd={(_item, clientX, clientY) => {
           // hit-test：是否释放在输入区域内
           const area = inputAreaRef.current;
@@ -698,7 +706,7 @@ export default function ImagePanel() {
         }}
       />
     );
-  }, [deleteHistoryItem, handleDownload, addReferenceImage]);
+  }, [deleteHistoryItem, handleDownload, addReferenceImage, history, saveImage, isSaved]);
 
   // Pending 任务卡片（loading + error）
   const pendingPhotoItems: PhotoItem[] = useMemo(() =>

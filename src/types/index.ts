@@ -122,7 +122,33 @@ export interface Model {
   };
 }
 
-export type TabMode = 'chat' | 'image' | 'favorites' | 'me';
+export type TabMode = 'chat' | 'image' | 'library' | 'me';
+
+/** 「我的库」资产类型：artifact（HTML 应用）/ markdown / 图片 */
+export type AssetKind = 'artifact' | 'markdown' | 'image';
+
+/**
+ * 「我的库」资产条目（UI 层形态，与存盘结构解耦）。
+ *
+ * thumbnail / urls 里的 blob 一律是 aishop-blob:<id> 引用，
+ * 渲染处用 useBlobUrl 解析；http 链接原样保留。
+ */
+export interface AssetItem {
+  id: string;
+  kind: AssetKind;
+  title: string;
+  createdAt: number;
+  /** kind=artifact */
+  artifact?: ArtifactBlock;
+  /** kind=markdown：正文纯文本 */
+  content?: string;
+  /** kind=image */
+  urls?: string[];
+  /** 卡片缩略图：artifact 用截图，image 用首图 */
+  thumbnail?: string;
+  /** 来源引用：markdown 的源消息 id / image 的源历史 id */
+  sourceRef?: string;
+}
 
 export interface ChatState {
   messages: Message[];

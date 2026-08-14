@@ -8,7 +8,7 @@
 - [index.ts（类型定义）](file://src/types/index.ts)
 - [useChat.ts](file://src/hooks/useChat.ts)
 - [App.tsx](file://src/App.tsx)
-- [FavoritesPanel.tsx](file://src/components/artifact/FavoritesPanel.tsx)
+- [LibraryPanel.tsx](file://src/components/artifact/LibraryPanel.tsx)
 </cite>
 
 ## 目录
@@ -34,14 +34,14 @@ Artifact 功能由以下关键模块协作完成：
 - 类型定义：types/index.ts（ArtifactBlock、Message 等）
 - 对话流程：useChat（构建系统提示、解析并落盘 artifact）
 - 入口与开关：App.tsx（全局 featureSettings 控制）
-- 收藏管理：FavoritesPanel（收藏列表、预览、重命名、删除）
+- 资产管理：LibraryPanel（「我的库」列表：artifact/文档/图片，预览、重命名、删除）
 
 ```mermaid
 graph TB
 subgraph "界面"
 A["ChatPanel"]
 B["ArtifactPanel"]
-C["FavoritesPanel"]
+C["LibraryPanel"]
 end
 subgraph "状态与工具"
 D["useArtifact"]
@@ -84,7 +84,7 @@ F --> C
 - types/index.ts：定义 ArtifactBlock、Message.artifact、MessageVersion.artifact 等数据结构。
 - useChat：在消息完成时解析并写入 Message.artifact，同时剥离 artifact 标记用于文本显示。
 - App.tsx：通过 featureSettings.artifactEnabled 控制是否启用 Artifact 能力。
-- FavoritesPanel：收藏列表与预览，支持重命名、删除、长按菜单等交互。
+- LibraryPanel：「我的库」资产列表与预览，支持筛选、重命名、删除、长按菜单等交互。
 
 章节来源
 - [ArtifactPanel.tsx:66-266](file://src/components/artifact/ArtifactPanel.tsx#L66-L266)
@@ -93,7 +93,7 @@ F --> C
 - [index.ts:44-107](file://src/types/index.ts#L44-L107)
 - [useChat.ts:720-740](file://src/hooks/useChat.ts#L720-L740)
 - [App.tsx:124-125](file://src/App.tsx#L124-L125)
-- [FavoritesPanel.tsx:15-312](file://src/components/artifact/FavoritesPanel.tsx#L15-L312)
+- [LibraryPanel.tsx:17-33](file://src/components/artifact/LibraryPanel.tsx#L17-L33)
 
 ## 架构总览
 下图展示了 Artifact 从流式输出到最终展示的端到端流程，包括聊天侧的触发、状态迁移、UI 渲染与收藏持久化。
@@ -221,28 +221,28 @@ MESSAGE ||--o{ ARTIFACT : "contains"
 - [index.ts:44-107](file://src/types/index.ts#L44-L107)
 - [useArtifact.ts:11-43](file://src/hooks/useArtifact.ts#L11-L43)
 
-### 收藏与缩略图
-- 收藏触发：在预览模式下点击收藏，尝试从 iframe 捕获缩略图（html2canvas），成功后上传/保存；若不可用则降级为无缩略图收藏。
-- 收藏列表：FavoritesPanel 提供网格展示、预览、重命名、删除等操作。
-- 资源清理：收藏截图完成后释放相关状态，避免内存泄漏。
+### 保存到库与缩略图
+- 保存触发：在预览模式下点击「保存到我的库」，尝试从 iframe 捕获缩略图（html2canvas），成功后以缩略图保存；已保存时按钮变为「从我的库移除」。若不可用则降级为无缩略图。
+- 资产列表：LibraryPanel 提供网格展示、筛选、预览、重命名、删除等操作。
+- 资源清理：缩略图截图完成后释放相关状态，避免内存泄漏。
 
 章节来源
 - [ArtifactPanel.tsx:145-179](file://src/components/artifact/ArtifactPanel.tsx#L145-L179)
-- [FavoritesPanel.tsx:85-149](file://src/components/artifact/FavoritesPanel.tsx#L85-L149)
-- [FavoritesPanel.tsx:170-275](file://src/components/artifact/FavoritesPanel.tsx#L170-L275)
+- [LibraryPanel.tsx:200-260](file://src/components/artifact/LibraryPanel.tsx#L200-L260)
+- [LibraryPanel.tsx:300-400](file://src/components/artifact/LibraryPanel.tsx#L300-L400)
 
 ## 依赖关系分析
 - ChatPanel 依赖 useArtifact 进行状态管理与解析，依赖 ArtifactPanel 进行 UI 渲染。
 - useChat 在消息完成时解析并写入 Message.artifact，供 ChatPanel 在流式结束时消费。
 - App.tsx 通过 featureSettings 控制是否启用 Artifact 能力，影响输入与模型选择器的可见性。
-- FavoritesPanel 依赖本地存储（如 IndexedDB）与 BlobImage 组件进行缩略图展示。
+- LibraryPanel 依赖本地存储（如 IndexedDB 的 assets store）与 BlobImage 组件进行缩略图展示。
 
 ```mermaid
 graph LR
 App["App.tsx"] --> Chat["ChatPanel"]
 Chat --> Hook["useArtifact"]
 Chat --> Panel["ArtifactPanel"]
-Chat --> Fav["FavoritesPanel"]
+Chat --> Fav["LibraryPanel"]
 Chat --> Store["useChat"]
 Store --> Types["types/index.ts"]
 Panel --> Types

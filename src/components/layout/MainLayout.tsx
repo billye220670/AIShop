@@ -276,7 +276,7 @@ function MobileLayout(props: MainLayoutProps) {
             conversationId={activeConversationId}
           />
         )}
-        <main className="flex-1 flex flex-col overflow-hidden" data-swipe-ignore={(activeTab === 'me' || activeTab === 'favorites') ? true : undefined}>{children}</main>
+        <main className="flex-1 flex flex-col overflow-hidden" data-swipe-ignore={(activeTab === 'me' || activeTab === 'library') ? true : undefined}>{children}</main>
         {/* 底部导航栏 */}
         {!inputFocused && <BottomNavBar activeTab={activeTab} onTabChange={onTabChange} />}
       </div>

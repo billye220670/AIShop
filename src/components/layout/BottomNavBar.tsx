@@ -1,4 +1,4 @@
-import { MessageSquare, Star, User } from 'lucide-react';
+import { MessageSquare, Library, User } from 'lucide-react';
 import type { TabMode } from '../../types';
 import { isNativeAndroid } from '../../platform/capabilities';
 
@@ -9,7 +9,7 @@ interface BottomNavBarProps {
 
 const navItems: { id: TabMode; label: string; Icon: typeof MessageSquare }[] = [
   { id: 'chat', label: '对话', Icon: MessageSquare },
-  { id: 'favorites', label: '收藏', Icon: Star },
+  { id: 'library', label: '我的库', Icon: Library },
   { id: 'me', label: '我的', Icon: User },
 ];
 

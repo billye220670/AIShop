@@ -19,6 +19,7 @@ import {
   Trash2,
   Loader2,
   TriangleAlert,
+  Bookmark,
 } from 'lucide-react';
 import type { PhotoItem } from './MasonryPhotoWall';
 import { useBlobUrl } from '../../hooks/useBlobUrl';
@@ -31,6 +32,10 @@ export interface PhotoCardProps {
   onDownload?: (item: PhotoItem) => void;
   /** 删除回调 */
   onDelete?: (item: PhotoItem) => void;
+  /** 收藏到「我的库」回调（已收藏时显示状态） */
+  onSave?: (item: PhotoItem) => void;
+  /** 是否已在「我的库」中 */
+  saved?: boolean;
   /** App 内释放回调（已在输入区域 hit-test 通过） */
   onDragEnd?: (item: PhotoItem, clientX: number, clientY: number) => void;
   /** 额外的 className */
@@ -72,6 +77,8 @@ export default function PhotoCard({
   item,
   onDownload,
   onDelete,
+  onSave,
+  saved = false,
   onDragEnd,
   className = '',
 }: PhotoCardProps) {
@@ -127,6 +134,30 @@ export default function PhotoCard({
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const [dragHidden, setDragHidden] = useState(false);
 
+  // Electron 原生拖拽：主进程 startDrag 只能同步处理 data:/local-image://，
+  // IndexedDB 图片是 blob: object URL，需预转换为 data URL 缓存，拖拽时同步取用
+  const nativeDragDataUrlRef = useRef('');
+  useEffect(() => {
+    if (!window.electronAPI?.startDrag || !originalUrl) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resp = await fetch(originalUrl);
+        const blob = await resp.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (!cancelled && typeof reader.result === 'string') {
+            nativeDragDataUrlRef.current = reader.result;
+          }
+        };
+        reader.readAsDataURL(blob);
+      } catch {
+        // 转换失败：保持空值，拖拽时退回 App 内拖拽（与 Web 行为一致）
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [originalUrl]);
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -140,6 +171,15 @@ export default function PhotoCard({
         const dx = ev.clientX - dr.startX;
         const dy = ev.clientY - dr.startY;
         if (!dr.active && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+
+        // Electron：超过阈值即转原生拖拽到桌面（sendSync 同步，拖拽窗口期内有效）
+        const api = window.electronAPI;
+        if (api?.startDrag && nativeDragDataUrlRef.current) {
+          dr.nativeFired = true;
+          api.startDrag(nativeDragDataUrlRef.current);
+          return;
+        }
+
         dr.active = true;
 
         setDragPos({ x: ev.clientX, y: ev.clientY });
@@ -201,7 +241,25 @@ export default function PhotoCard({
 
       {/* Hover overlay - pointer-events-none 防止阻挡拖拽 */}
       <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3 pointer-events-none">
-        <div className="flex justify-end pointer-events-auto">
+        <div className="flex justify-end pointer-events-auto gap-1.5">
+          {/* 收藏到我的库 */}
+          {onSave && (
+            <button
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSave(item);
+              }}
+              className={`w-7 h-7 flex items-center justify-center backdrop-blur-sm rounded-md transition-colors ${
+                saved
+                  ? 'bg-yellow-500/30 text-yellow-400'
+                  : 'bg-white/10 hover:bg-white/20 text-white/80 hover:text-white'
+              }`}
+              title={saved ? '已保存到我的库' : '保存到我的库'}
+            >
+              <Bookmark className="w-4 h-4" fill={saved ? 'currentColor' : 'none'} />
+            </button>
+          )}
           <button
             ref={menuBtnRef}
             onMouseDown={(e) => e.stopPropagation()}

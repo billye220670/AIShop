@@ -8,4 +8,5 @@ scope:
     - src/vite-env.d.ts
 source_files: []
 depends_on: []
-related_to: []
+related_to:
+    - path: android_capacitor

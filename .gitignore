@@ -11,7 +11,11 @@ node_modules
 dist
 dist-ssr
 dist-electron/
+release/
 *.local
+
+# build artifacts
+*.apk
 
 # env files
 .env

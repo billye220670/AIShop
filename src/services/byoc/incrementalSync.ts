@@ -13,8 +13,10 @@
  *   sync/v1/nodes/{convId}/{nodeId}.json  上下文节点（派生数据，可重建）
  *   sync/v1/blobs/{sha256}                二进制原样（内容寻址，全局去重）
  *   sync/v1/history/{id}.json + index.json 图片生成历史
- *   sync/v1/favs/{id}.json + index.json   收藏
+ *   sync/v1/assets/{id}.json + index.json 「我的库」资产（md / artifact / 图片）
+ *   sync/v1/favs/{id}.json + index.json   收藏（artifact 资产的旧版兼容镜像）
  *   sync/v1/roles/{id}.json + index.json  角色（系统提示词预设）
+ *   sync/v1/settings.json                 API 设置（providers + apiKeys，可选同步，单对象整体覆盖）
  *
  * 冲突策略：消息追加式直接并入；会话元数据 last-write-wins（updatedAt 大者胜）；
  * 删除走 manifest 里的 tombstone（数据只增不减是安全方向）。
@@ -37,8 +39,9 @@ import {
   indexMessage,
   listStoredImageHistory,
   deleteImageHistoryItem,
-  listStoredFavorites,
-  removeFavorite,
+  listStoredAssets,
+  removeAsset,
+  putStoredAsset,
   listStoredRoles,
   deleteRole,
 } from '../../db';
@@ -50,17 +53,21 @@ import type {
   StoredContextNode,
   StoredImageHistoryItem,
   StoredFavoriteArtifact,
+  StoredAsset,
   StoredRole,
 } from '../../db/schema';
 import { createS3Client, type S3Client } from './s3Client';
-import type { ByocConfig, SyncManifestV1, SyncResult } from './types';
+import type { ByocConfig, SyncManifestV1, SyncResult, SyncedSettings } from './types';
 import {
   getDeviceId,
   setCloudManifest,
   getCloudManifest,
   getLocalTombstones,
   updateLocalTombstones,
+  getSettingsSyncMeta,
+  setSettingsSyncMeta,
 } from './state';
+import { settingsService } from '../settingsService';
 
 const SCHEMA = 'aishop-sync-v1';
 const SYNC_DIR = 'sync/v1/';
@@ -75,10 +82,11 @@ function emptyManifest(deviceId: string, now: number): SyncManifestV1 {
     deviceId,
     updatedAt: now,
     convs: {},
-    tombstones: { convs: [], history: [], favs: [], roles: [] },
+    tombstones: { convs: [], history: [], favs: [], roles: [], assets: [] },
     historyIds: [],
     favIds: [],
     roleIds: [],
+    assetIds: [],
   };
 }
 
@@ -237,14 +245,7 @@ export async function pushLocal(
     result.pushedMessages += dirtyMsgs.length;
 
     // 引用 blob：HEAD 探测，缺失才上传（内容寻址，重复图只传一次）
-    const blobIds = realBlobIdsOf(dirtyMsgs);
-    for (const blobId of blobIds) {
-      if (await client.headObject(syncKey(cfg.prefix, 'blobs', blobId))) continue;
-      const record = await getBlob(blobId);
-      if (!record) continue;
-      await client.putObject(syncKey(cfg.prefix, 'blobs', blobId), record.blob);
-      result.pushedBlobs += 1;
-    }
+    await pushBlobRefs(client, cfg, realBlobIdsOf(dirtyMsgs), result);
 
     // 节点：覆盖式推送（派生数据，云端以本地为准）
     const nodes = await listNodesFor(conv.id);
@@ -278,6 +279,13 @@ export async function pushLocal(
       jsonBlob(item)
     );
   }
+  // 历史引用的图片 blob 一并上传，否则另一端拉取时云端缺对象，图片会静默丢失
+  await pushBlobRefs(
+    client,
+    cfg,
+    history.flatMap(h => h.blobIds ?? []),
+    result
+  );
   for (const id of manifest.historyIds) {
     if (!historyIds.includes(id) && !manifest.tombstones.history.includes(id)) {
       manifest.tombstones.history.push(id);
@@ -296,8 +304,56 @@ export async function pushLocal(
     jsonBlob({ ids: historyIds })
   );
 
-  // 4. 收藏：同上
-  const favs = await listStoredFavorites();
+  // 4. 「我的库」资产：以本地为准推全量索引 + 对象；云端有而本地没有的记 tombstone。
+  //    assets 目录承载三种 kind；favs 目录保留为 artifact 资产的兼容镜像，让仍运行
+  //    旧版本（无 assets store）的设备继续收到 artifact 收藏/删除。
+  const assets = await listStoredAssets();
+  const assetIds = assets.map(a => a.id);
+  for (const asset of assets) {
+    await client.putObject(
+      syncKey(cfg.prefix, 'assets', `${asset.id}.json`),
+      jsonBlob(asset)
+    );
+  }
+  // 资产引用的 blob 一并上传：artifact 缩略图 + image 图片（http 上游链接除外）。
+  // 只推元数据不推 blob 的话，另一端 pullAssetBlobs 会因云端缺对象丢掉缩略图引用，
+  // 表现为库列表项存在但没有缩略图。
+  await pushBlobRefs(
+    client,
+    cfg,
+    assets.flatMap(a => [
+      ...(a.thumbnailBlobId ? [a.thumbnailBlobId] : []),
+      ...(a.blobIds ?? []),
+    ]),
+    result
+  );
+  for (const id of manifest.assetIds ?? []) {
+    if (!assetIds.includes(id) && !(manifest.tombstones.assets ?? []).includes(id)) {
+      (manifest.tombstones.assets ??= []).push(id);
+      await updateLocalTombstones(t => {
+        if (!t.assets.includes(id)) t.assets.push(id);
+      });
+    }
+  }
+  manifest.tombstones.assets = (manifest.tombstones.assets ?? []).filter(
+    id => !assetIds.includes(id)
+  );
+  manifest.assetIds = assetIds;
+  await client.putObject(
+    syncKey(cfg.prefix, 'assets', 'index.json'),
+    jsonBlob({ ids: assetIds })
+  );
+
+  // favs 兼容镜像：只镜像 artifact 资产，id 与 asset id 一致（迁移时保持），
+  // 旧设备删除 artifact 时发的 favs tombstone 与本端 asset id 对齐
+  const favs = assets
+    .filter(a => a.kind === 'artifact' && a.artifact && a.thumbnailBlobId)
+    .map(a => ({
+      id: a.id,
+      artifact: a.artifact!,
+      thumbnailBlobId: a.thumbnailBlobId!,
+      favoritedAt: a.createdAt,
+    }));
   const favIds = favs.map(f => f.id);
   for (const fav of favs) {
     await client.putObject(syncKey(cfg.prefix, 'favs', `${fav.id}.json`), jsonBlob(fav));
@@ -340,6 +396,12 @@ export async function pushLocal(
   // 推送成功的角色标记本地 syncedAt，否则 countPending 会一直把它们算作待同步
   await markRolesSynced(roles, now);
 
+  // 5.5 API 设置（providers + apiKeys）：可选同步（开关开启才参与），
+  //    单对象整体覆盖，LWW（updatedAt 大者胜）
+  if (settingsService.getSyncApiSettings()) {
+    await pushSettings(client, cfg, manifest);
+  }
+
   // 6. 重写清单
   manifest.updatedAt = Date.now();
   await client.putObject(syncKey(cfg.prefix, 'manifest.json'), jsonBlob(manifest));
@@ -351,6 +413,62 @@ export async function pushLocal(
   );
 
   return result;
+}
+
+/**
+ * 保证引用 blob 在云端存在：HEAD 探测，缺失才上传（内容寻址，重复只传一次）。
+ * 消息、图片历史、「我的库」资产共用；http 上游链接不属于本地 blob 体系，跳过。
+ */
+async function pushBlobRefs(
+  client: S3Client,
+  cfg: ByocConfig,
+  ids: string[],
+  result: SyncResult
+): Promise<void> {
+  await mapLimit(ids, 4, async blobId => {
+    if (isRemoteUrl(blobId)) return;
+    if (await client.headObject(syncKey(cfg.prefix, 'blobs', blobId))) return;
+    const record = await getBlob(blobId);
+    if (!record) return;
+    await client.putObject(syncKey(cfg.prefix, 'blobs', blobId), record.blob);
+    result.pushedBlobs += 1;
+  });
+}
+
+/**
+ * 推送 API 设置（sync/v1/settings.json，单对象整体覆盖，LWW）。
+ *
+ * 只在本地有变更（updatedAt > syncedAt）时推；若云端版本晚于本机最后变更
+ * （其他设备后写、本机还未拉过），反向拉云端覆盖本地——避免旧数据覆盖新数据。
+ */
+async function pushSettings(
+  client: S3Client,
+  cfg: ByocConfig,
+  manifest: SyncManifestV1
+): Promise<void> {
+  const meta = await getSettingsSyncMeta();
+  if (!meta || meta.updatedAt <= meta.syncedAt) return; // 无本地变更
+  const cloudAt = manifest.settingsUpdatedAt ?? 0;
+  if (cloudAt > meta.updatedAt) {
+    await pullSettings(client, cfg, cloudAt);
+    return;
+  }
+  await client.putObject(
+    syncKey(cfg.prefix, 'settings.json'),
+    jsonBlob(settingsService.getSyncedSettings())
+  );
+  manifest.settingsUpdatedAt = meta.updatedAt;
+  await setSettingsSyncMeta({ updatedAt: meta.updatedAt, syncedAt: meta.updatedAt });
+}
+
+/** 拉取云端 API 设置并写回本地（整体覆盖），成功后把 meta 对齐到云端版本 */
+async function pullSettings(client: S3Client, cfg: ByocConfig, cloudAt: number): Promise<void> {
+  const raw = await client.getObject(syncKey(cfg.prefix, 'settings.json'));
+  if (!raw) return;
+  const parsed = JSON.parse(await raw.text()) as SyncedSettings;
+  if (!parsed || typeof parsed !== 'object' || !parsed.providers || !parsed.apiKeys) return;
+  settingsService.applySyncedSettings(parsed);
+  await setSettingsSyncMeta({ updatedAt: cloudAt, syncedAt: cloudAt });
 }
 
 function fileBase(key: string): string {
@@ -417,10 +535,11 @@ export async function pullRemote(
   );
   const cachedHistIds = new Set<string>(cached ? cached.historyIds : []);
   const cachedFavIds = new Set<string>(cached ? cached.favIds : []);
+  const cachedAssetIds = new Set<string>(cached ? (cached.assetIds ?? []) : []);
   const cachedRoleIds = new Set<string>(cached ? (cached.roleIds ?? []) : []);
   const localConvIds = new Set((await listConversations()).map(c => c.id));
   const localHistIds = new Set((await listStoredImageHistory()).map(h => h.id));
-  const localFavIds = new Set((await listStoredFavorites()).map(f => f.id));
+  const localAssetIds = new Set((await listStoredAssets()).map(a => a.id));
   const localRoleIds = new Set((await listStoredRoles()).map(r => r.id));
   for (const convId of Object.keys(manifest.convs)) {
     if (localConvIds.has(convId)) continue;
@@ -440,9 +559,16 @@ export async function pullRemote(
     });
   }
   for (const id of manifest.favIds) {
-    if (localFavIds.has(id) || !cachedFavIds.has(id)) continue;
+    if (localAssetIds.has(id) || !cachedFavIds.has(id)) continue;
     await updateLocalTombstones(t => {
       if (!t.favs.includes(id)) t.favs.push(id);
+    });
+  }
+  // 资产（含 favs 镜像之外的 md/image）：缓存清单有而本地没有的记本地 tombstone
+  for (const id of manifest.assetIds ?? []) {
+    if (localAssetIds.has(id) || !cachedAssetIds.has(id)) continue;
+    await updateLocalTombstones(t => {
+      if (!t.assets.includes(id)) t.assets.push(id);
     });
   }
   for (const id of manifest.roleIds ?? []) {
@@ -468,9 +594,19 @@ export async function pullRemote(
       t.history = t.history.filter(x => x !== id);
     });
   }
+  // favs tombstone 与 artifact 资产 id 一致（迁移时保持）：直接删 assets 记录，
+  // 本地 tombstone 两边都清，避免残留导致 countPending 永远挂账
   for (const id of manifest.tombstones.favs) {
-    await removeFavorite(id);
+    await removeAsset(id);
     await updateLocalTombstones(t => {
+      t.favs = t.favs.filter(x => x !== id);
+      t.assets = t.assets.filter(x => x !== id);
+    });
+  }
+  for (const id of manifest.tombstones.assets ?? []) {
+    await removeAsset(id);
+    await updateLocalTombstones(t => {
+      t.assets = t.assets.filter(x => x !== id);
       t.favs = t.favs.filter(x => x !== id);
     });
   }
@@ -534,23 +670,47 @@ export async function pullRemote(
   }
   result.pulledBlobs += histStat.blobCount;
 
-  // 4. 收藏：同上（缩略图 blob 一并拉）
+  // 4. 「我的库」资产：主拉 assets 目录（三种 kind，缩略图/图片 blob 一并拉）；
+  //    favs 目录是旧版本设备推送的 artifact 镜像，其 id 本地没有时转成资产拉入
+  const assetIndex = await readIndex(client, cfg, 'assets');
+  const localAssets = new Map((await listStoredAssets()).map(a => [a.id, a]));
+  const assetStat = { blobCount: 0 };
+  for (const id of assetIndex) {
+    const tombstones = await getLocalTombstones();
+    if (tombstones.assets.includes(id) || tombstones.favs.includes(id)) continue; // 本机已删，不拉
+    if (localAssets.has(id)) continue;
+    const raw = await client.getObject(syncKey(cfg.prefix, 'assets', `${id}.json`));
+    if (!raw) continue;
+    const asset = JSON.parse(await raw.text()) as StoredAsset;
+    await putStoredAsset(asset);
+    await pullAssetBlobs(client, cfg, asset, assetStat);
+  }
+  // 兼容镜像：旧版本云端只有 favs，拉下来转成 artifact 资产（id/缩略图不变）
   const favIndex = await readIndex(client, cfg, 'favs');
-  const localFavs = new Map((await listStoredFavorites()).map(f => [f.id, f]));
   const favStat = { blobCount: 0 };
   for (const id of favIndex) {
+    if (localAssets.has(id)) continue;
     const tombstones = await getLocalTombstones();
-    if (tombstones.favs.includes(id)) continue; // 本机已删，不拉
-    if (localFavs.has(id)) continue;
+    if (tombstones.assets.includes(id) || tombstones.favs.includes(id)) continue;
     const raw = await client.getObject(syncKey(cfg.prefix, 'favs', `${id}.json`));
     if (!raw) continue;
     const fav = JSON.parse(await raw.text()) as StoredFavoriteArtifact;
-    await putStoredFavorite(fav);
+    const now = Date.now();
+    await putStoredAsset({
+      id: fav.id,
+      kind: 'artifact',
+      title: fav.artifact.title,
+      createdAt: fav.favoritedAt,
+      artifact: fav.artifact,
+      thumbnailBlobId: fav.thumbnailBlobId,
+      updatedAt: now,
+      syncedAt: null,
+    });
     if (fav.thumbnailBlobId && !isRemoteUrl(fav.thumbnailBlobId)) {
       await pullOneBlob(client, cfg, fav.thumbnailBlobId, favStat);
     }
   }
-  result.pulledBlobs += favStat.blobCount;
+  result.pulledBlobs += assetStat.blobCount + favStat.blobCount;
 
   // 5. 角色：同上（纯文本记录，无 blob 依赖）
   const roleIndex = await readIndex(client, cfg, 'roles');
@@ -565,6 +725,18 @@ export async function pullRemote(
     await putStoredRole(role);
   }
 
+  // 5.5 API 设置：云端较新且本机无更新变更时整体覆盖写回（LWW）
+  if (settingsService.getSyncApiSettings()) {
+    const settingsCloudAt = manifest.settingsUpdatedAt ?? 0;
+    const settingsMeta = await getSettingsSyncMeta();
+    if (
+      settingsCloudAt > (settingsMeta?.syncedAt ?? 0) &&
+      settingsCloudAt > (settingsMeta?.updatedAt ?? 0)
+    ) {
+      await pullSettings(client, cfg, settingsCloudAt);
+    }
+  }
+
   await setCloudManifest(manifest);
   return result;
 }
@@ -572,7 +744,7 @@ export async function pullRemote(
 async function readIndex(
   client: S3Client,
   cfg: ByocConfig,
-  dir: 'history' | 'favs' | 'roles'
+  dir: 'history' | 'favs' | 'roles' | 'assets'
 ): Promise<string[]> {
   const raw = await client.getObject(syncKey(cfg.prefix, dir, 'index.json'));
   if (!raw) return [];
@@ -700,17 +872,27 @@ async function pullOneBlob(
   stats.blobCount += 1;
 }
 
+/** 拉资产引用的 blob：artifact 缩略图 + image 的 blobIds（http 上游链接除外） */
+async function pullAssetBlobs(
+  client: S3Client,
+  cfg: ByocConfig,
+  asset: StoredAsset,
+  stats: { blobCount: number }
+): Promise<void> {
+  const ids: string[] = [];
+  if (asset.thumbnailBlobId && !isRemoteUrl(asset.thumbnailBlobId)) {
+    ids.push(asset.thumbnailBlobId);
+  }
+  for (const id of asset.blobIds ?? []) {
+    if (!isRemoteUrl(id)) ids.push(id);
+  }
+  await pullBlobRefs(client, cfg, ids, stats);
+}
+
 /** 原样落库 imageHistory 记录（保留 id/timestamp，blobIds 引用不变） */
 function putStoredHistory(item: StoredImageHistoryItem): Promise<void> {
   return enqueue('imageHistory', async () => {
     await withDB(db => db.put('imageHistory', item));
-  });
-}
-
-/** 原样落库收藏记录 */
-function putStoredFavorite(fav: StoredFavoriteArtifact): Promise<void> {
-  return enqueue('favorites', async () => {
-    await withDB(db => db.put('favoriteArtifacts', fav));
   });
 }
 

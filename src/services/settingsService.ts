@@ -1,8 +1,9 @@
 /**
  * 设置服务 - 基于 localStorage 存储
  */
-import type { ByocConfig } from './byoc/types';
-import { DEFAULT_BYOC_CONFIG, BYOC_KEY_PREFIX } from './byoc/types';
+import type { ByocConfig, SyncedSettings } from './byoc/types';
+import { DEFAULT_BYOC_CONFIG, BYOC_KEY_PREFIX, BYOC_SETTINGS_DIRTY_EVENT, SETTINGS_SYNCED_EVENT } from './byoc/types';
+import { markSettingsDirty } from './byoc/state';
 
 export interface ProviderConfig {
   llm: string;
@@ -25,6 +26,8 @@ export interface AppSettings {
   compact?: CompactSettings;
   /** BYOC 云同步配置（自带 S3 兼容存储） */
   byoc?: ByocConfig;
+  /** 是否随 BYOC 同步 API 设置（providers + apiKeys）；缺省视为开启 */
+  syncApiSettings?: boolean;
 }
 
 export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
@@ -58,6 +61,19 @@ function saveLocalSettings(settings: AppSettings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 }
 
+/**
+ * API 设置（providers / apiKeys）写入后标记 BYOC 待同步并通知调度侧。
+ *
+ * 标记用 kv store 的 updatedAt/syncedAt（与 IndexedDB 表同步同一套判断），
+ * 事件触发立即同步（调度侧有防抖与 syncing 锁）；60 秒轮询兜底。
+ */
+function notifySettingsChanged(): void {
+  void markSettingsDirty();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(BYOC_SETTINGS_DIRTY_EVENT));
+  }
+}
+
 export const settingsService = {
   async getProvider(category: keyof ProviderConfig): Promise<string> {
     const settings = getLocalSettings();
@@ -68,6 +84,7 @@ export const settingsService = {
     const settings = getLocalSettings();
     settings.providers[category] = provider;
     saveLocalSettings(settings);
+    notifySettingsChanged();
   },
 
   async getApiKey(provider: string): Promise<string> {
@@ -83,6 +100,7 @@ export const settingsService = {
       delete settings.apiKeys[provider];
     }
     saveLocalSettings(settings);
+    notifySettingsChanged();
   },
 
   async getAllSettings(): Promise<AppSettings> {
@@ -114,5 +132,44 @@ export const settingsService = {
     const settings = getLocalSettings();
     settings.byoc = { ...DEFAULT_BYOC_CONFIG, ...(settings.byoc ?? {}), ...patch };
     saveLocalSettings(settings);
+  },
+
+  /** 是否随 BYOC 同步 API 设置；缺省视为开启（用户选择"默认开启"） */
+  getSyncApiSettings(): boolean {
+    return getLocalSettings().syncApiSettings !== false;
+  },
+
+  setSyncApiSettings(enabled: boolean): void {
+    const settings = getLocalSettings();
+    settings.syncApiSettings = enabled;
+    saveLocalSettings(settings);
+    if (enabled) notifySettingsChanged();
+  },
+
+  /** 取待同步的 API 设置子集（providers + apiKeys，不含 byoc 配置/主题等） */
+  getSyncedSettings(): SyncedSettings {
+    const settings = getLocalSettings();
+    return {
+      providers: {
+        llm: settings.providers.llm || DEFAULT_PROVIDERS.llm,
+        image: settings.providers.image || DEFAULT_PROVIDERS.image,
+        search: settings.providers.search || DEFAULT_PROVIDERS.search,
+      },
+      apiKeys: { ...settings.apiKeys },
+    };
+  },
+
+  /**
+   * 应用云端拉回的 API 设置：只覆盖 providers/apiKeys，保留本机其余设置；
+   * 写回后发事件让设置面板重读（BYOC 同步完成事件由同步侧 dispatch）。
+   */
+  applySyncedSettings(synced: SyncedSettings): void {
+    const settings = getLocalSettings();
+    settings.providers = { ...DEFAULT_PROVIDERS, ...synced.providers };
+    settings.apiKeys = { ...synced.apiKeys };
+    saveLocalSettings(settings);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(SETTINGS_SYNCED_EVENT));
+    }
   },
 };

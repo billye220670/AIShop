@@ -1,4 +1,4 @@
-import { Images, Camera, FileText } from 'lucide-react';
+import { Images, Camera, FileText, Library } from 'lucide-react';
 import BottomSheet from '../common/BottomSheet';
 import { haptic } from '../../utils/haptics';
 
@@ -11,18 +11,21 @@ interface AttachmentSheetProps {
   onTakePhoto: () => void;
   /** 打开系统文件选择器（Android SAF） */
   onPickFiles: () => void;
+  /** 打开「我的库」选择面板 */
+  onPickLibrary: () => void;
 }
 
 /**
- * 安卓端 + 号按钮的附件选择面板：较矮的底部弹出面板，横向排列 相册/拍摄/文件 三个原生入口。
+ * 安卓端 + 号按钮的附件选择面板：较矮的底部弹出面板，横向排列 相册/拍摄/文件/库 四个入口。
  * 样式与移动端模型选择器（ModelBottomSheet）同源（共用 BottomSheet），仅高度矮。
  * 仅 Android 原生壳使用；Web/Electron 不渲染此组件。
  */
-export default function AttachmentSheet({ isOpen, onClose, onPickGallery, onTakePhoto, onPickFiles }: AttachmentSheetProps) {
+export default function AttachmentSheet({ isOpen, onClose, onPickGallery, onTakePhoto, onPickFiles, onPickLibrary }: AttachmentSheetProps) {
   const actions = [
     { label: '相册', icon: Images, onClick: onPickGallery },
     { label: '拍摄', icon: Camera, onClick: onTakePhoto },
     { label: '文件', icon: FileText, onClick: onPickFiles },
+    { label: '库', icon: Library, onClick: onPickLibrary },
   ];
 
   return (

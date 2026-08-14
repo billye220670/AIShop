@@ -3,11 +3,46 @@
   "private": true,
   "version": "1.2.0",
   "type": "module",
+  "main": "dist-electron/main/index.js",
+  "build": {
+    "appId": "com.portai.app",
+    "productName": "PortAI",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "Icon/icon-256.png",
+      "target": [
+        "nsis"
+      ]
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "billye220670",
+        "repo": "AIShop"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "Icon",
+        "to": "Icon",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:electron": "electron-vite dev",
+    "build:electron": "electron-vite build",
+    "preview:electron": "electron-vite preview",
+    "package:win": "powershell -ExecutionPolicy Bypass -File pack-win.ps1",
+    "package:win:skip-build": "powershell -ExecutionPolicy Bypass -File pack-win.ps1 -SkipBuild"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
@@ -37,7 +72,8 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "tailwindcss": "^4.3.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
@@ -46,6 +82,9 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^6.0.0-beta.1",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",

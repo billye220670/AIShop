@@ -6,10 +6,11 @@ import type { ProviderConfig, CompactSettings } from '../../services/settingsSer
 import { getCachedCity, getCitySource, setManualCity, clearManualCity, ensureCity } from '../../services/locationService';
 import { THEMES } from '../../config/themes';
 import { loadTheme, saveTheme, loadMode, saveMode, type ColorMode } from '../../services/storage';
+import { syncElectronTitleBar } from '../../utils/electronTitleBar';
 import { CHAT_MODELS } from '../../config/models';
 import DataSettings from './DataSettings';
 import ByocSettings from './ByocSettings';
-import { getByocConfig, validateConfig } from '../../services/byoc';
+import { getByocConfig, validateConfig, SETTINGS_SYNCED_EVENT } from '../../services/byoc';
 import CustomSelect from '../common/CustomSelect';
 import { haptic } from '../../utils/haptics';
 import { useDeviceMode } from '../../platform/useDeviceMode';
@@ -62,6 +63,14 @@ export default function SettingsPanel() {
       setProviders(settings.providers);
       setApiKeys({ ...settings.apiKeys });
     });
+    // BYOC 同步拉回云端 API 设置时重读（换设备场景：配好 BYOC 后 key 自动带过来）
+    const onSettingsSynced = () => {
+      settingsService.getAllSettings().then(settings => {
+        setProviders(settings.providers);
+        setApiKeys({ ...settings.apiKeys });
+      });
+    };
+    window.addEventListener(SETTINGS_SYNCED_EVENT, onSettingsSynced);
     const theme = loadTheme();
     setSelectedTheme(theme);
     setColorMode(loadMode());
@@ -70,6 +79,7 @@ export default function SettingsPanel() {
       const raw = localStorage.getItem('chat-feature-settings');
       if (raw) setAutoCompactEnabled(JSON.parse(raw).autoCompactEnabled ?? true);
     } catch { /* 用默认值 */ }
+    return () => window.removeEventListener(SETTINGS_SYNCED_EVENT, onSettingsSynced);
   }, []);
 
   const handleCompactChange = (patch: Partial<CompactSettings>) => {
@@ -105,6 +115,8 @@ export default function SettingsPanel() {
       const darkColor = selectedTheme === 'purple' ? '#0d0a1a' : '#121211';
       meta.content = mode === 'light' ? '#f5f5f7' : darkColor;
     }
+    // Electron：窗口标题栏 overlay 颜色同步（Web 下为 no-op）
+    syncElectronTitleBar(selectedTheme, mode);
   };
 
   // 实时切换主题并自动保存
@@ -117,6 +129,8 @@ export default function SettingsPanel() {
     if (meta && colorMode === 'dark') {
       meta.content = themeId === 'purple' ? '#0d0a1a' : '#121211';
     }
+    // Electron：窗口标题栏 overlay 颜色同步（Web 下为 no-op）
+    syncElectronTitleBar(themeId, colorMode);
   };
 
   // 切换提供商并自动保存（位置信息分类不经过这里）
