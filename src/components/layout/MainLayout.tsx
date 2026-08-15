@@ -167,7 +167,9 @@ function MobileLayout(props: MainLayoutProps) {
     if (sidebarOpen) onSidebarOpen?.();
   }, [sidebarOpen, onSidebarOpen]);
 
-  // 冻结初始视口高度，防止键盘弹起时 dvh 变化导致整页收缩
+  // Android 壳：冻结初始视口高度，防止键盘弹起时 dvh 变化导致整页收缩；
+  // iOS Safari/PWA 键盘为覆盖式不改视口，但地址栏收起/展开会动态改变 innerHeight，
+  // 冻结会导致底部导航栏偶发被屏幕底边裁掉，故 iOS 走 dvh 动态高度（见下方 style）
   const [frozenHeight] = useState(() => window.innerHeight);
 
   // 横向滑动手势：任意位置右滑拉出侧边栏、左滑收回
@@ -185,9 +187,11 @@ function MobileLayout(props: MainLayoutProps) {
   return (
     <div
       ref={swipeRef}
-      className="bg-[var(--color-bg-base)] text-[var(--color-text-primary)] overflow-hidden fixed inset-x-0 top-0"
+      className="bg-[var(--color-bg-base)] text-[var(--color-text-primary)] overflow-hidden fixed inset-x-0 top-0 h-[100dvh]"
       style={{
-        height: frozenHeight,
+        // Android 壳：键盘弹起视口收缩，必须用冻结高度；其他平台（iOS PWA/Safari）用
+        // dvh 实时跟随地址栏展开收起，避免底部导航栏被屏幕底边裁剪（固定 innerHeight 会与动态视口错位）
+        height: isNativePlatform() ? frozenHeight : undefined,
         touchAction: 'manipulation',
         // 原生壳（Capacitor）edge-to-edge 全屏渲染：顶部避让系统状态栏，padding 区即页面背景色；
         // 高度由 MainActivity 原生注入的 --native-inset-top 提供（getInfo/env() 在 Android 16 不可靠）
