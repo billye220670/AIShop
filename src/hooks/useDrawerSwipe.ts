@@ -20,6 +20,16 @@ import { useEffect, useRef, useState } from 'react';
 const AXIS_LOCK_PX = 10;
 /** 横向位移需超过纵向的这个倍数才算横滑，避免斜向误触发 */
 const HORIZONTAL_BIAS = 1.2;
+
+/**
+ * 长按上下文菜单的遮罩（Sidebar / MessageBubble 的 portal 遮罩）是否已打开。
+ * 遮罩虽然覆盖全屏，但它是 portal 到 body 的兄弟节点：长按弹出菜单时本次触摸
+ * 序列的目标在 touchstart 已固定为长按的元素，后续 touchmove 不经过遮罩、
+ * 仍会冒泡到本容器，遮罩自身的 onTouchMove 拦不到，只能在这里检测放弃手势。
+ */
+function contextMenuOpen(): boolean {
+  return document.querySelector('.context-menu-overlay') !== null;
+}
 /** 快速滑动的速度阈值(px/ms)，超过则忽略距离直接按方向吸附 */
 const FLING_VELOCITY = 0.4;
 /** 慢速时的距离阈值：打开需越过 35%，关闭需回落到 65% 以下 */
@@ -109,6 +119,11 @@ export function useDrawerSwipe({ width, open, onOpenChange, enabled = true, onSe
         reset();
         return;
       }
+      // 遮罩已打开时完全不接管（防御边界情况，正常触摸遮罩不经过本容器）
+      if (contextMenuOpen()) {
+        reset();
+        return;
+      }
       const t = e.touches[0];
       startRef.current = { x: t.clientX, y: t.clientY, t: e.timeStamp };
       samplesRef.current = [{ x: t.clientX, t: e.timeStamp }];
@@ -116,6 +131,13 @@ export function useDrawerSwipe({ width, open, onOpenChange, enabled = true, onSe
     };
 
     const onTouchMove = (e: TouchEvent) => {
+      // 长按菜单在本次触摸中途弹出（长按 450ms 后手指未抬起继续滑）时，
+      // 触摸目标已固定为长按的元素，touchmove 仍冒泡到本容器；此时必须
+      // 放弃本次手势，否则背景抽屉会跟着手指滑动
+      if (contextMenuOpen()) {
+        reset();
+        return;
+      }
       const start = startRef.current;
       if (!start || axisRef.current === 'v') return;
       // 多指（缩放等）中途介入，直接放弃

@@ -446,9 +446,10 @@ export default function Sidebar({
           会裁剪内容的祖先，位置改用 useLayoutEffect 按手指坐标现算。 */}
       {menuOpenId && createPortal(
         <div
-          className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay"
+          className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay touch-none overscroll-none"
           onClick={() => setMenuOpenId(null)}
           onPointerDown={() => setMenuOpenId(null)}
+          onTouchMove={e => e.preventDefault()}
         />,
         document.body
       )}
@@ -460,8 +461,16 @@ export default function Sidebar({
           onClick={e => e.stopPropagation()}
           onPointerDown={e => e.stopPropagation()}
         >
+          {/* iOS 长按手势结束后首次 tap 的合成 click 会被 WebKit 吞掉，
+              菜单项必须用 pointerup 触发（Pointer 事件不受抑制），onClick 保留给键盘兜底；
+              pointerup 触发后菜单随即卸载，click 不会再派发到按钮，不会重复执行 */}
           <button
             onClick={() => {
+              exportConversation(menuConv);
+              setMenuOpenId(null);
+            }}
+            onPointerUp={e => {
+              if (e.button !== 0) return;
               exportConversation(menuConv);
               setMenuOpenId(null);
             }}
@@ -472,6 +481,10 @@ export default function Sidebar({
           </button>
           <button
             onClick={() => enterEdit(menuConv)}
+            onPointerUp={e => {
+              if (e.button !== 0) return;
+              enterEdit(menuConv);
+            }}
             className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
           >
             <Pencil className="w-5 h-5 flex-shrink-0" />
@@ -482,6 +495,11 @@ export default function Sidebar({
               onToggleConversationFavorite?.(menuConv.id);
               setMenuOpenId(null);
             }}
+            onPointerUp={e => {
+              if (e.button !== 0) return;
+              onToggleConversationFavorite?.(menuConv.id);
+              setMenuOpenId(null);
+            }}
             className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
           >
             <Star className="w-5 h-5 flex-shrink-0" fill={menuConv.isFavorite ? 'currentColor' : 'none'} />
@@ -489,6 +507,11 @@ export default function Sidebar({
           </button>
           <button
             onClick={() => {
+              setDeleteTarget(menuConv.id);
+              setMenuOpenId(null);
+            }}
+            onPointerUp={e => {
+              if (e.button !== 0) return;
               setDeleteTarget(menuConv.id);
               setMenuOpenId(null);
             }}

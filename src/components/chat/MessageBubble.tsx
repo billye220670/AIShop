@@ -810,6 +810,17 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                   setToastType(success ? 'success' : 'error');
                   setShowToast(true);
                 }}
+                // iOS 长按手势结束后首次 tap 的合成 click 会被 WebKit 吞掉，
+                // 菜单项用 pointerup 触发（不受抑制），onClick 保留给键盘兜底
+                onPointerUp={async e => {
+                  if (e.button !== 0) return;
+                  setMenuOpen(false);
+                  const text = getPlainText(displayContent);
+                  const success = await copyToClipboard(text);
+                  setToastMessage(success ? '已复制到剪贴板' : '复制失败，请重试');
+                  setToastType(success ? 'success' : 'error');
+                  setShowToast(true);
+                }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
               >
                 <Copy className="w-5 h-5 flex-shrink-0" />
@@ -1172,6 +1183,17 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                 setToastType(success ? 'success' : 'error');
                 setShowToast(true);
               }}
+              // iOS 长按手势结束后首次 tap 的合成 click 会被 WebKit 吞掉，
+              // 菜单项用 pointerup 触发（不受抑制），onClick 保留给键盘兜底
+              onPointerUp={async e => {
+                if (e.button !== 0) return;
+                setMenuOpen(false);
+                const text = getPlainText(displayContent);
+                const success = await copyToClipboard(text);
+                setToastMessage(success ? '已复制到剪贴板' : '复制失败，请重试');
+                setToastType(success ? 'success' : 'error');
+                setShowToast(true);
+              }}
               className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
             >
               <Copy className="w-5 h-5 flex-shrink-0" />
@@ -1184,6 +1206,11 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                   setMenuOpen(false);
                   handleSaveMarkdown();
                 }}
+                onPointerUp={e => {
+                  if (e.button !== 0) return;
+                  setMenuOpen(false);
+                  handleSaveMarkdown();
+                }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
               >
                 <FileDown className="w-5 h-5 flex-shrink-0" />
@@ -1193,6 +1220,11 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             {onRegenerate && (
               <button
                 onClick={() => { setMenuOpen(false); onRegenerate(message.id); }}
+                onPointerUp={e => {
+                  if (e.button !== 0) return;
+                  setMenuOpen(false);
+                  onRegenerate(message.id);
+                }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
               >
                 <RefreshCw className="w-5 h-5 flex-shrink-0" />
@@ -1202,6 +1234,11 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             {onQuote && (
               <button
                 onClick={() => { setMenuOpen(false); onQuote(message); }}
+                onPointerUp={e => {
+                  if (e.button !== 0) return;
+                  setMenuOpen(false);
+                  onQuote(message);
+                }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
               >
                 <MessageSquareQuote className="w-5 h-5 flex-shrink-0" />
@@ -1214,6 +1251,11 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
 
             <button
               onClick={() => { setMenuOpen(false); onOpenSearch?.(); }}
+              onPointerUp={e => {
+                if (e.button !== 0) return;
+                setMenuOpen(false);
+                onOpenSearch?.();
+              }}
               className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
             >
               <Search className="w-5 h-5 flex-shrink-0" />
@@ -1222,6 +1264,11 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             {onFold && (
               <button
                 onClick={() => { setMenuOpen(false); onFold(); }}
+                onPointerUp={e => {
+                  if (e.button !== 0) return;
+                  setMenuOpen(false);
+                  onFold();
+                }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
               >
                 <FoldVertical className="w-5 h-5 flex-shrink-0" />
