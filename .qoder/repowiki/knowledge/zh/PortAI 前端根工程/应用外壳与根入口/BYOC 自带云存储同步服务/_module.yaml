@@ -6,4 +6,5 @@ scope:
     - src/utils/sha256.ts
 source_files: []
 depends_on: []
-related_to: []
+related_to:
+    - path: app_shell/image_utils

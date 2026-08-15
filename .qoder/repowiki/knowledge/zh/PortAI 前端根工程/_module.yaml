@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: AIShop 前端根工程（Vite + React 单仓）
+title: PortAI 前端根工程
 scope:
     - README.md
     - .gitignore
