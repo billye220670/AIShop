@@ -220,6 +220,29 @@ export default function Sidebar({
     };
   }, [menuOpenId]);
 
+  // 菜单弹出后锁住背后的历史列表滚动。
+  // 长按是在手指没抬起时触发的，此刻原生滚动手势已经"归属"给了列表容器，
+  // 后续 touchmove 由合成器线程直接滚，JS 拦不住——除非把容器本身变成不可滚。
+  // 所以直接改 overflow，并把 scrollTop 还原（overflow 切换会让浏览器夹一次位置）。
+  // 与 MessageBubble 锁定消息容器（data-messages-container）的方案一致。
+  const historyListRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const scroller = historyListRef.current;
+    if (!scroller) return;
+    const prevOverflow = scroller.style.overflowY;
+    const prevTouch = scroller.style.touchAction;
+    const frozenTop = scroller.scrollTop;
+    scroller.style.overflowY = 'hidden';
+    scroller.style.touchAction = 'none';
+    if (scroller.scrollTop !== frozenTop) scroller.scrollTop = frozenTop;
+    return () => {
+      scroller.style.overflowY = prevOverflow;
+      scroller.style.touchAction = prevTouch;
+      scroller.scrollTop = frozenTop;
+    };
+  }, [menuOpenId]);
+
   // Filtered conversations (排除空会话)
   const filteredConversations = useMemo(() => {
     if (!conversations) return [];
@@ -366,7 +389,7 @@ export default function Sidebar({
       </div>
 
       {/* 会话列表 */}
-      <div className="flex-1 overflow-y-auto overflow-x-visible px-2 pt-2">
+      <div ref={historyListRef} className="flex-1 overflow-y-auto overflow-x-visible px-2 pt-2">
         {filteredConversations.length === 0 && historySearch && (
           <div className="text-center text-gray-500 text-sm py-8">无匹配结果</div>
         )}
