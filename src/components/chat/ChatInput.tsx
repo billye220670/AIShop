@@ -213,19 +213,25 @@ export default function ChatInput({
       truncated: f.truncated,
     }));
 
-    // 拼接引用内容
+    // 拼接引用内容：生图消息引用的是图片本身——图片走图片通道发给模型（模型可见），
+    // 文本只留占位说明；普通消息引用拼接 > 引用文本
     let finalText = trimmedText;
+    const quotedImageUrls = quotedMessage?.generatedImages ?? [];
     if (quotedMessage) {
-      const quoteContent = typeof quotedMessage.content === 'string'
-        ? quotedMessage.content
-        : (quotedMessage.content as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('\n');
-      finalText = `> ${quoteContent.slice(0, 200).replace(/\n/g, '\n> ')}\n\n${trimmedText}`;
+      if (quotedImageUrls.length > 0) {
+        finalText = `> [引用图片]\n\n${trimmedText}`;
+      } else {
+        const quoteContent = typeof quotedMessage.content === 'string'
+          ? quotedMessage.content
+          : (quotedMessage.content as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('\n');
+        finalText = `> ${quoteContent.slice(0, 200).replace(/\n/g, '\n> ')}\n\n${trimmedText}`;
+      }
       onRemoveQuote?.();
     }
 
     // 兜底解析：文本中手动输入的 @标题 命中库资产 → 内容进附件（图片进图片通道）；
     // 通过 @ 面板选中的资产已走附件通道（files/images），文本不再含 @，不会重复附加
-    const allImages = [...images];
+    const allImages = [...images, ...quotedImageUrls];
     const allAttachments = [...attachments];
     if (trimmedText.includes('@')) {
       const refTitles = new Set<string>();
@@ -906,15 +912,23 @@ export default function ChatInput({
             {quotedMessage && (
               <div className="p-3 pb-2">
                 <div className="flex items-center gap-2 bg-[var(--color-bg-primary)] border border-gray-700 rounded-lg px-3 py-2">
-                  <div className="w-8 h-8 rounded-md bg-[var(--color-accent-soft)] flex items-center justify-center flex-shrink-0">
-                    <MessageSquareQuote className="w-4 h-4 text-[var(--color-accent)]" />
-                  </div>
+                  {/* 生图消息引用的是图片本身：显示缩略图；普通消息显示引用图标 */}
+                  {quotedMessage.generatedImages?.length ? (
+                    <BlobImage src={quotedMessage.generatedImages[0]} alt="引用图片" className="w-8 h-8 rounded-md object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-md bg-[var(--color-accent-soft)] flex items-center justify-center flex-shrink-0">
+                      <MessageSquareQuote className="w-4 h-4 text-[var(--color-accent)]" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm text-gray-200 truncate">引用消息</div>
                     <div className="text-xs text-gray-500 truncate">
-                      {typeof quotedMessage.content === 'string'
-                        ? quotedMessage.content.slice(0, 30)
-                        : (quotedMessage.content as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('').slice(0, 30)
+                      {quotedMessage.generatedImages?.length
+                        ? '[图片]'
+                        : (typeof quotedMessage.content === 'string'
+                            ? quotedMessage.content.slice(0, 30)
+                            : (quotedMessage.content as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('').slice(0, 30)
+                          )
                       }
                     </div>
                   </div>
@@ -1050,15 +1064,23 @@ export default function ChatInput({
           {quotedMessage && (
             <div className="p-3 pb-2">
               <div className="flex items-center gap-2 bg-[var(--color-bg-button)]/80 rounded-full px-3 py-2 max-w-md">
-                <div className="w-8 h-8 rounded-md bg-[var(--color-accent-soft)] flex items-center justify-center flex-shrink-0">
-                  <MessageSquareQuote className="w-4 h-4 text-[var(--color-accent)]" />
-                </div>
+                {/* 生图消息引用的是图片本身：显示缩略图；普通消息显示引用图标 */}
+                {quotedMessage.generatedImages?.length ? (
+                  <BlobImage src={quotedMessage.generatedImages[0]} alt="引用图片" className="w-8 h-8 rounded-md object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded-md bg-[var(--color-accent-soft)] flex items-center justify-center flex-shrink-0">
+                    <MessageSquareQuote className="w-4 h-4 text-[var(--color-accent)]" />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-gray-200 truncate">引用消息</div>
                   <div className="text-xs text-gray-500 truncate">
-                    {typeof quotedMessage.content === 'string'
-                      ? quotedMessage.content.slice(0, 30)
-                      : (quotedMessage.content as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('').slice(0, 30)
+                    {quotedMessage.generatedImages?.length
+                      ? '[图片]'
+                      : (typeof quotedMessage.content === 'string'
+                          ? quotedMessage.content.slice(0, 30)
+                          : (quotedMessage.content as MessageContent[]).filter(p => p.type === 'text').map(p => p.text).join('').slice(0, 30)
+                        )
                     }
                   </div>
                 </div>

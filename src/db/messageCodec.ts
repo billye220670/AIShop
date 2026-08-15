@@ -14,6 +14,11 @@ import type { StoredContentPart, StoredMessage, StoredMessageVersion } from './s
 
 const BLOB_URL_PREFIX = 'aishop-blob:';
 
+/** 上游返回的 http 链接不占本地存储，原样保留（与 imageHistoryRepo 同一约定） */
+function isRemoteUrl(url: string): boolean {
+  return url.startsWith('http://') || url.startsWith('https://');
+}
+
 export function isBlobRefUrl(url: string): boolean {
   return url.startsWith(BLOB_URL_PREFIX);
 }
@@ -26,6 +31,27 @@ export function parseBlobRefUrl(url: string): string | null {
   return isBlobRefUrl(url) ? url.slice(BLOB_URL_PREFIX.length) : null;
 }
 
+/**
+ * 聊天内生成的图片列表转存盘形态：data URL 落成 blob（拿 sha-256 引用），
+ * http 链接与已是 blob 引用的原样保留（读回又写回时不重复入库）。
+ */
+async function urlsToStored(urls: string[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const url of urls) {
+    if (url.startsWith('data:')) {
+      out.push(await putBlobFromDataUrl(url));
+    } else {
+      out.push(parseBlobRefUrl(url) ?? url);
+    }
+  }
+  return out;
+}
+
+/** 存盘形态转运行时形态：blob 引用换成 aishop-blob: 自定义 URL（UI 用 useBlobUrl 解析） */
+function urlsFromStored(urls: string[]): string[] {
+  return urls.map(id => (isRemoteUrl(id) ? id : blobRefUrl(id)));
+}
+
 /** 从存盘内容里收集所有 blobId，用于引用计数增减 */
 export function collectBlobIds(content: string | StoredContentPart[]): string[] {
   if (typeof content === 'string') return [];
@@ -34,6 +60,10 @@ export function collectBlobIds(content: string | StoredContentPart[]): string[] 
 
 export function collectMessageBlobIds(msg: StoredMessage): string[] {
   const ids = collectBlobIds(msg.content);
+  // 聊天内生成的图片：存盘形态里 data URL 已换成 blobId，http 链接不占本地存储
+  for (const id of msg.generatedImages ?? []) {
+    if (!isRemoteUrl(id)) ids.push(id);
+  }
   for (const v of msg.versions ?? []) ids.push(...collectBlobIds(v.content));
   return ids;
 }
@@ -136,6 +166,11 @@ async function versionToStored(v: MessageVersion): Promise<StoredMessageVersion>
     artifact: v.artifact,
     stoppedByUser: v.stoppedByUser,
     usage: v.usage,
+    generatedImages: v.generatedImages
+      ? await urlsToStored(v.generatedImages)
+      : undefined,
+    imageGenerateError: v.imageGenerateError,
+    generatedImage: v.generatedImage,
   };
 }
 
@@ -152,6 +187,9 @@ function versionFromStored(v: StoredMessageVersion): MessageVersion {
     artifact: v.artifact,
     stoppedByUser: v.stoppedByUser,
     usage: v.usage,
+    generatedImages: v.generatedImages ? urlsFromStored(v.generatedImages) : undefined,
+    imageGenerateError: v.imageGenerateError,
+    generatedImage: v.generatedImage,
   };
 }
 
@@ -191,6 +229,10 @@ export async function toStored(
       : undefined,
     activeVersionIndex: msg.activeVersionIndex,
     compressedInto: msg.compressedInto,
+    // imageGenerating 是瞬时状态（描述"此刻正在生成"），与 webSearching 一样不落盘
+    generatedImages: msg.generatedImages ? await urlsToStored(msg.generatedImages) : undefined,
+    imageGenerateError: msg.imageGenerateError,
+    generatedImage: msg.generatedImage,
     updatedAt: Date.now(),
     syncedAt,
   };
@@ -214,5 +256,8 @@ export function fromStored(rec: StoredMessage): Message {
     versions: rec.versions?.map(versionFromStored),
     activeVersionIndex: rec.activeVersionIndex,
     compressedInto: rec.compressedInto,
+    generatedImages: rec.generatedImages ? urlsFromStored(rec.generatedImages) : undefined,
+    imageGenerateError: rec.imageGenerateError,
+    generatedImage: rec.generatedImage,
   };
 }

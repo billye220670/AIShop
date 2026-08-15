@@ -7,7 +7,7 @@ scope:
 source_files:
     - src/hooks/useChat.ts
     - src/hooks/useImage.ts
-    - src/hooks/useAssets.ts
+    - src/hooks/useFavoriteArtifacts.ts
     - src/db/open.ts
     - src/services/webSearch.ts
     - src/components/chat/HistoryPanel.tsx
@@ -28,7 +28,7 @@ source_files:
 日志散落在各业务模块中，主要集中在以下位置：
 - `src/hooks/useChat.ts`：会话恢复、消息加载、持久化失败等错误路径使用 `console.error('[useChat] ...')`
 - `src/hooks/useImage.ts`：图片历史加载、保存、删除、清空等操作错误使用 `console.error('[useImage] ...')`
-- `src/hooks/useAssets.ts`：我的库资产保存/移除/重命名失败使用 `console.error('[useAssets] ...')`
+- `src/hooks/useFavoriteArtifacts.ts`：收藏/取消收藏/重命名失败使用 `console.error('[useFavoriteArtifacts] ...')`
 - `src/db/open.ts`：IndexedDB 升级阻塞、连接重试使用 `console.warn('[db] ...')`
 - `src/services/webSearch.ts`：搜索提供商切换使用 `console.log`，失败使用 `console.error`
 - `src/components/chat/HistoryPanel.tsx`、`src/components/layout/Sidebar.tsx`、`src/components/image/ImagePanel.tsx`、`src/components/artifact/ArtifactPanel.tsx`：导出、下载、截图等用户操作失败时 `console.error` 并附带组件名前缀

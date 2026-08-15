@@ -38,6 +38,9 @@ import type { RoleData } from '../db';
 import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
 import { judgeSearchNeed } from '../services/searchJudge';
+import { judgeImageIntent } from '../services/imageIntentJudge';
+import { optimizeImagePrompt } from '../services/promptOptimizer';
+import { generateImage as apiGenerateImage } from '../services/imageApi';
 import { ensureCity, prefetchCity } from '../services/locationService';
 import { settingsService } from '../services/settingsService';
 import { syncNow, getByocConfig, validateConfig, recordLocalDeletions, recordLocalRoleDeletions } from '../services/byoc';
@@ -48,6 +51,66 @@ import { planCompaction, getContextUsage, isCompactionViable } from '../utils/co
 import { estimateMessagesTokens, estimateSummaryTokens, sumRealUsage } from '../utils/tokenEstimate';
 import { migrateSummary } from '../utils/contextSummary';
 import { messageCountOf } from '../utils/conversationView';
+import { inlineBlobsForApi } from '../db';
+
+/** 聊天内生成图片默认使用的模型：Nanobanana 2（速度快、成本低，够日常出图） */
+const CHAT_IMAGE_MODEL = 'gemini-3.1-flash';
+/** 聊天内生成图片失败时的确认回复兜底文案（正常由小模型生成） */
+const CHAT_IMAGE_REPLY_FALLBACK = '好的，我来为你生成图片～';
+/** 聊天内图片编辑（用户带图改图）的确认回复兜底文案（正常由小模型生成） */
+const CHAT_IMAGE_EDIT_REPLY_FALLBACK = '好的，我来为您做出对应修改～';
+
+/** 聊天内编辑生图支持的比例（与 gemini-3.1-flash 编辑接口 aspect_ratio 支持列表一致，含超宽/超长比例） */
+const EDIT_ASPECT_RATIOS = [
+  '1:1', '1:4', '1:8', '2:3', '3:2', '3:4', '4:1', '4:3', '4:5', '5:4', '8:1', '9:16', '16:9', '21:9',
+];
+
+/** 从编辑接口支持的比例列表里选与目标宽高比最接近的一个 */
+function closestAspectRatio(width: number, height: number): string {
+  const target = width / height;
+  let best = '1:1';
+  let bestDiff = Infinity;
+  for (const ratio of EDIT_ASPECT_RATIOS) {
+    const [rw, rh] = ratio.split(':').map(Number);
+    if (!rw || !rh) continue;
+    const diff = Math.abs(rw / rh - target);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = ratio;
+    }
+  }
+  return best;
+}
+
+/** 按图片最长边选最接近的 Gemini 输出尺寸等级（0.5K≈512px / 1K≈1024px / 2K≈2048px / 4K≈4096px，相邻等级中点分界） */
+function sizeForMaxEdge(maxEdge: number): string {
+  if (maxEdge <= 768) return '0.5K';
+  if (maxEdge <= 1536) return '1K';
+  if (maxEdge <= 3072) return '2K';
+  return '4K';
+}
+
+/** 读取第一张图片的像素尺寸（aishop-blob:/data:/http 均可），失败返回 null */
+async function getFirstImageSize(urls: string[]): Promise<{ width: number; height: number } | null> {
+  try {
+    const inlined = await inlineBlobsForApi(
+      urls.map(url => ({ type: 'image_url' as const, image_url: { url } }))
+    );
+    const first = (Array.isArray(inlined) ? inlined : []).find(
+      p => p.type === 'image_url' && p.image_url?.url
+    );
+    const url = first && first.type === 'image_url' ? first.image_url?.url : undefined;
+    if (!url) return null;
+    return await new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  } catch {
+    return null;
+  }
+}
 
 function getLastUsedModel(): string {
   return loadLastModel() || CHAT_MODELS[0].id;
@@ -511,6 +574,26 @@ export function useChat() {
     [activeId]
   );
 
+  /**
+   * 按会话 + 消息 id 精确定位打补丁。
+   *
+   * 生图是异步完成的，期间用户可能已切到别的会话——updateActiveConversation
+   * 绑定的是发起时的 activeId，此时会写到错误的目标上。这里用显式 id 定位，
+   * 无论用户切到哪，结果都回到生成它的那条消息。
+   */
+  const patchMessage = useCallback((convId: string, msgId: string, patch: Partial<Message>) => {
+    setConversations(prev =>
+      prev.map(c => {
+        if (c.id !== convId) return c;
+        return {
+          ...c,
+          messages: c.messages.map(m => (m.id === msgId ? { ...m, ...patch } : m)),
+          updatedAt: Date.now(),
+        };
+      })
+    );
+  }, []);
+
   const setSelectedModel = useCallback(
     (modelId: string) => {
       updateActiveConversation(conv => ({ ...conv, selectedModel: modelId, updatedAt: Date.now() }));
@@ -732,6 +815,160 @@ export function useChat() {
 
       try {
         abortControllerRef.current = new AbortController();
+
+        // ---- 小模型意图判断：用户是否想生成图片 ----
+        // 判断失败静默返回 needImage=false，走下方原有 LLM 流式，不影响聊天主流程。
+        const userText =
+          typeof content === 'string'
+            ? content
+            : content.find(p => p.type === 'text')?.text || '';
+        // 用户带图请求（编辑/改图）：收集 content 里的图片地址，生图接口走编辑模式
+        const editImages =
+          typeof content !== 'string'
+            ? content
+                .filter(p => p.type === 'image_url' && p.image_url?.url)
+                .map(p => p.image_url!.url)
+            : undefined;
+        const hasEditImages = !!editImages && editImages.length > 0;
+        const imageIntent = await judgeImageIntent(
+          userText,
+          messages,
+          hasEditImages ? editImages!.length : 0
+        );
+
+        if (imageIntent.needImage) {
+          // 判断为"修改/合并上一张 AI 图"：从历史里找最近一条带 generatedImages 的 AI 消息
+          let prevAiImages: string[] | undefined;
+          if (imageIntent.editPrevious) {
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const m = messages[i];
+              if (m.role === 'assistant' && m.generatedImages && m.generatedImages.length > 0) {
+                prevAiImages = m.generatedImages;
+                break;
+              }
+            }
+          }
+          // 编辑参考图来源：用户新上传的图，+（判断为合并时）上一张 AI 生成的图。
+          // 合并场景（如"让她坐在沙发上"：带室内图 + 指代之前编辑过的人物图）
+          // 两张都要传给编辑接口，参考图顺序与下方 prompt 说明保持一致（用户图在前）
+          const editSource =
+            hasEditImages && editImages
+              ? imageIntent.editPrevious && prevAiImages
+                ? [...editImages, ...prevAiImages]
+                : editImages
+              : prevAiImages;
+          const isEditMode = !!editSource && editSource.length > 0;
+          const reply =
+            imageIntent.reply ||
+            (isEditMode ? CHAT_IMAGE_EDIT_REPLY_FALLBACK : CHAT_IMAGE_REPLY_FALLBACK);
+
+          // 编辑模式（用户带图 或 修改上一张 AI 图）：读第一张参考图的实际尺寸，
+          // 从 API 支持的比例/尺寸列表里选最接近的传参，让输出与原图保持一致
+          // （多张图时以第一张为准）；取不到尺寸才回落 auto（保持原图比例）。
+          // 无图文生图：比例取小模型按用户要求判断出的合法比例，默认 1:1。
+          // 比例同时落给骨架占位，保证图片回传后尺寸不跳变
+          let genAspectRatio: string;
+          let genSize = '1K';
+          if (isEditMode && editSource) {
+            const firstSize = await getFirstImageSize(editSource);
+            if (firstSize && firstSize.width > 0 && firstSize.height > 0) {
+              genAspectRatio = closestAspectRatio(firstSize.width, firstSize.height);
+              genSize = sizeForMaxEdge(Math.max(firstSize.width, firstSize.height));
+            } else {
+              genAspectRatio = 'auto';
+            }
+          } else {
+            genAspectRatio = imageIntent.aspectRatio || '1:1';
+          }
+          // ---- 生图提示词：由用户当前模型整理优化（小模型只做调度判断，不负责提示词） ----
+          // 优化在 shimmer 挂起期间完成（下方生图块内），确认回复先落回退版；
+          // 优化失败静默回退原文 + 参考图说明，生图流程不中断。
+          const sceneNote = isEditMode
+            ? imageIntent.editPrevious && prevAiImages && prevAiImages.length > 0
+              ? '用户上传的图片在前，之前 AI 生成的图片在后；需要组合使用两张参考图，保持之前生成图片中主体（人物等）的外观特征一致'
+              : hasEditImages
+                ? `用户上传了 ${editImages!.length} 张图片，需要基于这些图片进行修改`
+                : '上一张 AI 生成的图片，需要基于这张图片进行修改'
+            : undefined;
+          const fallbackPrompt = sceneNote
+            ? `【参考图说明】${sceneNote}。\n${userText}`
+            : userText;
+          const genMeta = { model: CHAT_IMAGE_MODEL, prompt: fallbackPrompt, aspectRatio: genAspectRatio };
+
+          // 1) 先回复确认文案（非流式，一次落定），并在气泡下方挂起 shimmer 骨架
+          updateActiveConversation(conv => {
+            const updated = [...conv.messages];
+            const lastIdx = updated.length - 1;
+            updated[lastIdx] = {
+              ...updated[lastIdx],
+              content: reply,
+              isStreaming: false,
+              imageGenerating: true,
+              generatedImage: genMeta,
+            };
+            return { ...conv, messages: updated, updatedAt: Date.now() };
+          });
+
+          // 新会话第一轮对聊完成，立即生成标题（与 LLM 流式完成后的行为一致）
+          if (messages.length === 0) {
+            const snapshot = conversationsRef.current.find(c => c.id === activeId);
+            if (snapshot && !snapshot.isRenamed && snapshot.title === '新对话') {
+              triggerTitleGeneration({
+                ...snapshot,
+                messages: [...messages, userMessage, { ...assistantMessage, content: reply, isStreaming: false }],
+              });
+            }
+          }
+
+          // 2) 紧接着发起生图（非阻塞：不 await，生成期间 shimmer 持续显示）。
+          //    回调按 convId + msgId 精确定位，避免用户切走会话后写错目标。
+          const targetConvId = activeId;
+          const targetMsgId = assistantMessage.id;
+
+          void (async () => {
+            try {
+              // 生图提示词：用用户当前模型整理优化（失败静默回退原文+参考图说明）
+              const optimized = await optimizeImagePrompt({
+                userText,
+                model: selectedModel,
+                aspectRatio: isEditMode ? undefined : genAspectRatio !== '1:1' ? genAspectRatio : undefined,
+                sceneNote,
+              });
+              const genPrompt = optimized || fallbackPrompt;
+              // 参考图落盘后是 aishop-blob: 引用，先还原成 data URL 再发给上游
+              let images: string[] | undefined;
+              if (isEditMode && editSource) {
+                const inlined = await inlineBlobsForApi(
+                  editSource.map(url => ({ type: 'image_url' as const, image_url: { url } }))
+                );
+                images = (Array.isArray(inlined) ? inlined : [])
+                  .map(p => (p.type === 'image_url' ? p.image_url?.url || '' : ''))
+                  .filter(Boolean);
+              }
+              const urls = await apiGenerateImage({
+                prompt: genPrompt,
+                model: CHAT_IMAGE_MODEL,
+                n: 1,
+                size: genSize,
+                aspectRatio: genAspectRatio,
+                images,
+              });
+              patchMessage(targetConvId, targetMsgId, {
+                imageGenerating: false,
+                generatedImages: urls,
+                generatedImage: { ...genMeta, prompt: genPrompt },
+              });
+            } catch (err) {
+              patchMessage(targetConvId, targetMsgId, {
+                imageGenerating: false,
+                imageGenerateError:
+                  err instanceof Error ? err.message : '图片生成失败，请稍后重试',
+              });
+            }
+          })();
+
+          return; // 生图路径不走 LLM 流式
+        }
 
         // 构建带文件上下文的消息用于 API 发送
         let apiContent: string | MessageContent[] = content;
@@ -970,7 +1207,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [messages, selectedModel, updateActiveConversation, webSearchEnabled, featureSettings, activeId, compactSettings, compactConversation, triggerTitleGeneration, roles, selectedRoleId]
+    [messages, selectedModel, updateActiveConversation, patchMessage, webSearchEnabled, featureSettings, activeId, compactSettings, compactConversation, triggerTitleGeneration, roles, selectedRoleId]
   );
 
   const stopGeneration = useCallback(() => {

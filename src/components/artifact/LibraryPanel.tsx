@@ -12,6 +12,7 @@ import { haptic } from '../../utils/haptics';
 import PromptModal from '../common/PromptModal';
 import ConfirmModal from '../common/ConfirmModal';
 import BlobImage from '../common/BlobImage';
+import ImageViewer from '../common/ImageViewer';
 import { useBlobUrl } from '../../hooks/useBlobUrl';
 import { getBlob, parseBlobRefUrl } from '../../db';
 
@@ -91,35 +92,13 @@ function MarkdownPreviewView({ asset, onDownload }: { asset: AssetItem; onDownlo
   );
 }
 
-/** 图片预览：大图 + prompt */
-function ImagePreviewView({ asset, onDownload }: { asset: AssetItem; onDownload: () => void }) {
+/** 图片资产全屏预览（与聊天同一套 ImageViewer 手势）：库卡片点开图片直接走这里 */
+function ImageViewerAsset({ asset, onClose }: { asset: AssetItem; onClose: () => void }) {
   const src = useBlobUrl(asset.urls?.[0] ?? '');
-  return (
-    <div className="h-full overflow-auto flex flex-col items-center gap-4 p-6">
-      {src ? (
-        <img
-          src={src}
-          alt={asset.title}
-          className="max-w-full max-h-[70vh] object-contain rounded-lg bg-black/20"
-        />
-      ) : (
-        <div className="flex items-center justify-center h-[40vh]">
-          <Loader2 className="w-8 h-8 text-[var(--color-accent)] animate-spin" />
-        </div>
-      )}
-      <p className="text-sm text-gray-300 text-center max-w-lg break-words">{asset.title}</p>
-      <button
-        onClick={onDownload}
-        className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-[var(--color-bg-elevated)] hover:bg-[var(--color-bg-hover)] text-gray-300 transition-colors"
-      >
-        <Download className="w-4 h-4" />
-        下载图片
-      </button>
-    </div>
-  );
+  return src ? <ImageViewer src={src} alt={asset.title} onClose={onClose} /> : null;
 }
 
-/** 预览内容分发：artifact 走 iframe，md/图片走阅读视图 */
+/** 预览内容分发：artifact 走 iframe，markdown 走阅读视图（图片资产点开直接全屏 ImageViewer，不经过详情页） */
 function PreviewBody({ asset }: { asset: AssetItem }) {
   const safeName = asset.title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || 'asset';
   if (asset.kind === 'artifact' && asset.artifact) {
@@ -130,17 +109,6 @@ function PreviewBody({ asset }: { asset: AssetItem }) {
         allow="camera; microphone; fullscreen; clipboard-write; clipboard-read; autoplay; geolocation; accelerometer; gyroscope"
         className="w-full h-full border-0 bg-white"
         title={asset.title}
-      />
-    );
-  }
-  if (asset.kind === 'image') {
-    return (
-      <ImagePreviewView
-        asset={asset}
-        onDownload={() => {
-          const url = asset.urls?.[0];
-          if (url) void triggerDownload(url, `${safeName}.png`);
-        }}
       />
     );
   }
@@ -164,6 +132,8 @@ function PreviewBody({ asset }: { asset: AssetItem }) {
 export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: LibraryPanelProps) {
   const [filter, setFilter] = useState<KindFilter>('all');
   const [previewItem, setPreviewItem] = useState<AssetItem | null>(null);
+  // 图片资产点开直接全屏预览（ImageViewer），不经过详情页
+  const [imageViewerAsset, setImageViewerAsset] = useState<AssetItem | null>(null);
   const [isEntering, setIsEntering] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -416,6 +386,11 @@ export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: L
                         suppressClickRef.current = false;
                         return;
                       }
+                      // 图片资产点开直接全屏预览（与聊天同一套手势），应用/文档仍走详情页
+                      if (item.kind === 'image') {
+                        setImageViewerAsset(item);
+                        return;
+                      }
                       handleOpenPreview(item);
                     }}
                   >
@@ -477,6 +452,23 @@ export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: L
                           <Pencil className="w-4 h-4 flex-shrink-0" />
                           <span>重命名</span>
                         </button>
+                        {/* 图片直接全屏预览后没有详情页下载入口，下载挪到长按菜单 */}
+                        {item.kind === 'image' && (
+                          <button
+                            onClick={() => {
+                              const url = item.urls?.[0];
+                              if (url) {
+                                const safeName = item.title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) || 'asset';
+                                void triggerDownload(url, `${safeName}.png`);
+                              }
+                              setMenuOpenId(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+                          >
+                            <Download className="w-4 h-4 flex-shrink-0" />
+                            <span>下载图片</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setDeleteTarget(item);
@@ -528,6 +520,11 @@ export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: L
         }}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {/* 图片资产全屏预览（与聊天同一套手势/关闭逻辑） */}
+      {imageViewerAsset && (
+        <ImageViewerAsset asset={imageViewerAsset} onClose={() => setImageViewerAsset(null)} />
+      )}
     </>
   );
 }

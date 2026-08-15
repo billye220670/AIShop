@@ -68,6 +68,12 @@ export interface StoredMessage extends SyncMeta {
   webSearchFailed?: boolean;
   searchResults?: Array<{ name: string; url: string; siteName: string }>;
   stoppedByUser?: boolean;
+  /** 聊天内生成的图片：data URL 已落成 blobId，http 链接原样，blob 用 aishop-blob: 前缀区分 */
+  generatedImages?: string[];
+  /** 聊天内生图失败的错误信息 */
+  imageGenerateError?: string;
+  /** 聊天内生图请求的元信息（生图模型/提示词/宽高比）：骨架占位尺寸与自动入库标题使用 */
+  generatedImage?: { model: string; prompt: string; aspectRatio: string };
 
   /** 多模型对比的版本列表 */
   versions?: StoredMessageVersion[];
@@ -89,6 +95,12 @@ export interface StoredMessageVersion {
   artifact?: ArtifactBlock;
   stoppedByUser?: boolean;
   usage?: TokenUsage;
+  /** 聊天内生成的图片：data URL 已落成 blobId，http 链接原样 */
+  generatedImages?: string[];
+  /** 聊天内生图失败的错误信息 */
+  imageGenerateError?: string;
+  /** 聊天内生图请求的元信息（生图模型/提示词/宽高比）：骨架占位尺寸与自动入库标题使用 */
+  generatedImage?: { model: string; prompt: string; aspectRatio: string };
 }
 
 // ---------- 会话 ----------

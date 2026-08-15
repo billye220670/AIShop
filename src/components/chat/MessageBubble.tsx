@@ -1,17 +1,18 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { Globe, TriangleAlert, Copy, Check, FileText, FileDown, RefreshCw, MessageSquareQuote, ChevronDown, ChevronUp, Search, FoldVertical } from 'lucide-react';
+import { Globe, TriangleAlert, Copy, Check, FileText, FileDown, RefreshCw, MessageSquareQuote, ChevronDown, ChevronUp, Search, FoldVertical, Loader2 } from 'lucide-react';
 import type { ArtifactBlock } from '../../types';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import type { Message, MessageContent } from '../../types';
 import LoadingDots from './LoadingDots';
 import MessageImage from './MessageImage';
+import { imageDisplaySizeFromRatio, USER_IMAGE_MAX_WIDTH, USER_IMAGE_MAX_HEIGHT } from '../../utils/imageDisplaySize';
 import VersionNavigator from './VersionNavigator';
 import CompareButton from './CompareButton';
 import Toast from '../common/Toast';
@@ -507,6 +508,16 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
   const displaySearchResults = activeVersion ? activeVersion.searchResults : message.searchResults;
   const displayWebSearching = activeVersion ? activeVersion.webSearching : message.webSearching;
   const displayStoppedByUser = activeVersion ? activeVersion.stoppedByUser : message.stoppedByUser;
+  // 聊天内生成的图片：生成中（shimmer）/ 结果 / 失败信息
+  const displayImageGenerating = activeVersion ? activeVersion.imageGenerating : message.imageGenerating;
+  const displayGeneratedImages = activeVersion ? activeVersion.generatedImages : message.generatedImages;
+  const displayImageGenerateError = activeVersion ? activeVersion.imageGenerateError : message.imageGenerateError;
+  // 生图请求的元信息（模型/提示词/宽高比）：骨架与图片占位按比例预占尺寸，回传后不跳变
+  const displayGeneratedImage = activeVersion ? activeVersion.generatedImage : message.generatedImage;
+  const imagePlaceholderSize = useMemo(
+    () => imageDisplaySizeFromRatio(displayGeneratedImage?.aspectRatio),
+    [displayGeneratedImage]
+  );
 
   // 保存为 Markdown：下载 .md 文件，同时存入「我的库」（markdown 资产，
   // 按 sourceRef=消息 id 去重，重复保存不会产生重复资产）
@@ -671,6 +682,46 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     );
   };
 
+  // 用户消息内容拆分：图片不放气泡里（微信式直出，图片在上），文本（若有）保留在气泡里
+  const userImageParts = Array.isArray(displayContent)
+    ? displayContent.filter(
+        (p): p is MessageContent & { image_url: { url: string } } => p.type === 'image_url' && !!p.image_url?.url
+      )
+    : [];
+  const hasUserImages = userImageParts.length > 0;
+  const hasUserText =
+    typeof displayContent === 'string'
+      ? displayContent.trim().length > 0
+      : displayContent.some(p => p.type === 'text' && p.text);
+
+  // 用户消息文本渲染：与 renderContent 的文本分支一致（含搜索高亮），
+  // 仅在有图片拆分时使用；无图片时整条消息仍走 renderContent
+  const renderUserText = () => {
+    if (typeof displayContent === 'string') {
+      if (searchQuery && searchQuery.trim()) {
+        const { nodes } = renderTextWithHighlight(displayContent, searchQuery.trim(), 0, activeMatchOccurrence);
+        return <p className="whitespace-pre-wrap">{nodes}</p>;
+      }
+      return <p className="whitespace-pre-wrap">{displayContent}</p>;
+    }
+    const textParts = displayContent.filter(
+      (p): p is MessageContent & { text: string } => p.type === 'text' && !!p.text
+    );
+    let occurrenceCursor = 0;
+    return (
+      <div className="space-y-2">
+        {textParts.map((part, idx) => {
+          if (searchQuery && searchQuery.trim()) {
+            const { nodes, occurrenceCount } = renderTextWithHighlight(part.text, searchQuery.trim(), occurrenceCursor, activeMatchOccurrence);
+            occurrenceCursor += occurrenceCount;
+            return <p key={idx} className="whitespace-pre-wrap">{nodes}</p>;
+          }
+          return <p key={idx} className="whitespace-pre-wrap">{part.text}</p>;
+        })}
+      </div>
+    );
+  };
+
   // 用户消息：加上长按上下文菜单（目前只有复制），气泡样式保持原样
   if (isUser) {
     return (
@@ -721,9 +772,25 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
               ))}
             </div>
           )}
-          <div className="max-w-[80%] rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br-none px-4 py-3 bg-[var(--color-accent)] text-[var(--color-accent-foreground)]">
-            {renderContent()}
-          </div>
+          {/* 用户发的图片不放气泡里（微信式直出，图片在上）；文本（若有）仍在气泡里 */}
+          {hasUserImages && (
+            <div className={`max-w-[80%] space-y-2 ${hasUserText ? 'mb-2' : ''}`}>
+              {userImageParts.map((part, idx) => (
+                <MessageImage
+                  key={idx}
+                  src={part.image_url.url}
+                  alt="上传的图片"
+                  maxWidth={USER_IMAGE_MAX_WIDTH}
+                  maxHeight={USER_IMAGE_MAX_HEIGHT}
+                />
+              ))}
+            </div>
+          )}
+          {(hasUserText || !hasUserImages) && (
+            <div className="max-w-[80%] rounded-tl-2xl rounded-tr-2xl rounded-bl-2xl rounded-br-none px-4 py-3 bg-[var(--color-accent)] text-[var(--color-accent-foreground)]">
+              {hasUserImages ? renderUserText() : renderContent()}
+            </div>
+          )}
 
           {/* 长按上下文菜单：目前只有复制，后续要加别的操作再往这里补 */}
           {menuOpen && createPortal(
@@ -914,6 +981,33 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             {/* 主要内容 */}
             {renderContent()}
 
+            {/* 聊天内生成的图片：生成中显示 shimmer 骨架（按请求比例占位、无边框），完成后图片原位显示，失败显示错误 */}
+            {displayImageGenerating && (
+              <div
+                className="mt-3 relative overflow-hidden rounded-xl bg-[var(--color-bg-secondary)]"
+                style={{ width: imagePlaceholderSize.width, height: imagePlaceholderSize.height }}
+              >
+                <div className="image-shimmer-sweep" />
+                <div className="relative flex flex-col items-center justify-center gap-2 h-full">
+                  <Loader2 className="w-6 h-6 text-[var(--color-accent)] animate-spin" />
+                  <span className="text-xs text-gray-400">正在生成图片...</span>
+                </div>
+              </div>
+            )}
+            {displayGeneratedImages && displayGeneratedImages.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {displayGeneratedImages.map((url, idx) => (
+                  <MessageImage key={idx} src={url} alt="生成的图片" initialSize={imagePlaceholderSize} />
+                ))}
+              </div>
+            )}
+            {displayImageGenerateError && !displayImageGenerating && (
+              <div className="mt-3 flex items-start gap-2 text-xs text-red-400 rounded-lg px-3 py-2.5 bg-red-950/30">
+                <TriangleAlert className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span className="whitespace-pre-wrap">图片生成失败：{displayImageGenerateError}</span>
+              </div>
+            )}
+
             {/* 用户停止生成的状态提示 */}
             {displayStoppedByUser && (
               <>
@@ -1083,16 +1177,19 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
               <Copy className="w-5 h-5 flex-shrink-0" />
               <span>复制</span>
             </button>
-            <button
-              onClick={() => {
-                setMenuOpen(false);
-                handleSaveMarkdown();
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
-            >
-              <FileDown className="w-5 h-5 flex-shrink-0" />
-              <span>保存为 Markdown</span>
-            </button>
+            {/* 生成图片的消息无纯文本可存，长按不提供「保存为 Markdown」 */}
+            {!displayGeneratedImages?.length && (
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  handleSaveMarkdown();
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+              >
+                <FileDown className="w-5 h-5 flex-shrink-0" />
+                <span>保存为 Markdown</span>
+              </button>
+            )}
             {onRegenerate && (
               <button
                 onClick={() => { setMenuOpen(false); onRegenerate(message.id); }}

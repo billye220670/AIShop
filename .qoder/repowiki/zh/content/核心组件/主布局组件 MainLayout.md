@@ -314,7 +314,7 @@ MainLayout 作为应用根布局，通过引入设备模式检测功能，实现
 
 ### 在应用中正确使用 MainLayout
 - 在 App 中引入 MainLayout，并将 activeTab、onTabChange、conversations、activeConversationId、模型与上下文用量等状态传入
-- 将各功能面板（ChatPanel、ImagePanel、LibraryPanel、SettingsPanel）作为 children 渲染
+- 将各功能面板（ChatPanel、ImagePanel、FavoritesPanel、SettingsPanel）作为 children 渲染
 - 根据 activeTab 条件传入 models、selectedModel、onModelChange、webSearchEnabled、artifactEnabled 等属性
 
 参考路径

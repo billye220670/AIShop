@@ -79,6 +79,14 @@ export interface MessageVersion {
   artifact?: ArtifactBlock;
   stoppedByUser?: boolean; // 用户是否停止了生成
   usage?: TokenUsage;
+  /** 聊天内生成的图片 url（http 或 aishop-blob: 引用），与 content 分开存，content 保持纯文本 */
+  generatedImages?: string[];
+  /** 聊天内生图请求已发出、结果未返回（UI 显示 shimmer 骨架） */
+  imageGenerating?: boolean;
+  /** 聊天内生图失败的错误信息 */
+  imageGenerateError?: string;
+  /** 聊天内生图请求的元信息（生图模型/提示词/宽高比）：骨架占位尺寸与自动入库标题使用 */
+  generatedImage?: { model: string; prompt: string; aspectRatio: string };
 }
 
 export interface Message {
@@ -104,6 +112,14 @@ export interface Message {
   stoppedByUser?: boolean; // 用户是否停止了生成
   compressedInto?: string;  // 所属 ContextSegment 的 id（仅影响 API payload，不影响渲染）
   usage?: TokenUsage;  // API 返回的真实用量（仅 assistant 消息）
+  /** 聊天内生成的图片 url（http 或 aishop-blob: 引用），与 content 分开存，content 保持纯文本 */
+  generatedImages?: string[];
+  /** 聊天内生图请求已发出、结果未返回（UI 显示 shimmer 骨架） */
+  imageGenerating?: boolean;
+  /** 聊天内生图失败的错误信息 */
+  imageGenerateError?: string;
+  /** 聊天内生图请求的元信息（生图模型/提示词/宽高比）：骨架占位尺寸与自动入库标题使用 */
+  generatedImage?: { model: string; prompt: string; aspectRatio: string };
 }
 
 export interface Model {

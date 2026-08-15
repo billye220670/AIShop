@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import MainLayout from './components/layout/MainLayout';
@@ -19,6 +19,7 @@ import { scheduleAutoSync, safeSync, BYOC_SYNC_DONE_EVENT } from './services/byo
 import { useDeviceMode } from './platform/useDeviceMode';
 import { isNativePlatform } from './platform/capabilities';
 import { messageCountOf } from './utils/conversationView';
+import { getPlainText } from './utils/messageText';
 import type { TabMode } from './types';
 
 function App() {
@@ -101,7 +102,28 @@ function App() {
   }, []);
 
   const chat = useChat();
-  const { assets, isSaved, toggleArtifact, removeAsset, renameAsset, saveMarkdown, refresh: refreshAssets } = useAssets();
+  const { assets, isSaved, toggleArtifact, removeAsset, renameAsset, saveMarkdown, saveImage, refresh: refreshAssets } = useAssets();
+
+  // 聊天内生成的图片自动存入「我的库」：按消息 id 去重（同一消息只入库一次），
+  // 入库链路复用 useAssets.saveImage——其内部落库后触发 3 秒防抖 BYOC 同步，即"合适的同步时机"
+  const savedChatImageIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const conv of chat.conversations) {
+      for (const msg of conv.messages) {
+        const images = msg.generatedImages;
+        if (!images || images.length === 0) continue;
+        if (savedChatImageIdsRef.current.has(msg.id)) continue;
+        savedChatImageIdsRef.current.add(msg.id);
+        saveImage({
+          id: `chat-img-${msg.id}`,
+          urls: images,
+          prompt: msg.generatedImage?.prompt || getPlainText(msg.content) || '聊天生成图片',
+          model: msg.generatedImage?.model || '',
+          timestamp: msg.timestamp,
+        });
+      }
+    }
+  }, [chat.conversations, saveImage]);
 
   // BYOC 同步完成后自动刷新会话/角色/资产列表（三者都可能从云端拉到/被删除）
   useEffect(() => {

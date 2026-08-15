@@ -5,7 +5,7 @@
 - [ConfirmModal.tsx](file://src/components/common/ConfirmModal.tsx)
 - [ConversationList.tsx](file://src/components/chat/ConversationList.tsx)
 - [Sidebar.tsx](file://src/components/layout/Sidebar.tsx)
-- [LibraryPanel.tsx](file://src/components/artifact/LibraryPanel.tsx)
+- [FavoritesPanel.tsx](file://src/components/artifact/FavoritesPanel.tsx)
 </cite>
 
 ## 目录
@@ -33,7 +33,7 @@ ConfirmModal 是一个通用、可复用的“确认”模态框组件，用于�
 该组件以受控模式工作，由父组件通过 open 状态控制显示与隐藏，并通过 onConfirm/onCancel 回调处理业务逻辑。
 
 ## 项目结构
-ConfirmModal 位于通用组件目录中，被多个页面模块复用，包括聊天会话列表、侧边栏、我的库面板等。
+ConfirmModal 位于通用组件目录中，被多个页面模块复用，包括聊天会话列表、侧边栏、收藏面板等。
 
 ```mermaid
 graph TB
@@ -43,7 +43,7 @@ end
 subgraph "业务模块"
 CL["ConversationList.tsx"]
 SB["Sidebar.tsx"]
-FP["LibraryPanel.tsx"]
+FP["FavoritesPanel.tsx"]
 end
 CL --> CM
 SB --> CM
@@ -54,7 +54,7 @@ FP --> CM
 - [ConfirmModal.tsx:1-135](file://src/components/common/ConfirmModal.tsx#L1-L135)
 - [ConversationList.tsx:1-175](file://src/components/chat/ConversationList.tsx#L1-L175)
 - [Sidebar.tsx:1-557](file://src/components/layout/Sidebar.tsx#L1-L557)
-- [LibraryPanel.tsx:1-501](file://src/components/artifact/LibraryPanel.tsx#L1-L501)
+- [FavoritesPanel.tsx:1-312](file://src/components/artifact/FavoritesPanel.tsx#L1-L312)
 
 章节来源
 - [ConfirmModal.tsx:1-135](file://src/components/common/ConfirmModal.tsx#L1-L135)
@@ -176,14 +176,14 @@ Note over Modal : 退出动画完成后卸载
 - 侧边栏批量删除确认
   - 组件：Sidebar
   - 入口：[Sidebar.tsx:539-553](file://src/components/layout/Sidebar.tsx#L539-L553)
-- 资产项删除确认
-  - 组件：LibraryPanel
-  - 入口：[LibraryPanel.tsx:420-450](file://src/components/artifact/LibraryPanel.tsx#L420-L450)
+- 收藏项删除确认
+  - 组件：FavoritesPanel
+  - 入口：[FavoritesPanel.tsx:296-308](file://src/components/artifact/FavoritesPanel.tsx#L296-L308)
 
 章节来源
 - [ConversationList.tsx:159-171](file://src/components/chat/ConversationList.tsx#L159-L171)
 - [Sidebar.tsx:524-553](file://src/components/layout/Sidebar.tsx#L524-L553)
-- [LibraryPanel.tsx:420-450](file://src/components/artifact/LibraryPanel.tsx#L420-L450)
+- [FavoritesPanel.tsx:296-308](file://src/components/artifact/FavoritesPanel.tsx#L296-L308)
 
 ## 依赖关系分析
 ConfirmModal 的依赖与耦合情况：

@@ -20,6 +20,10 @@ interface BlobImageProps {
   fallback?: React.ReactNode;
   /** 加载完成回调，能拿到 img 元素（读 naturalWidth 等） */
   onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
+  /** 点击回调（透传给 <img>，供"点击图片放大查看"等交互使用） */
+  onClick?: (e: React.MouseEvent<HTMLImageElement>) => void;
+  /** 按下回调（配合 onClick 做长按/点击区分） */
+  onPointerDown?: (e: React.PointerEvent<HTMLImageElement>) => void;
 }
 
 export default function BlobImage({
@@ -32,6 +36,8 @@ export default function BlobImage({
   placeholder,
   fallback = null,
   onLoad,
+  onClick,
+  onPointerDown,
 }: BlobImageProps) {
   const resolved = useBlobUrl(src);
   const [failed, setFailed] = useState(false);
@@ -58,6 +64,8 @@ export default function BlobImage({
       draggable={draggable}
       loading={loading}
       onLoad={onLoad}
+      onClick={onClick}
+      onPointerDown={onPointerDown}
       onError={() => setFailed(true)}
     />
   );

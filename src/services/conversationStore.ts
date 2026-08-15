@@ -147,7 +147,13 @@ function messageChanged(a: Message, b: Message): boolean {
     a.activeVersionIndex !== b.activeVersionIndex ||
     (a.suggestions?.length ?? 0) !== (b.suggestions?.length ?? 0) ||
     a.webSearched !== b.webSearched ||
-    a.webSearchFailed !== b.webSearchFailed
+    a.webSearchFailed !== b.webSearchFailed ||
+    // 聊天内生图：生成完成/失败会只改这些字段（content 不变），
+    // 不参与对比的话消息永远不会落盘，BYOC 推送的始终是"只有确认文案"的旧版
+    a.imageGenerating !== b.imageGenerating ||
+    a.imageGenerateError !== b.imageGenerateError ||
+    a.generatedImages !== b.generatedImages ||
+    a.generatedImage !== b.generatedImage
   );
 }
 

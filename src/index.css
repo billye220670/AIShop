@@ -318,6 +318,28 @@ button {
   }
 }
 
+/* 聊天内生图等待的 shimmer 扫光：在骨架卡片上往复划过一道高光 */
+@keyframes image-shimmer-sweep-keyframes {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+.image-shimmer-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 80%
+  );
+  animation: image-shimmer-sweep-keyframes 1.6s ease-in-out infinite;
+}
+
 /* 长按会话项呼出上下文菜单：背景遮罩淡入 */
 @keyframes context-menu-overlay-in {
   from {

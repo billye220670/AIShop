@@ -57,6 +57,7 @@
     "@capawesome/capacitor-file-picker": "^8.0.4",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.3.0",
+    "electron-updater": "^6.8.3",
     "highlight.js": "^11.11.1",
     "html2canvas": "^1.4.1",
     "idb": "^8.0.3",
@@ -68,12 +69,12 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
+    "react-zoom-pan-pinch": "^4.0.4",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "tailwindcss": "^4.3.0",
-    "xlsx": "^0.18.5",
-    "electron-updater": "^6.8.3"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
