@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Download, Pencil, Trash2, MessageSquare, Star, X, Check } from 'lucide-react';
+import { Search, Download, Pencil, Trash2, MessageSquare, Star, X, Check, MoreHorizontal } from 'lucide-react';
 import PinyinMatch from 'pinyin-match';
 import type { Conversation } from '../../types';
 import ConfirmModal from '../common/ConfirmModal';
 import PromptModal from '../common/PromptModal';
 import { haptic } from '../../utils/haptics';
+import { useDeviceMode } from '../../platform/useDeviceMode';
 import { hasAnyMessage, lastMessagePreviewOf } from '../../utils/conversationView';
 import { exportSingleConversation } from '../../services/backup';
 
@@ -38,6 +39,8 @@ export default function Sidebar({
   onRenameConversation,
 }: SidebarProps) {
   const [historySearch, setHistorySearch] = useState('');
+  // 桌面形态（Electron/PC 浏览器）：禁用长按，改悬停三点按钮呼出菜单；移动端保留长按
+  const isDesktop = useDeviceMode() === 'desktop';
   // 三点菜单状态
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   // 重命名弹窗状态（弹窗内部自行管理输入值）
@@ -411,7 +414,7 @@ export default function Sidebar({
                         ? 'bg-white/10'
                         : 'hover:bg-white/5'
                   }`}
-                  onPointerDown={e => { if (!selectMode) handlePressStart(conv.id, e); }}
+                  onPointerDown={e => { if (!selectMode && !isDesktop) handlePressStart(conv.id, e); }}
                   onPointerMove={handlePressMove}
                   onPointerUp={clearPressTimer}
                   onPointerCancel={clearPressTimer}
@@ -449,6 +452,25 @@ export default function Sidebar({
                       <div className="flex-1 min-w-0 text-base font-bold text-white truncate">
                         {conv.title}
                       </div>
+                      {/* 桌面端：悬停显示三点按钮，点击在按钮位置展开上下文菜单；移动端保留长按不渲染 */}
+                      {isDesktop && !selectMode && (
+                        <button
+                          onPointerDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            // 锚点取按钮左下角：菜单在按钮正下方左对齐展开（面板靠右，不向右溢出）
+                            setMenuPos({ x: rect.left, y: rect.bottom });
+                            setMenuOpenId(conv.id);
+                          }}
+                          className={`p-1.5 -mr-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0 ${
+                            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          }`}
+                          title="更多操作"
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
 
                     {/* 预览文本 */}

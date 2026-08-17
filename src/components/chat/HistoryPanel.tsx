@@ -54,9 +54,9 @@ export default function HistoryPanel({
         onClick={onClose}
       />
 
-      {/* 右侧滑出面板 */}
+      {/* 右侧滑出面板：背景与应用背景一致（暗色下即 #121211），与左侧内容区视觉统一 */}
       <aside
-        className={`fixed top-0 right-0 bottom-0 w-[380px] z-[100] bg-[var(--color-bg-primary)] border-l border-gray-700/50 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 bottom-0 w-[380px] z-[100] bg-[var(--color-bg-base)] border-l border-gray-700/50 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
       >

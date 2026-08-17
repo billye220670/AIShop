@@ -356,17 +356,15 @@ button {
   animation: image-shimmer-sweep-keyframes 1.6s ease-in-out infinite;
 }
 
-/* 长按会话项呼出上下文菜单：背景遮罩淡入 */
+/* 长按呼出上下文菜单：背景遮罩淡入。
+   模糊是静态属性而非动画的一部分（淡入只做透明度），
+   Electron 桌面端按根元素 data-platform 标记整体禁用模糊。 */
 @keyframes context-menu-overlay-in {
   from {
     opacity: 0;
-    -webkit-backdrop-filter: blur(0px);
-    backdrop-filter: blur(0px);
   }
   to {
     opacity: 1;
-    -webkit-backdrop-filter: blur(6px);
-    backdrop-filter: blur(6px);
   }
 }
 
@@ -383,7 +381,15 @@ button {
 }
 
 .context-menu-overlay {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   animation: context-menu-overlay-in 0.18s ease-out forwards;
+}
+
+/* PC 端（Electron）弹出任何上下文菜单时背景不做模糊：仅保留黑色遮罩淡入 */
+html[data-platform='electron'] .context-menu-overlay {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .context-menu-pop {
@@ -411,6 +417,16 @@ button {
 .chat-folding [data-msg-role='assistant'] {
   transform-origin: top center;
   animation: fold-collapse-out 420ms cubic-bezier(0.32, 0, 0.67, 0) forwards;
+}
+
+/* 桌面双分页拖拽分隔条期间：整条跟手，禁止选中文本；
+   iframe 会吞鼠标事件导致 window 收不到 mousemove，必须关掉它的指针事件 */
+.art-split-dragging {
+  cursor: col-resize;
+  user-select: none;
+}
+.art-split-dragging iframe {
+  pointer-events: none;
 }
 
 /* 用户气泡是折叠前后唯一不变的参照物，塌陷时保持不动，只轻微让位 */

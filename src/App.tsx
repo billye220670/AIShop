@@ -17,7 +17,7 @@ import { syncElectronTitleBar } from './utils/electronTitleBar';
 import { requestPersistentStorage } from './utils/pwa';
 import { scheduleAutoSync, safeSync, BYOC_SYNC_DONE_EVENT } from './services/byoc';
 import { useDeviceMode } from './platform/useDeviceMode';
-import { isNativePlatform } from './platform/capabilities';
+import { isElectron, isNativePlatform } from './platform/capabilities';
 import { messageCountOf } from './utils/conversationView';
 import { getPlainText } from './utils/messageText';
 import type { TabMode } from './types';
@@ -29,6 +29,8 @@ function App() {
     const mode = loadMode();
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.mode = mode;
+    // 平台标记：Electron 桌面端弹出上下文菜单时背景不做模糊（CSS 按此标记禁用 backdrop-filter）
+    document.documentElement.dataset.platform = isElectron() ? 'electron' : '';
     // 同步浏览器工具栏颜色（需要适配颜色主题）
     const meta = document.getElementById('meta-theme-color') as HTMLMetaElement | null;
     if (meta) {
