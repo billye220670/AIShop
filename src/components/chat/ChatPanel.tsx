@@ -17,6 +17,24 @@ import type { ContextSegment, ContextSummary } from '../../types';
 import type { RoleData } from '../../db';
 import type { UsageTotals } from '../../utils/tokenEstimate';
 import { isElectron } from '../../platform/capabilities';
+import { useDeviceMode } from '../../platform/useDeviceMode';
+
+/** 桌面双分页：聊天区宽度比例（%）的 localStorage 键与合法范围 */
+const SPLIT_RATIO_KEY = 'chat-artifact-split-pct';
+const SPLIT_MIN = 25;
+const SPLIT_MAX = 70;
+const SPLIT_DEFAULT = 45;
+
+function readStoredSplitPct(): number {
+  if (typeof window === 'undefined') return SPLIT_DEFAULT;
+  try {
+    const v = parseFloat(window.localStorage.getItem(SPLIT_RATIO_KEY) || '');
+    if (isFinite(v)) return Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, v));
+  } catch {
+    // ignore
+  }
+  return SPLIT_DEFAULT;
+}
 
 interface ChatPanelProps {
   messages: Message[];
@@ -406,12 +424,118 @@ export default function ChatPanel({
   // 距底部超过一屏且输入框未激活时，露出“回到底部”按钮
   const showScrollToBottom = isFarFromBottom && !isInputActive;
   const { activeArtifact, isArtifactGenerating, openArtifact, closeArtifact, startStreamingArtifact, updateStreamingCode, finishStreamingArtifact } = useArtifact();
+  // 桌面形态：artifact 双分页（左侧聊天 + 右侧面板）；移动形态：全屏覆盖
+  const isDesktop = useDeviceMode() === 'desktop';
+  const [splitDragging, setSplitDragging] = useState(false);
+  /** 拖拽起点：按下的水平位置 + 当时的聊天区比例，mousemove 期间基于起点计算 */
+  const splitDragRef = useRef<{ startX: number; startPct: number } | null>(null);
+  /** 分隔条所在容器（聊天区 + 分隔条 + 面板），用于把像素位移换算成百分比 */
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  /** 聊天区 DOM：宽度不走 React state，由本模块直接读写（拖拽零渲染） */
+  const chatPaneRef = useRef<HTMLDivElement | null>(null);
+
+  // 双分页激活时应用持久化宽度，关闭时清空还原 flex-1。
+  // 用 useLayoutEffect：在绘制前落位，避免激活瞬间先以 flex-1 渲染一帧再收窄。
+  // 宽度刻意不放在 React style 里——拖拽 mousemove 直接写 el.style.width，
+  // React 不知道这个属性就不会在重渲染时覆盖它（流式回复等高频重渲染也不干扰拖拽）
+  useLayoutEffect(() => {
+    const el = chatPaneRef.current;
+    if (!el) return;
+    if (isDesktop && activeArtifact) {
+      el.style.width = `${readStoredSplitPct()}%`;
+    } else {
+      el.style.width = '';
+    }
+  }, [isDesktop, activeArtifact]);
+
+  // 拖拽期间：window 级监听 mousemove/mouseup（鼠标移出分隔条仍跟手）。
+  // 性能设计：mousemove 只写一次 el.style.width（浏览器统一在下帧生效），
+  // 全程零 setState / 零 React 重渲染；松手时才 setState 收尾 + 持久化一次。
+  // iframe 会吞掉鼠标事件，拖拽时给容器打 data 标记，由 index.css 关掉 iframe
+  // 指针事件（.art-split-dragging iframe { pointer-events: none }），否则指针
+  // 一旦进入预览 iframe，window 收不到 move 事件拖拽就断了
+  useEffect(() => {
+    if (!splitDragging) return;
+    const onMove = (ev: MouseEvent) => {
+      const drag = splitDragRef.current;
+      const container = splitContainerRef.current;
+      const pane = chatPaneRef.current;
+      if (!drag || !container || !pane) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const pct = drag.startPct + ((ev.clientX - drag.startX) / rect.width) * 100;
+      pane.style.width = `${Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, pct))}%`;
+    };
+    const onUp = () => {
+      splitDragRef.current = null;
+      setSplitDragging(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      // 拖拽结束一次性持久化，避免拖拽中高频写 localStorage
+      try {
+        const el = chatPaneRef.current;
+        if (el) {
+          const pct = parseFloat(el.style.width);
+          if (isFinite(pct)) window.localStorage.setItem(SPLIT_RATIO_KEY, String(pct));
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [splitDragging]);
+
+  const onSplitMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = splitContainerRef.current;
+    const pane = chatPaneRef.current;
+    if (!container || !pane) return;
+    // 起点比例取实际渲染宽度（rect），比记录 state 更准，也不依赖 state
+    splitDragRef.current = {
+      startX: e.clientX,
+      startPct: (pane.getBoundingClientRect().width / container.getBoundingClientRect().width) * 100,
+    };
+    setSplitDragging(true);
+    // 拖拽中全局十字光标 + 禁止选中，松手由 onUp/cleanup 恢复
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
   const [autoPreviewSignal, setAutoPreviewSignal] = useState(0);
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
   // 会话切换时关闭 Artifact 面板
   useEffect(() => {
     closeArtifact();
   }, [conversation?.id]);
+
+  // 桌面双分页：Escape 关闭 Artifact 面板（搜索打开时优先关闭搜索）。
+  // Electron 下焦点可能落在 iframe 内部，页面收不到键盘事件，改由主进程
+  // before-input-event 捕获 Escape 后经 IPC 转发（onAppEscape）
+  useEffect(() => {
+    if (!isDesktop || !activeArtifact) return;
+    const dismiss = () => {
+      if (searchOpen) {
+        closeSearch();
+      } else {
+        closeArtifact();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dismiss();
+    };
+    window.addEventListener('keydown', onKey);
+    const unsubscribe = window.electronAPI?.onAppEscape?.(dismiss);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      unsubscribe?.();
+    };
+  }, [isDesktop, activeArtifact, searchOpen]);
 
   // [已屏蔽] 拖拽JSON导入功能 - 改为在ChatInput中实现拖拽上传
   // const [isDragOver, setIsDragOver] = useState(false);
@@ -484,8 +608,13 @@ export default function ChatPanel({
 
   return (
     <>
-      {/* 主聊天区 */}
-      <div className="relative flex-1 flex flex-col overflow-hidden">
+      {/* 主聊天区 + 桌面端 Artifact 双分页面板 */}
+      <div ref={splitContainerRef} className={`relative flex-1 overflow-hidden ${isDesktop ? 'flex' : 'flex flex-col'} ${splitDragging ? 'art-split-dragging' : ''}`}>
+      {/* 主聊天区：桌面端打开 artifact 时收窄，宽度由 chatPaneRef 直接读写（拖拽零渲染） */}
+      <div
+        ref={chatPaneRef}
+        className={`relative flex flex-col overflow-hidden ${!splitDragging ? 'transition-all duration-300' : ''} ${isDesktop && activeArtifact ? 'min-w-0' : 'flex-1'}`}
+      >
         {/* 对话内搜索栏：紧贴顶栏下方，背景与顶栏一致 */}
         {searchOpen && (
           <div className="px-4 py-2 flex items-center gap-2 shrink-0 bg-[var(--color-bg-base)]">
@@ -670,18 +799,36 @@ export default function ChatPanel({
         />
       </div>
 
-      {/* Artifact 全屏页面 - 覆盖整个应用（包括顶部和底部导航栏） */}
-      <div
-        data-swipe-ignore
-        className={`fixed inset-0 z-[100] bg-[var(--color-bg-base)] transition-transform duration-300 ease-out ${
-          activeArtifact ? 'translate-x-0' : 'translate-x-full'
-        }`}
-        style={{ pointerEvents: activeArtifact ? 'auto' : 'none' }}
-      >
-        {activeArtifact && (
-          <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} isFavorite={isFavorite} onToggleFavorite={onToggleFavorite} />
-        )}
+      {/* 桌面端右侧 Artifact 面板 - 双分页（左侧聊天保持可见） */}
+      {isDesktop && activeArtifact && (
+        <>
+          {/* 分隔条：悬停/拖拽高亮，按住左右拖动调整两侧比例 */}
+          <div
+            onMouseDown={onSplitMouseDown}
+            className={`w-1.5 shrink-0 cursor-col-resize transition-colors ${splitDragging ? 'bg-[var(--color-accent)]' : 'hover:bg-white/40 bg-transparent'}`}
+            title="拖拽调整左右比例"
+          />
+          <div className="flex-1 min-w-0 border-l border-gray-700/50">
+            <ArtifactPanel embedded artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} isFavorite={isFavorite} onToggleFavorite={onToggleFavorite} />
+          </div>
+        </>
+      )}
       </div>
+
+      {/* 移动端 Artifact 全屏页面 - 覆盖整个应用（包括顶部和底部导航栏） */}
+      {!isDesktop && (
+        <div
+          data-swipe-ignore
+          className={`fixed inset-0 z-[100] bg-[var(--color-bg-base)] transition-transform duration-300 ease-out ${
+            activeArtifact ? 'translate-x-0' : 'translate-x-full'
+          }`}
+          style={{ pointerEvents: activeArtifact ? 'auto' : 'none' }}
+        >
+          {activeArtifact && (
+            <ArtifactPanel artifact={activeArtifact} onClose={closeArtifact} isGenerating={isArtifactGenerating} autoPreviewSignal={autoPreviewSignal} isFavorite={isFavorite} onToggleFavorite={onToggleFavorite} />
+          )}
+        </div>
+      )}
 
       {/* 上下文摘要查看/编辑 */}
       <ContextSummarySheet

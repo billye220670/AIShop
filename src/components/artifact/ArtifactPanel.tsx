@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Code, Eye, RefreshCw, Download, Bookmark, Loader2, ArrowLeft } from 'lucide-react';
+import { Code, Eye, RefreshCw, Download, Bookmark, Loader2, ArrowLeft, X, Globe } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { isNativePlatform } from '../../platform/capabilities';
 import type { ArtifactBlock } from '../../types';
@@ -11,6 +11,8 @@ interface ArtifactPanelProps {
   autoPreviewSignal?: number;
   isFavorite?: boolean;
   onToggleFavorite?: (thumbnail?: string) => void;
+  /** 桌面双分页模式：嵌入聊天区右侧，头部显示标题+关闭按钮（而非全屏返回按钮） */
+  embedded?: boolean;
 }
 
 type ViewMode = 'code' | 'preview';
@@ -64,7 +66,7 @@ async function captureArtifactThumbnail(iframe: HTMLIFrameElement): Promise<stri
   return resizedCanvas.toDataURL('image/jpeg', 0.7);
 }
 
-export default function ArtifactPanel({ artifact, onClose, isGenerating = false, autoPreviewSignal = 0, isFavorite = false, onToggleFavorite }: ArtifactPanelProps) {
+export default function ArtifactPanel({ artifact, onClose, isGenerating = false, autoPreviewSignal = 0, isFavorite = false, onToggleFavorite, embedded = false }: ArtifactPanelProps) {
   const [mode, setMode] = useState<ViewMode>('preview');
   const [capturing, setCapturing] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -125,14 +127,23 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
           ...(isNativePlatform() ? { paddingTop: 'var(--native-inset-top, var(--status-bar-height, env(safe-area-inset-top)))' } : {}),
         }}
       >
-        {/* 左侧：返回按钮 */}
-        <button
-          onClick={onClose}
-          className="p-2 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10 flex-shrink-0"
-          title="返回"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+        {/* 左侧：双分页模式显示图标+标题；全屏模式显示返回按钮 */}
+        {embedded ? (
+          <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+            <div className="w-7 h-7 rounded-full bg-[var(--color-accent)] flex items-center justify-center flex-shrink-0">
+              <Globe className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-[var(--color-text-primary)] font-medium text-sm truncate">{artifact.title}</span>
+          </div>
+        ) : (
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10 flex-shrink-0"
+            title="返回"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        )}
 
         {/* 中间占位 */}
         <div className="flex-1" />
@@ -223,6 +234,17 @@ export default function ArtifactPanel({ artifact, onClose, isGenerating = false,
               <Eye className="w-4 h-4" />
             </button>
           </div>
+
+          {/* 双分页模式：关闭按钮 */}
+          {embedded && (
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-white transition-colors rounded-md hover:bg-white/10"
+              title="关闭"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
