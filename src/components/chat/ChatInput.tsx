@@ -769,6 +769,7 @@ export default function ChatInput({
                 selectedRoleId={selectedRoleId}
                 onRoleSelect={onRoleSelect}
                 onRolesChanged={onRolesChanged}
+                selectedModel={selectedModel}
               />
               {/* 上传 */}
               <button

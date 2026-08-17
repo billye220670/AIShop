@@ -117,6 +117,7 @@ export {
   listRoles,
   listStoredRoles,
   createRole,
+  updateRole,
   deleteRole,
 } from './roleRepo';
 export type { RoleData } from './roleRepo';

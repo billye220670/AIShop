@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Globe, SquareCode, Sparkles, Plus, UserRound, Trash2, Check } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, Globe, SquareCode, Sparkles, Plus, UserRound, Trash2, Check, Pencil, Wand2 } from 'lucide-react';
 import BottomSheet from './BottomSheet';
+import Toast from './Toast';
 import { haptic } from '../../utils/haptics';
-import { createRole, deleteRole } from '../../db';
+import { createRole, updateRole, deleteRole } from '../../db';
+import { optimizeRolePrompt } from '../../services/rolePromptOptimizer';
 import type { Model } from '../../types';
 import type { RoleData } from '../../db';
 
@@ -117,8 +119,8 @@ const MODEL_DESCRIPTIONS: Record<string, string> = {
   'xiaomimimo/mimo-v2-flash': '小米 MiMo 快速模型，极高性价比，适合大规模应用',
 };
 
-/** 底部抽屉内的页面：聊天设置（推荐）/ 所有模型 / 角色列表 / 创建角色 */
-type SheetPage = 'recommended' | 'models' | 'roles' | 'create';
+/** 底部抽屉内的页面：聊天设置（推荐）/ 所有模型 / 角色列表 / 创建角色 / 编辑角色 */
+type SheetPage = 'recommended' | 'models' | 'roles' | 'create' | 'edit';
 
 /** 每页的上级页面（返回按钮的目标） */
 const PARENT_PAGE: Record<SheetPage, SheetPage | null> = {
@@ -126,6 +128,7 @@ const PARENT_PAGE: Record<SheetPage, SheetPage | null> = {
   models: 'recommended',
   roles: 'recommended',
   create: 'roles',
+  edit: 'roles',
 };
 
 export default function ModelBottomSheet({
@@ -149,9 +152,20 @@ export default function ModelBottomSheet({
   const [animDir, setAnimDir] = useState<'forward' | 'backward'>('forward');
   const navTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // 创建角色页
+  // 创建/编辑角色页：editingRole 非空 = 编辑模式（title 与提示词共用一组 state）
+  const [newRoleTitle, setNewRoleTitle] = useState('');
   const [newRolePrompt, setNewRolePrompt] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editingRole, setEditingRole] = useState<RoleData | null>(null);
+  // 「优化提示词」请求中
+  const [optimizing, setOptimizing] = useState(false);
+  // 优化失败提示
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // 编辑自动保存：输入防抖 500ms 落库，后退/关闭/卸载时立即落库
+  const editSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const editSnapshot = useRef<{ id: string; title: string; prompt: string } | null>(null);
 
   // 删除角色：第一次点击进入确认态，3 秒内再点才真正删除
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -159,14 +173,29 @@ export default function ModelBottomSheet({
 
   useEffect(() => () => clearTimeout(navTimer.current), []);
   useEffect(() => () => clearTimeout(deleteTimer.current), []);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  // 卸载时把编辑中的未落库变更立即保存（最后一次兜底）
+  useEffect(() => {
+    return () => {
+      clearTimeout(editSaveTimer.current);
+      const snap = editSnapshot.current;
+      if (snap && snap.prompt.trim()) {
+        void updateRole(snap.id, snap.prompt.trim(), snap.title).catch(() => {});
+      }
+    };
+  }, []);
 
-  /** 关闭 BottomSheet：先重置所有页面状态，再通知父组件（下次打开回到聊天设置页） */
+  /** 关闭 BottomSheet：先重置所有页面状态，再通知父组件（下次打开回到聊天设置页）；编辑中的变更立即落库 */
   const handleClose = () => {
+    flushEditSave();
     setPage('recommended');
     setNextPage(null);
     setConfirmDeleteId(null);
+    setNewRoleTitle('');
     setNewRolePrompt('');
+    setEditingRole(null);
     setCreating(false);
+    setOptimizing(false);
     onClose();
   };
 
@@ -181,10 +210,11 @@ export default function ModelBottomSheet({
     }, 300);
   };
 
-  /** 逐级返回上一层页面 */
+  /** 逐级返回上一层页面（编辑页返回时先把变更落库） */
   const goBack = () => {
     const parent = PARENT_PAGE[page];
     if (!parent) return;
+    flushEditSave();
     clearTimeout(navTimer.current);
     setAnimDir('backward');
     setNextPage(parent);
@@ -232,13 +262,40 @@ export default function ModelBottomSheet({
       .catch(e => console.warn('[roles] 删除角色失败', e));
   };
 
+  /** 进入编辑视图：预填当前角色的 title 与提示词 */
+  const openEditRole = (role: RoleData) => {
+    haptic();
+    clearTimeout(editSaveTimer.current);
+    editSnapshot.current = null;
+    setEditingRole(role);
+    setNewRoleTitle(role.name);
+    setNewRolePrompt(role.systemPrompt);
+    setConfirmDeleteId(null);
+    navigate('edit');
+  };
+
+  /** 进入创建视图：清空表单 */
+  const openCreateRole = () => {
+    haptic();
+    clearTimeout(editSaveTimer.current);
+    editSnapshot.current = null;
+    setEditingRole(null);
+    setNewRoleTitle('');
+    setNewRolePrompt('');
+    setConfirmDeleteId(null);
+    navigate('create');
+  };
+
+  /** 创建角色（编辑模式无保存按钮，变更自动落库） */
   const handleCreateRole = () => {
     const prompt = newRolePrompt.trim();
     if (!prompt || creating) return;
     setCreating(true);
-    void createRole(prompt)
+    void createRole(prompt, newRoleTitle)
       .then(() => {
+        setNewRoleTitle('');
         setNewRolePrompt('');
+        setEditingRole(null);
         setCreating(false);
         onRolesChanged();
         goBack(); // 创建完成返回角色列表
@@ -247,6 +304,51 @@ export default function ModelBottomSheet({
         console.warn('[roles] 创建角色失败', e);
         setCreating(false);
       });
+  };
+
+  // ---- 编辑自动保存：变更先记快照，防抖 500ms 落库；后退/关闭/卸载立即落库 ----
+
+  /** 立即把快照中的编辑内容写入数据库（防抖定时器到点或退出编辑时调用） */
+  const flushEditSave = useCallback(() => {
+    clearTimeout(editSaveTimer.current);
+    const snap = editSnapshot.current;
+    if (!snap) return;
+    editSnapshot.current = null;
+    const prompt = snap.prompt.trim();
+    if (!prompt) return; // 提示词被清空时跳过，保留上一次已保存内容
+    void updateRole(snap.id, prompt, snap.title)
+      .then(() => onRolesChanged())
+      .catch(e => console.warn('[roles] 自动保存失败', e));
+  }, [onRolesChanged]);
+
+  /** 输入变更：更新表单状态；编辑模式下记录快照并防抖保存 */
+  const handleFormChange = (title: string, prompt: string) => {
+    setNewRoleTitle(title);
+    setNewRolePrompt(prompt);
+    if (!editingRole) return;
+    editSnapshot.current = { id: editingRole.id, title, prompt };
+    clearTimeout(editSaveTimer.current);
+    editSaveTimer.current = setTimeout(flushEditSave, 500);
+  };
+
+  /** 「优化提示词」：用当前选择的模型重写系统提示词，成功回填文本框 */
+  const handleOptimizeRole = () => {
+    const prompt = newRolePrompt.trim();
+    if (!prompt || optimizing) return;
+    setOptimizing(true);
+    void optimizeRolePrompt({ userText: prompt, model: selectedModel })
+      .then(optimized => {
+        if (optimized) {
+          // 回填并同步触发编辑模式的自动保存
+          handleFormChange(newRoleTitle, optimized);
+        } else {
+          setToastMessage('优化失败，请检查模型配置后重试');
+          setShowToast(true);
+          clearTimeout(toastTimer.current);
+          toastTimer.current = setTimeout(() => setShowToast(false), 3000);
+        }
+      })
+      .finally(() => setOptimizing(false));
   };
 
   // 获取推荐模型
@@ -540,7 +642,7 @@ export default function ModelBottomSheet({
                 return (
                   <div
                     key={role.id}
-                    className={`w-full rounded-xl px-4 py-4 flex items-center gap-3 transition-all ${
+                    className={`w-full min-w-0 overflow-hidden rounded-xl px-4 py-4 flex items-center gap-3 transition-all ${
                       isSelected
                         ? 'bg-[var(--color-accent-soft)] border border-[var(--color-accent)]'
                         : 'bg-[var(--color-bg-secondary)] border border-transparent'
@@ -548,12 +650,12 @@ export default function ModelBottomSheet({
                   >
                     <button
                       onClick={() => handleRoleSelect(role.id)}
-                      className="flex-1 flex items-center gap-3 text-left"
+                      className="flex-1 min-w-0 flex items-center gap-3 text-left"
                     >
                       <div className="w-10 h-10 shrink-0 rounded-full bg-[var(--color-bg-hover)] flex items-center justify-center">
                         <UserRound className="w-5 h-5 text-gray-400" />
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 overflow-hidden">
                         <div className="text-white text-sm font-medium truncate">{role.name}</div>
                         <div className="text-gray-400 text-xs mt-0.5 line-clamp-2">{role.systemPrompt}</div>
                       </div>
@@ -562,6 +664,13 @@ export default function ModelBottomSheet({
                           <Check className="w-3.5 h-3.5 text-[var(--color-accent-foreground)]" />
                         </div>
                       )}
+                    </button>
+                    <button
+                      onClick={() => openEditRole(role)}
+                      title="编辑角色"
+                      className="shrink-0 p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteRole(role.id)}
@@ -587,7 +696,7 @@ export default function ModelBottomSheet({
 
         {/* 新角色按钮：固定在列表最底部 */}
         <button
-          onClick={() => navigate('create')}
+          onClick={openCreateRole}
           className="mt-8 w-full rounded-xl py-3.5 flex items-center justify-center gap-2 bg-[var(--color-accent)] text-[var(--color-accent-foreground)] text-sm font-semibold active:opacity-80"
         >
           <Plus className="w-5 h-5" />
@@ -597,7 +706,8 @@ export default function ModelBottomSheet({
     </>
   );
 
-  const renderCreateRoleView = () => (
+  /** 创建/编辑角色共用表单页（editingRole 非空 = 编辑模式） */
+  const renderRoleFormView = () => (
     <>
       {/* 顶部导航栏 - 固定在顶部 */}
       <div className="shrink-0 bg-[var(--color-bg-primary)] px-4 py-3 border-b border-white/5">
@@ -611,28 +721,44 @@ export default function ModelBottomSheet({
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <h2 className="text-white text-lg font-semibold">创建角色</h2>
+          <h2 className="text-white text-lg font-semibold">{editingRole ? '编辑角色' : '创建角色'}</h2>
         </div>
       </div>
 
       <div className="flex-1 flex flex-col px-4 pt-4 pb-6 overflow-hidden">
+        <input
+          value={newRoleTitle}
+          onChange={(e) => handleFormChange(e.target.value, newRolePrompt)}
+          placeholder="角色标题（留空自动取提示词首行）"
+          className="w-full bg-[var(--color-bg-secondary)] rounded-xl px-4 py-3 text-white text-sm placeholder-gray-500 focus:outline-none"
+        />
         <textarea
-          autoFocus
           value={newRolePrompt}
-          onChange={(e) => setNewRolePrompt(e.target.value)}
+          onChange={(e) => handleFormChange(newRoleTitle, e.target.value)}
           placeholder={`输入角色的系统提示词，例如：\n你是一位精通古典诗词创作的诗人，擅长七言绝句，用词凝练、意境深远。`}
-          className="flex-1 min-h-[200px] w-full bg-[var(--color-bg-secondary)] rounded-2xl p-4 text-white text-sm placeholder-gray-500 focus:outline-none resize-none leading-relaxed overflow-y-auto"
+          className="flex-1 min-h-[180px] mt-3 w-full bg-[var(--color-bg-secondary)] rounded-2xl p-4 text-white text-sm placeholder-gray-500 focus:outline-none resize-none leading-relaxed overflow-y-auto"
         />
         <div className="text-gray-500 text-xs mt-2">
-          角色名自动取自提示词第一行（最多 20 字），创建后可在聊天设置中随时切换
+          {editingRole ? '修改自动保存，返回即完成' : '标题留空时自动取提示词首行，创建后可在聊天设置中随时编辑'}
         </div>
         <button
-          onClick={handleCreateRole}
-          disabled={!newRolePrompt.trim() || creating}
-          className="mt-4 w-full rounded-xl py-3.5 bg-[var(--color-accent)] text-[var(--color-accent-foreground)] text-sm font-semibold disabled:opacity-40"
+          onClick={handleOptimizeRole}
+          disabled={!newRolePrompt.trim() || optimizing}
+          className="mt-3 w-full rounded-xl py-3 flex items-center justify-center gap-2 border border-[var(--color-accent)]/40 text-[var(--color-accent)] text-sm font-semibold disabled:opacity-40 active:opacity-80"
         >
-          {creating ? '创建中…' : '创建'}
+          <Wand2 className="w-4 h-4" />
+          {optimizing ? '优化中…' : '优化提示词'}
         </button>
+        {/* 编辑模式无保存按钮：修改自动落库，返回即完成；仅创建模式显示创建按钮 */}
+        {!editingRole && (
+          <button
+            onClick={handleCreateRole}
+            disabled={!newRolePrompt.trim() || creating}
+            className="mt-3 w-full rounded-xl py-3.5 bg-[var(--color-accent)] text-[var(--color-accent-foreground)] text-sm font-semibold disabled:opacity-40"
+          >
+            {creating ? '创建中…' : '创建'}
+          </button>
+        )}
       </div>
     </>
   );
@@ -664,10 +790,25 @@ export default function ModelBottomSheet({
         {/* 创建角色视图 */}
         {isPageActive('create') && (
           <div className={`absolute inset-0 flex flex-col ${pageAnimClass('create')}`}>
-            {renderCreateRoleView()}
+            {renderRoleFormView()}
+          </div>
+        )}
+
+        {/* 编辑角色视图 */}
+        {isPageActive('edit') && (
+          <div className={`absolute inset-0 flex flex-col ${pageAnimClass('edit')}`}>
+            {renderRoleFormView()}
           </div>
         )}
       </div>
+
+      {showToast && (
+        <Toast
+          message={toastMessage}
+          type="error"
+          onClose={() => setShowToast(false)}
+        />
+      )}
     </BottomSheet>
   );
 }
