@@ -5,7 +5,13 @@
  * 描述"同步这件事进行到哪里了"，改配置不应当动它。
  */
 import { withDB } from '../../db/open';
-import { listConversations, countMessages, listStoredRoles } from '../../db';
+import {
+  listConversations,
+  countMessages,
+  listStoredRoles,
+  listStoredAssets,
+  listStoredImageHistory,
+} from '../../db';
 import type { SyncManifestV1 } from './types';
 
 const KV_PREFIX = 'byoc:';
@@ -119,6 +125,50 @@ export async function setLastSyncAt(time: number): Promise<void> {
 }
 
 /**
+ * 已应用的云端条目版本：`{ assets: { id: ver }, roles: {...}, history: {...} }`。
+ *
+ * 为什么需要它：assets/roles/imageHistory 的拉取以前是「本地已有就跳过」，
+ * 结果另一端的**修改**（重命名资产、编辑角色提示词、回填图片尺寸）永远传不过来，
+ * 只有新增能同步。有了这份记账，拉取方就能把清单里的版本号与「上次应用过的版本」
+ * 比较，发现云端改过就重新拉。
+ *
+ * 记在本地而不是复用记录自身的 syncedAt：syncedAt 是本机推送的凭据，
+ * 与「收下的是云端哪个版本」是两件事，混用会让 LWW 判断自相矛盾。
+ */
+export interface AppliedVersions {
+  assets: Record<string, number>;
+  roles: Record<string, number>;
+  history: Record<string, number>;
+}
+
+function normalizeApplied(raw: Partial<AppliedVersions> | undefined): AppliedVersions {
+  return {
+    assets: raw?.assets ?? {},
+    roles: raw?.roles ?? {},
+    history: raw?.history ?? {},
+  };
+}
+
+export async function getAppliedVersions(): Promise<AppliedVersions> {
+  return normalizeApplied(await kvGet<AppliedVersions>('appliedVersions'));
+}
+
+/** 事务化更新（与 tombstone 同理：同步与本地写入可能并发，快照写回会互相覆盖） */
+export async function updateAppliedVersions(
+  fn: (v: AppliedVersions) => void
+): Promise<AppliedVersions> {
+  return withDB(async db => {
+    const tx = db.transaction('kv', 'readwrite');
+    const rec = await tx.store.get(KV_PREFIX + 'appliedVersions');
+    const v = normalizeApplied(rec?.value as Partial<AppliedVersions> | undefined);
+    fn(v);
+    await tx.store.put({ key: KV_PREFIX + 'appliedVersions', value: v });
+    await tx.done;
+    return v;
+  });
+}
+
+/**
  * API 设置（providers + apiKeys）同步元数据。
  *
  * settings 是 localStorage 的单一 JSON 对象，不走 IndexedDB 表的
@@ -161,12 +211,15 @@ export async function countPending(): Promise<{
   messages: number;
   roles: number;
   settings: number;
+  assets: number;
 }> {
-  const [tombstones, list, roles, settingsMeta] = await Promise.all([
+  const [tombstones, list, roles, settingsMeta, assets, history] = await Promise.all([
     getLocalTombstones(),
     listConversations(),
     listStoredRoles(),
     getSettingsSyncMeta(),
+    listStoredAssets(),
+    listStoredImageHistory(),
   ]);
   const deleted =
     tombstones.convs.length +
@@ -187,5 +240,19 @@ export async function countPending(): Promise<{
   } catch { /* 缺省开启 */ }
   const pendingSettings =
     settingsEnabled && settingsMeta && settingsMeta.updatedAt > settingsMeta.syncedAt ? 1 : 0;
-  return { convs: convs.length + deleted, messages, roles: pendingRoles, settings: pendingSettings };
+  // 资产与图片历史也必须计入：它们的变更只靠各自 hook 里那一次 3 秒防抖同步，
+  // 那次失败（网络抖动、撞锁）就再也没有兜底了——轮询看不到就永远不会补推。
+  // 图片历史没有 syncedAt，用「已应用的云端版本」当基准：本地 updatedAt 更新
+  // 说明这条还没推上去（拉取与推送都会把 applied 对齐到当前版本）。
+  const applied = await getAppliedVersions();
+  const pendingAssets =
+    assets.filter(a => a.updatedAt > (a.syncedAt ?? 0)).length +
+    history.filter(h => (h.updatedAt ?? h.timestamp) > (applied.history[h.id] ?? 0)).length;
+  return {
+    convs: convs.length + deleted,
+    messages,
+    roles: pendingRoles,
+    settings: pendingSettings,
+    assets: pendingAssets,
+  };
 }

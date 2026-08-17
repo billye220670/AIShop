@@ -30,7 +30,8 @@ export function useByocStatus(): ByocIndicator {
       }
       void getSyncStatus().then(s => {
         if (!alive) return;
-        const pendingTotal = s.pending.convs + s.pending.messages + s.pending.roles + s.pending.settings;
+        const pendingTotal =
+          s.pending.convs + s.pending.messages + s.pending.roles + s.pending.settings + s.pending.assets;
         if (pendingTotal > 0) {
           setIndicator({ tone: 'pending', title: '有变更待同步' });
         } else {

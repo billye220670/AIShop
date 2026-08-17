@@ -44,6 +44,7 @@ import {
   putStoredAsset,
   listStoredRoles,
   deleteRole,
+  releaseBlobs,
 } from '../../db';
 import { collectMessageBlobIds } from '../../db/messageCodec';
 import { deleteConversation } from '../../db/conversationRepo';
@@ -66,6 +67,8 @@ import {
   updateLocalTombstones,
   getSettingsSyncMeta,
   setSettingsSyncMeta,
+  getAppliedVersions,
+  updateAppliedVersions,
 } from './state';
 import { settingsService } from '../settingsService';
 
@@ -87,6 +90,9 @@ function emptyManifest(deviceId: string, now: number): SyncManifestV1 {
     favIds: [],
     roleIds: [],
     assetIds: [],
+    assetVers: {},
+    roleVers: {},
+    historyVers: {},
   };
 }
 
@@ -129,6 +135,39 @@ function isRemoteUrl(id: string): boolean {
   return id.startsWith('http://') || id.startsWith('https://');
 }
 
+/** 图片历史的本地版本：旧记录没有 updatedAt，回退到 timestamp（生成时刻） */
+function localVer(item: StoredImageHistoryItem): number {
+  return item.updatedAt ?? item.timestamp;
+}
+
+/**
+ * 云端版本覆盖本地资产前，释放本地独有的 blob 引用。
+ *
+ * 拉取路径以前直接 put 覆盖，被换掉的缩略图/图片引用计数永远不减，
+ * blob 再也不会被 sweepOrphanBlobs 回收。与 messageRepo.putMessage 同一套按
+ * 出现次数抵扣的做法（同一张图可能被引用多次）。
+ */
+async function releaseReplacedAssetBlobs(
+  oldAsset: StoredAsset,
+  newAsset: StoredAsset
+): Promise<void> {
+  const idsOf = (a: StoredAsset): string[] =>
+    [...(a.thumbnailBlobId ? [a.thumbnailBlobId] : []), ...(a.blobIds ?? [])].filter(
+      id => !isRemoteUrl(id)
+    );
+  const counts = new Map<string, number>();
+  for (const id of idsOf(oldAsset)) counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const id of idsOf(newAsset)) {
+    const left = counts.get(id);
+    if (left !== undefined) counts.set(id, left - 1);
+  }
+  const stale: string[] = [];
+  for (const [id, times] of counts) {
+    for (let i = 0; i < times; i++) stale.push(id);
+  }
+  if (stale.length) await releaseBlobs(stale);
+}
+
 /** 消息里引用的真实 blobId（不含 http 链接，那是上游原图，不属于本地 blob 体系） */
 function realBlobIdsOf(msgs: StoredMessage[]): string[] {
   const ids = new Set<string>();
@@ -151,14 +190,14 @@ function realBlobIdsOf(msgs: StoredMessage[]): string[] {
  */
 export async function pushLocal(
   cfg: ByocConfig,
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  knownRemoteSnapshot?: SyncManifestV1 | null
 ): Promise<SyncResult> {
   const client = createS3Client(cfg);
   const deviceId = await getDeviceId();
   const now = Date.now();
   const manifest = (await readManifest(client, cfg)) ?? emptyManifest(deviceId, now);
   manifest.deviceId = deviceId;
-
   const result: SyncResult = {
     pushedConvs: 0, pushedMessages: 0, pushedBlobs: 0,
     pulledConvs: 0, pulledMessages: 0, pulledBlobs: 0, deletedConvs: 0,
@@ -176,9 +215,14 @@ export async function pushLocal(
   //    只处理"缓存清单里同步过"或"本机明确删除过"的会话（本地 tombstone
   //    里有记录）：云端新增、本机还没拉过的不能当删除处理，否则 pull 失败时
   //    会把其他设备新建的会话误删。
+  //    knownRemoteSnapshot 是**本轮 pull 开始之前**的缓存清单：pull 结尾会把
+  //    最新云端清单写进缓存，若这里改读缓存，那道保护就永久失效——pull 中途
+  //    失败（网络抖动、单个对象 404）跳过的会话会立刻被判成「已知且本地没有」
+  //    而删掉，并把删除传播给所有设备。调用方必须传入 pull 前的快照。
   //    每次迭代重读最新 tombstone：删除动作可能发生在本轮同步进行期间，
   //    用开始时的快照会漏掉它——刚删的会话会被当成普通变更推回云端。
-  const cached = await getCloudManifest();
+  const cached =
+    knownRemoteSnapshot !== undefined ? knownRemoteSnapshot : await getCloudManifest() ?? null;
   const knownRemote = new Set(cached ? Object.keys(cached.convs) : []);
   for (const convId of Object.keys(manifest.convs)) {
     if (localIds.has(convId)) continue;
@@ -279,6 +323,8 @@ export async function pushLocal(
       jsonBlob(item)
     );
   }
+  // 版本表：拉取方靠它发现「云端这条改过了」，只有 id 集合的话修改传不出去
+  manifest.historyVers = Object.fromEntries(history.map(h => [h.id, localVer(h)]));
   // 历史引用的图片 blob 一并上传，否则另一端拉取时云端缺对象，图片会静默丢失
   await pushBlobRefs(
     client,
@@ -315,6 +361,8 @@ export async function pushLocal(
       jsonBlob(asset)
     );
   }
+  // 版本表：同 history，缺了它另一端只能看到新增、看不到重命名
+  manifest.assetVers = Object.fromEntries(assets.map(a => [a.id, a.updatedAt]));
   // 资产引用的 blob 一并上传：artifact 缩略图 + image 图片（http 上游链接除外）。
   // 只推元数据不推 blob 的话，另一端 pullAssetBlobs 会因云端缺对象丢掉缩略图引用，
   // 表现为库列表项存在但没有缩略图。
@@ -380,6 +428,8 @@ export async function pushLocal(
     delete stored.syncedAt; // 云端不存本地同步元数据，与会话一致
     await client.putObject(syncKey(cfg.prefix, 'roles', `${role.id}.json`), jsonBlob(stored));
   }
+  // 版本表：缺了它另一端收不到角色提示词的编辑
+  manifest.roleVers = Object.fromEntries(roles.map(r => [r.id, r.updatedAt]));
   for (const id of manifest.roleIds ?? []) {
     if (!roleIds.includes(id) && !(manifest.tombstones.roles ?? []).includes(id)) {
       (manifest.tombstones.roles ??= []).push(id);
@@ -406,6 +456,14 @@ export async function pushLocal(
   manifest.updatedAt = Date.now();
   await client.putObject(syncKey(cfg.prefix, 'manifest.json'), jsonBlob(manifest));
   await setCloudManifest(manifest);
+
+  // 本机推上去的版本也要记进 applied：否则下一轮拉取会看到
+  // 「云端版本 > 已应用版本」，把自己刚推的内容原样拉回来重写一遍。
+  await updateAppliedVersions(v => {
+    for (const a of assets) v.assets[a.id] = a.updatedAt;
+    for (const r of roles) v.roles[r.id] = r.updatedAt;
+    for (const h of history) v.history[h.id] = localVer(h);
+  });
 
   // 7. 全部成功后才标记本地 syncedAt；期间的新写入（updatedAt > now）自然跳过
   await mapLimit(syncedConvs, 4, conv =>
@@ -509,18 +567,28 @@ async function markSynced(
  *
  * 步骤：应用 tombstone → 拉变更会话（元数据 + 消息 + blob + 节点）→
  * 拉历史/收藏索引差异 → 更新本地清单缓存。
+ *
+ * 返回值里的 priorManifest 是**本轮开始前**的缓存清单快照，供随后的 pushLocal
+ * 判断「哪些会话本机确实同步过」。不能让 push 自己去读缓存——本函数结尾会把
+ * 最新云端清单写进缓存，push 再读就会把 pull 中途跳过的会话误判成本地删除。
  */
 export async function pullRemote(
   cfg: ByocConfig,
   onProgress?: (done: number, total: number) => void
-): Promise<SyncResult> {
+): Promise<SyncResult & { priorManifest: SyncManifestV1 | null }> {
   const client = createS3Client(cfg);
-  const result: SyncResult = {
+  const result: SyncResult & { priorManifest: SyncManifestV1 | null } = {
     pushedConvs: 0, pushedMessages: 0, pushedBlobs: 0,
     pulledConvs: 0, pulledMessages: 0, pulledBlobs: 0, deletedConvs: 0,
+    priorManifest: (await getCloudManifest()) ?? null,
   };
   const manifest = await readManifest(client, cfg);
   if (!manifest) return result; // 云端还没数据，别碰本地
+
+  // 本轮是否有对象拉取失败：只要有一次失败就不提交缓存清单。
+  // 缓存清单的语义是「这些内容本机确实收下了」，push 的删除检测完全依赖它；
+  // 把没拉全的清单当成收全了记账，下一轮 push 就会删掉那些没拉到的会话。
+  let incomplete = false;
 
   // 0. 本机删除检测：云端有、本地缓存清单也有、本地没有的会话/历史/收藏
   //    → 记本地 tombstone（否则下面"拉缺失"会把刚删的又拉回来）。
@@ -529,7 +597,7 @@ export async function pullRemote(
   //    用事务化更新（读-改-写原子）：删除动作可能与本轮同步并发发生，
   //    快照式"读→改→整体写回"会把 recordLocalDeletions 刚写入的记录覆盖掉，
   //    导致拉取阶段看不到 tombstone、把刚删的会话又拉回来。
-  const cached = await getCloudManifest();
+  const cached = result.priorManifest;
   const cachedConvs = new Map<string, number>(
     cached ? Object.entries(cached.convs) : []
   );
@@ -641,48 +709,75 @@ export async function pullRemote(
     if (local && (local.syncedAt ?? 0) >= cloudUpdatedAt) continue; // 已是最新
 
     const raw = await client.getObject(syncKey(cfg.prefix, 'convs', `${convId}.json`));
-    if (!raw) continue;
+    if (!raw) {
+      // 清单说有、对象却读不到：云端不一致或写入尚未可见。标记本轮不完整，
+      // 否则缓存清单会记成「已收下」，下一轮 push 就把这个会话当本地删除清掉。
+      incomplete = true;
+      continue;
+    }
     const cloudConv = JSON.parse(await raw.text()) as StoredConversation;
     const cloudNewer = !local || cloudUpdatedAt > local.updatedAt;
-    const pulled = await pullConversation(
-      client, cfg, convId, cloudConv, cloudNewer
-    );
-    result.pulledConvs += pulled.convPulled ? 1 : 0;
-    result.pulledMessages += pulled.messageCount;
-    result.pulledBlobs += pulled.blobCount;
+    try {
+      const pulled = await pullConversation(
+        client, cfg, convId, cloudConv, cloudNewer
+      );
+      result.pulledConvs += pulled.convPulled ? 1 : 0;
+      result.pulledMessages += pulled.messageCount;
+      result.pulledBlobs += pulled.blobCount;
+    } catch (e) {
+      // 单个会话失败不该中断整轮（其他会话仍应收敛），但必须记为不完整
+      console.warn(`[byoc] 会话 ${convId} 拉取失败（下轮重试）`, e);
+      incomplete = true;
+    }
     onProgress?.(i + 1, convIds.length);
   }
 
-  // 3. 图片历史：以云端 index 为准拉缺失；本地多余的**不删**——
-  //    它可能是本地刚生成还没推送的，删除宁可回退也不能丢数据
+  // 3. 图片历史：以云端 index 为准拉缺失与**有更新**的；本地多余的**不删**——
+  //    它可能是本地刚生成还没推送的，删除宁可回退也不能丢数据。
+  //    只按「本地没有才拉」会让另一端的修改（尺寸回填等）永远传不过来，
+  //    所以同时比对清单里的版本号与本机已应用版本。
   const histIndex = await readIndex(client, cfg, 'history');
   const localHist = new Map((await listStoredImageHistory()).map(h => [h.id, h]));
   const histStat = { blobCount: 0 };
+  const applied = await getAppliedVersions();
   for (const id of histIndex) {
     const tombstones = await getLocalTombstones();
     if (tombstones.history.includes(id)) continue; // 本机已删，不拉
-    if (localHist.has(id)) continue;
+    const cloudVer = manifest.historyVers?.[id] ?? 0;
+    if (localHist.has(id) && cloudVer <= (applied.history[id] ?? 0)) continue;
     const raw = await client.getObject(syncKey(cfg.prefix, 'history', `${id}.json`));
     if (!raw) continue;
     const item = JSON.parse(await raw.text()) as StoredImageHistoryItem;
+    // 本地更新且尚未推送时不覆盖（LWW：本地 updatedAt 更大则等下一轮 push 上行）
+    const localItem = localHist.get(id);
+    if (localItem && localVer(localItem) > cloudVer) continue;
     await putStoredHistory(item);
+    await updateAppliedVersions(v => { v.history[id] = cloudVer; });
     await pullBlobRefs(client, cfg, item.blobIds, histStat);
   }
   result.pulledBlobs += histStat.blobCount;
 
   // 4. 「我的库」资产：主拉 assets 目录（三种 kind，缩略图/图片 blob 一并拉）；
-  //    favs 目录是旧版本设备推送的 artifact 镜像，其 id 本地没有时转成资产拉入
+  //    favs 目录是旧版本设备推送的 artifact 镜像，其 id 本地没有时转成资产拉入。
+  //    同样按版本号判断：只看「本地有没有」会让重命名永远同步不过来。
   const assetIndex = await readIndex(client, cfg, 'assets');
   const localAssets = new Map((await listStoredAssets()).map(a => [a.id, a]));
   const assetStat = { blobCount: 0 };
   for (const id of assetIndex) {
     const tombstones = await getLocalTombstones();
     if (tombstones.assets.includes(id) || tombstones.favs.includes(id)) continue; // 本机已删，不拉
-    if (localAssets.has(id)) continue;
+    const cloudVer = manifest.assetVers?.[id] ?? 0;
+    const localAsset = localAssets.get(id);
+    if (localAsset && cloudVer <= (applied.assets[id] ?? 0)) continue;
+    // 本地有未推送的更新时保留本地（LWW），等下一轮 push 上行
+    if (localAsset && localAsset.updatedAt > cloudVer) continue;
     const raw = await client.getObject(syncKey(cfg.prefix, 'assets', `${id}.json`));
     if (!raw) continue;
     const asset = JSON.parse(await raw.text()) as StoredAsset;
+    // 覆盖前释放本地被换掉的 blob 引用，否则重命名/换图会让计数只增不减
+    if (localAsset) await releaseReplacedAssetBlobs(localAsset, asset);
     await putStoredAsset(asset);
+    await updateAppliedVersions(v => { v.assets[id] = cloudVer; });
     await pullAssetBlobs(client, cfg, asset, assetStat);
   }
   // 兼容镜像：旧版本云端只有 favs，拉下来转成 artifact 资产（id/缩略图不变）
@@ -712,17 +807,22 @@ export async function pullRemote(
   }
   result.pulledBlobs += assetStat.blobCount + favStat.blobCount;
 
-  // 5. 角色：同上（纯文本记录，无 blob 依赖）
+  // 5. 角色：同上（纯文本记录，无 blob 依赖）。按版本号拉，
+  //    否则另一端编辑过的系统提示词永远同步不过来。
   const roleIndex = await readIndex(client, cfg, 'roles');
   const localRoles = new Map((await listStoredRoles()).map(r => [r.id, r]));
   for (const id of roleIndex) {
     const tombstones = await getLocalTombstones();
     if (tombstones.roles.includes(id)) continue; // 本机已删，不拉
-    if (localRoles.has(id)) continue;
+    const cloudVer = manifest.roleVers?.[id] ?? 0;
+    const localRole = localRoles.get(id);
+    if (localRole && cloudVer <= (applied.roles[id] ?? 0)) continue;
+    if (localRole && localRole.updatedAt > cloudVer) continue; // 本地更新，等 push 上行
     const raw = await client.getObject(syncKey(cfg.prefix, 'roles', `${id}.json`));
     if (!raw) continue;
     const role = JSON.parse(await raw.text()) as StoredRole;
     await putStoredRole(role);
+    await updateAppliedVersions(v => { v.roles[id] = cloudVer; });
   }
 
   // 5.5 API 设置：云端较新且本机无更新变更时整体覆盖写回（LWW）
@@ -737,7 +837,14 @@ export async function pullRemote(
     }
   }
 
-  await setCloudManifest(manifest);
+  // 缓存清单代表「这些内容本机确实收下了」，push 的删除检测完全依赖它。
+  // 本轮有对象没拉成功就不提交：宁可下轮重拉，也不能让 push 把没收到的
+  // 会话当成本地删除清掉并传播出去。
+  if (!incomplete) {
+    await setCloudManifest(manifest);
+  } else {
+    console.warn('[byoc] 本轮拉取不完整，保留旧清单缓存（下轮重试）');
+  }
   return result;
 }
 
@@ -763,17 +870,22 @@ async function pullConversation(
   const local = await getConversation(convId);
   const stats = { convPulled: cloudNewer, messageCount: 0, blobCount: 0 };
 
-  // 消息：按 msgId 去重，updatedAt 大者胜
+  // 消息：按 msgId 去重。版本判定用「上次收下的云端版本」与云端当前
+  // LastModified 比较——两者同为存储服务端时钟，可比。
+  // 绝不能拿本地 updatedAt 去比 LastModified：那是设备时钟对服务端时钟，
+  // 手机慢几分钟就每轮全量重拉覆盖本地，快几分钟就永远拉不到新消息。
   const keys = await client.listObjects(syncKey(cfg.prefix, 'msgs', convId));
   let maxSeq = local?.headSeq ?? 0;
   await mapLimit(keys, 6, async k => {
     const msgId = fileBase(k.key);
     const existing = await withDB(db => db.get('messages', msgId));
-    if (existing && existing.updatedAt >= k.lastModified) return;
+    if (existing && (existing.cloudVersion ?? 0) >= k.lastModified) return;
     const raw = await client.getObject(k.key);
     if (!raw) return;
     const msg = JSON.parse(await raw.text()) as StoredMessage;
-    await putStoredMessage(convId, msg, existing);
+    // 本地有未推送的更新时保留本地（LWW），等下一轮 push 上行覆盖云端
+    if (existing && existing.updatedAt > (existing.syncedAt ?? 0)) return;
+    await putStoredMessage(convId, msg, existing, k.lastModified);
     await pullBlobRefs(client, cfg, realBlobIdsOf([msg]), stats);
     stats.messageCount += 1;
     maxSeq = Math.max(maxSeq, msg.seq);
@@ -818,7 +930,8 @@ async function pullConversation(
 async function putStoredMessage(
   convId: string,
   msg: StoredMessage,
-  existing: StoredMessage | undefined
+  existing: StoredMessage | undefined,
+  cloudVersion: number
 ): Promise<void> {
   const seq = await enqueue(convId, () =>
     withDB(async db => {
@@ -835,12 +948,39 @@ async function putStoredMessage(
       return seq;
     })
   );
+
+  // 覆盖写会丢掉旧内容里的图片引用：与 messageRepo.putMessage 一样，
+  // 被换掉的 blob 必须按出现次数减引用，否则 refCount 永远归不了零、
+  // 图片删了也不会被 GC 回收（同步路径以前漏了这一步）。
+  if (existing) {
+    const counts = new Map<string, number>();
+    for (const id of collectMessageBlobIds(existing)) {
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    for (const id of collectMessageBlobIds(msg)) {
+      const left = counts.get(id);
+      if (left !== undefined) counts.set(id, left - 1);
+    }
+    const stale: string[] = [];
+    for (const [id, times] of counts) {
+      for (let i = 0; i < times; i++) stale.push(id);
+    }
+    if (stale.length) await releaseBlobs(stale);
+  }
+
   await enqueue(convId, () =>
     withDB(async db => {
-      // updatedAt 要刷新成本地时刻：否则它会一直停留在云端推送时刻，
-      // 恒小于云端对象 lastModified，导致每次同步都全量重拉覆盖本地——
-      // 一旦云端 seq 因任何原因错乱，本地将永远被覆盖、无法自愈。
-      await db.put('messages', { ...msg, convId, seq, updatedAt: Date.now(), syncedAt: Date.now() });
+      // updatedAt 刷成本地时刻、syncedAt 同步跟上：这条内容与云端一致，
+      // 不该被下一轮 push 当成本地变更再推一遍。
+      // cloudVersion 记下收到的是云端哪个版本，供下轮拉取判定（同一时钟源比较）。
+      await db.put('messages', {
+        ...msg,
+        convId,
+        seq,
+        updatedAt: Date.now(),
+        syncedAt: Date.now(),
+        cloudVersion,
+      });
     })
   );
   await indexMessage({ ...msg, convId, seq });

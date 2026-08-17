@@ -57,8 +57,6 @@ export async function testConnection(cfg: ByocConfig = getByocConfig()): Promise
 
 // ---------------- 增量同步 ----------------
 
-let syncing = false;
-
 /**
  * 记录本机会话删除（删除动作发生时立即写本地 tombstone）。
  *
@@ -99,6 +97,10 @@ export async function recordLocalRoleDeletions(roleIds: string[]): Promise<void>
  *
  * 先拉：把云端（其他设备的变更与 tombstone）落到本地，再推本地变更，
  * 一轮下来两边收敛。多标签页用 Web Locks 串行，避免并发写同一批数据。
+ *
+ * 并发语义：同一时刻只跑一轮，但**后来者不会被丢弃**——见 runExclusive。
+ * 手动同步（设置面板按钮）需要拿到本轮真实结果，所以走 syncNow；
+ * 自动路径一律走 safeSync，撞锁时折叠成"结束后补跑一次"。
  */
 export async function syncNow(
   cfg: ByocConfig = getByocConfig(),
@@ -106,9 +108,36 @@ export async function syncNow(
 ): Promise<SyncResult> {
   const missing = validateConfig(cfg);
   if (missing) throw new Error(missing);
-  if (syncing) throw new Error('同步正在进行中，请稍候');
-  syncing = true;
-  try {
+  return runExclusive(cfg, onProgress);
+}
+
+/**
+ * 串行执行一轮同步；已有一轮在跑时，等它结束后再跑一轮，而不是报错退出。
+ *
+ * 旧实现是 `if (syncing) throw '同步正在进行中'`，调用方 catch 后静默吞掉——
+ * 这次变更的同步意图就此丢失，只能等 60 秒轮询兜底，而轮询的 countPending
+ * 看不到资产/图片历史的变更，等于没有兜底。10 个触发点（启动、轮询、回前台、
+ * 对话/资产/设置防抖、侧栏打开……）互不知情，撞车是常态而非异常。
+ *
+ * 这里把并发请求折叠成一个待跑标志：无论期间撞了多少次，结束后只补跑一轮，
+ * 因为同步本身是全量收敛的，跑一次就能覆盖期间累积的所有变更。
+ */
+let pendingRun: Promise<SyncResult> | null = null;
+let current: Promise<SyncResult> | null = null;
+
+function runExclusive(cfg: ByocConfig, onProgress?: ProgressFn): Promise<SyncResult> {
+  // 已有一轮在跑：挂到"结束后补跑"上（多个等待者共享同一次补跑）
+  if (current) {
+    pendingRun ??= current
+      .catch(() => undefined) // 前一轮成败都不影响补跑
+      .then(() => {
+        pendingRun = null;
+        return runExclusive(cfg, onProgress);
+      });
+    return pendingRun;
+  }
+
+  const run = (async () => {
     const result =
       typeof navigator !== 'undefined' && 'locks' in navigator
         ? await navigator.locks.request('aishop-byoc-sync', () => runSync(cfg, onProgress))
@@ -116,14 +145,21 @@ export async function syncNow(
     await setLastSyncAt(Date.now());
     dispatchStatus();
     return result;
-  } finally {
-    syncing = false;
-  }
+  })();
+
+  current = run.finally(() => {
+    current = null;
+  }) as Promise<SyncResult>;
+  return run;
 }
 
 async function runSync(cfg: ByocConfig, onProgress?: ProgressFn): Promise<SyncResult> {
   const pulled = await pullRemote(cfg, onProgress);
-  const pushed = await pushLocal(cfg, onProgress);
+  // 把 pull **开始前**的清单快照交给 push：push 的删除检测靠它区分
+  // 「本机确实同步过、现在本地没了 = 用户删的」与「云端新增、本机还没拉过」。
+  // 若让 push 自己读缓存，读到的会是 pull 刚写回的最新清单，那道保护就失效了——
+  // pull 中途跳过的会话会被当成本地删除，连带云端对象一起清掉并传播给其他设备。
+  const pushed = await pushLocal(cfg, onProgress, pulled.priorManifest);
   const merged: SyncResult = {
     pushedConvs: pulled.pushedConvs + pushed.pushedConvs,
     pushedMessages: pulled.pushedMessages + pushed.pushedMessages,
@@ -169,7 +205,7 @@ export async function cloudHasBackup(cfg: ByocConfig = getByocConfig()): Promise
 
 export interface ByocStatus {
   lastSyncAt: number | null;
-  pending: { convs: number; messages: number; roles: number; settings: number };
+  pending: { convs: number; messages: number; roles: number; settings: number; assets: number };
 }
 
 export async function getSyncStatus(): Promise<ByocStatus> {
@@ -198,6 +234,31 @@ export async function safeSync(): Promise<void> {
 }
 
 /**
+ * 静默拉取：自动路径专用，本机无变更时也要赶上其他设备的更新。
+ *
+ * 与 safeSync 共用同一把互斥锁：pullRemote 会读改 tombstone 与清单缓存，
+ * 和一轮完整同步并发跑会互相覆盖（旧实现完全不加锁，60 秒轮询正是走这条路）。
+ * 撞锁时不重复拉——正在跑的那轮同步本身就包含拉取，等它即可。
+ */
+export async function safePull(): Promise<void> {
+  const cfg = getByocConfig();
+  if (!cfg.enabled || validateConfig(cfg)) return;
+  if (current) {
+    await current.catch(() => undefined);
+    return;
+  }
+  try {
+    await runExclusive(cfg);
+    // 拉完通知 UI 层刷新（历史/角色/库/会话列表都可能拉到新数据）
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(BYOC_SYNC_DONE_EVENT));
+    }
+  } catch (e) {
+    console.warn('[byoc] 自动拉取失败（下轮重试）', e);
+  }
+}
+
+/**
  * 注册自动同步（App 启动时调用一次）。
  *
  * 自动同步时机：
@@ -213,7 +274,8 @@ export function scheduleAutoSync(): void {
   // 启动延迟拉取：等首屏与数据层就绪（覆盖页面打开与刷新）
   setTimeout(() => void safeSync(), 3000);
 
-  // 周期检查待同步量（写操作后 60 秒内被兜住）
+  // 周期检查：本机有变更就拉+推；没有变更也要拉一次，赶上其他设备的更新
+  // （历史/角色/库/会话都可能只在另一端产生，不主动拉就永远看不到）
   setInterval(() => {
     if (!getByocConfig().enabled) return;
     void countPending().then(pending => {
@@ -221,9 +283,12 @@ export function scheduleAutoSync(): void {
         pending.convs > 0 ||
         pending.messages > 0 ||
         pending.roles > 0 ||
-        pending.settings > 0
+        pending.settings > 0 ||
+        pending.assets > 0
       ) {
         void safeSync();
+      } else {
+        void safePull();
       }
     });
   }, 60000);

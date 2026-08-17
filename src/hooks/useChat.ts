@@ -43,7 +43,7 @@ import { optimizeImagePrompt } from '../services/promptOptimizer';
 import { generateImage as apiGenerateImage } from '../services/imageApi';
 import { ensureCity, prefetchCity } from '../services/locationService';
 import { settingsService } from '../services/settingsService';
-import { syncNow, getByocConfig, validateConfig, recordLocalDeletions, recordLocalRoleDeletions } from '../services/byoc';
+import { syncNow, getByocConfig, validateConfig, recordLocalDeletions, recordLocalRoleDeletions, BYOC_SYNC_DONE_EVENT } from '../services/byoc';
 import { compactMessages } from '../services/contextCompactor';
 import { buildApiMessages } from '../utils/buildApiMessages';
 import { monotonicNow } from '../utils/monotonic';
@@ -559,6 +559,9 @@ export function useChat() {
           await flushPendingWrites();
           await syncNow(cfg);
           await reloadConversations();
+          // 这一轮同步同样可能拉到别端的资产/角色/图片历史，
+          // 不广播的话「我的库」与角色列表不会刷新（只有 safeSync 会发）。
+          window.dispatchEvent(new CustomEvent(BYOC_SYNC_DONE_EVENT));
         } catch (e) {
           console.warn('[useChat] 变更后自动同步失败（稍后轮询兜底）', e);
         }

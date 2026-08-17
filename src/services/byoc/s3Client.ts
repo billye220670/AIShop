@@ -204,7 +204,15 @@ export function createS3Client(cfg: ByocConfig) {
 
     let res: Response;
     try {
-      res = await fetch(url, { method, headers, body });
+      // 请求超时保护：网络挂起时同步流程会一直占着 syncing 锁，
+      // 后续所有自动/手动同步都会静默失败，表现为"不再同步"。
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 60_000);
+      try {
+        res = await fetch(url, { method, headers, body, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
     } catch {
       throw networkError();
     }

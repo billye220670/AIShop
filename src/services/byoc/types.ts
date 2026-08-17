@@ -85,6 +85,17 @@ export interface SyncManifestV1 {
   roleIds: string[];
   /** 「我的库」资产当前 id 集合（旧版本清单没有，读侧兜底空数组） */
   assetIds: string[];
+  /**
+   * 各条目的版本号（推送方的 updatedAt）。
+   *
+   * 只有 id 集合时，拉取方无法区分「云端这条改过了」和「云端这条一直没变」，
+   * 于是只能做「本地没有才拉」——修改永远传不到其他设备。有了版本号，
+   * 拉取方把它与「上次应用过的版本」对比即可发现修改。
+   * 旧版本清单没有这些字段，读侧一律兜底空对象。
+   */
+  assetVers?: Record<string, number>;
+  roleVers?: Record<string, number>;
+  historyVers?: Record<string, number>;
   /** API 设置（providers + apiKeys）最后推送时刻；旧版本清单没有，读侧兜底 0 */
   settingsUpdatedAt?: number;
 }

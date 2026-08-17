@@ -81,6 +81,15 @@ export interface StoredMessage extends SyncMeta {
 
   /** 覆盖本条的 contextNode id；仅影响 API payload，不影响渲染 */
   compressedInto?: string;
+
+  /**
+   * 本地已收下的云端对象版本（S3 的 LastModified 毫秒值）。
+   *
+   * 版本判定必须在同一个时钟源内比较：updatedAt 是设备时钟，LastModified 是
+   * 存储服务端时钟，两者相差几分钟就会退化成「每轮全量重拉」或「永远拉不到」。
+   * 记下上次拉到的服务端版本，下轮只和服务端自己的新版本比。
+   */
+  cloudVersion?: number;
 }
 
 export interface StoredMessageVersion {
@@ -220,6 +229,13 @@ export interface StoredImageHistoryItem {
   sourceImages?: number;
   width?: number;
   height?: number;
+  /**
+   * 最后变更时刻，云同步的 LWW 依据（旧记录没有，读侧回退到 timestamp）。
+   *
+   * 不并入 SyncMeta：历史条目的 syncedAt 由 manifest 里的版本表统一记账，
+   * 每条记录不再各自持有同步状态。
+   */
+  updatedAt?: number;
 }
 
 export interface StoredFavoriteArtifact {

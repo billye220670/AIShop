@@ -57,6 +57,7 @@ async function toStored(item: ImageHistoryItem): Promise<StoredImageHistoryItem>
     sourceImages: item.sourceImages,
     width: item.width,
     height: item.height,
+    updatedAt: Date.now(),
   };
 }
 
@@ -117,7 +118,8 @@ export function updateImageDimensions(
     withDB(async db => {
       const tx = db.transaction('imageHistory', 'readwrite');
       const rec = await tx.store.get(id);
-      if (rec) await tx.store.put({ ...rec, width, height });
+      // updatedAt 前移，让尺寸回填也能作为一次变更同步到其他设备
+      if (rec) await tx.store.put({ ...rec, width, height, updatedAt: Date.now() });
       await tx.done;
     })
   );
