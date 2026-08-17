@@ -101,6 +101,17 @@ function App() {
     return () => document.removeEventListener('click', handler, true);
   }, []);
 
+  // Electron：主进程转发的 Ctrl+F → 切回对话 Tab 并递增信号，ChatPanel 据此打开搜索栏
+  const [findSignal, setFindSignal] = useState(0);
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api?.onFindRequested) return;
+    return api.onFindRequested(() => {
+      setActiveTab('chat');
+      setFindSignal(s => s + 1);
+    });
+  }, []);
+
   const chat = useChat();
   const { assets, isSaved, toggleArtifact, removeAsset, renameAsset, saveMarkdown, saveImage, refresh: refreshAssets } = useAssets();
 
@@ -192,6 +203,7 @@ function App() {
             onUpdateSegment={(segmentId, summary) => { if (chat.activeConversationId) chat.updateSegment(chat.activeConversationId, segmentId, summary); }}
             openSegmentIdRequest={openSegmentIdRequest}
             onOpenSegmentIdRequestHandled={() => setOpenSegmentIdRequest(null)}
+            findSignal={findSignal}
             models={CHAT_MODELS}
             selectedModel={activeConversation?.selectedModel || CHAT_MODELS[0].id}
             onModelChange={chat.setSelectedModel}

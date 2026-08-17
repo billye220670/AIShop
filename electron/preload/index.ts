@@ -21,4 +21,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('app:escape', listener);
     return () => ipcRenderer.removeListener('app:escape', listener);
   },
+  // 主进程转发的 Ctrl+F（激活对话查找），返回取消订阅函数
+  onFindRequested: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('app:find', listener);
+    return () => ipcRenderer.removeListener('app:find', listener);
+  },
 });

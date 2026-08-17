@@ -10,6 +10,8 @@
 - [ConfirmModal.tsx](file://src/components/common/ConfirmModal.tsx)
 - [PromptModal.tsx](file://src/components/common/PromptModal.tsx)
 - [backup.ts](file://src/services/backup.ts)
+- [MessageBubble.tsx](file://src/components/chat/MessageBubble.tsx)
+- [index.css](file://src/index.css)
 </cite>
 
 ## 目录
@@ -26,6 +28,8 @@
 
 ## 简介
 本章节面向使用方，系统性说明 Sidebar 侧边栏组件的功能特性、Props 接口、会话状态管理、批量操作、可访问性与样式定制要点。该组件负责会话列表的展示与管理，包括搜索过滤、分组显示、收藏切换、重命名、导出、删除（单个与批量）、长按上下文菜单等。
+
+**最新更新**：增强了滚动锁定机制，当上下文菜单打开时，通过 CSS 属性操作（overflowY 设置为 'hidden'，touchAction 设置为 'none'）和增强遮罩组件（添加 touch-none 和 overscroll-none 类以及显式的 onTouchMove 处理器）来防止滚动干扰，确保在移动端和桌面端都能获得一致的交互体验。
 
 ## 项目结构
 Sidebar 位于布局层，依赖通用弹窗、工具函数与备份服务；数据模型由 types 统一描述；会话持久化与恢复由上层 Hook 与服务协作完成。
@@ -52,23 +56,25 @@ A -.交互.-> H
 - [storage.ts:1-63](file://src/services/storage.ts#L1-L63)
 
 章节来源
-- [Sidebar.tsx:1-557](file://src/components/layout/Sidebar.tsx#L1-L557)
+- [Sidebar.tsx:1-606](file://src/components/layout/Sidebar.tsx#L1-L606)
 - [index.ts:143-175](file://src/types/index.ts#L143-L175)
 
 ## 核心组件与能力
-- 会话列表渲染与分组：按“今天/昨天/本月/更早”分组，支持搜索（含拼音匹配）。
+- 会话列表渲染与分组：按"今天/昨天/本月/更早"分组，支持搜索（含拼音匹配）。
 - 当前会话高亮：通过 activeConversationId 与 pendingId 实现点击反馈与高亮。
-- 收藏功能：单条收藏/取消收藏，支持“所有/收藏”筛选。
+- 收藏功能：单条收藏/取消收藏，支持"所有/收藏"筛选。
 - 重命名：长按菜单或双击（在 ConversationList 中）进入编辑，保存后回调父级更新。
 - 导出：将单个会话导出为 JSON（包含图片 base64），便于跨设备迁移。
 - 删除：支持单个删除与多选批量删除，均带确认弹窗。
 - 长按上下文菜单：移动端友好，自动定位到可视区域，避免被滚动容器裁剪。
+- **增强的滚动锁定**：当上下文菜单打开时，通过直接操作 DOM 元素的 overflowY 和 touchAction 属性来完全禁用滚动，同时遮罩层使用 touch-none 和 overscroll-none 类配合 onTouchMove 处理器阻止滚动事件传播。
 - 可访问性：弹窗使用 dialog/aria-* 属性，按钮具备 title 提示。
 
 章节来源
-- [Sidebar.tsx:12-21](file://src/components/layout/Sidebar.tsx#L12-L21)
-- [Sidebar.tsx:220-263](file://src/components/layout/Sidebar.tsx#L220-L263)
-- [Sidebar.tsx:283-557](file://src/components/layout/Sidebar.tsx#L283-L557)
+- [Sidebar.tsx:12-23](file://src/components/layout/Sidebar.tsx#L12-L23)
+- [Sidebar.tsx:223-244](file://src/components/layout/Sidebar.tsx#L223-L244)
+- [Sidebar.tsx:470-478](file://src/components/layout/Sidebar.tsx#L470-L478)
+- [Sidebar.tsx:283-606](file://src/components/layout/Sidebar.tsx#L283-L606)
 - [conversationView.ts:10-33](file://src/utils/conversationView.ts#L10-L33)
 - [ConfirmModal.tsx:83-133](file://src/components/common/ConfirmModal.tsx#L83-L133)
 
@@ -88,13 +94,16 @@ P->>M : 加载/恢复会话(可选)
 P-->>S : 更新 activeConversationId
 U->>S : 长按某会话
 S->>S : 计算菜单位置(portal to body)
-U->>S : 选择“收藏/删除/导出/编辑”
+S->>S : 启用滚动锁定(overflowY='hidden', touchAction='none')
+U->>S : 选择"收藏/删除/导出/编辑"
 S->>P : onToggleConversationFavorite / onDeleteConversation / export / onRenameConversation
+S->>S : 关闭菜单时恢复滚动
 ```
 
 图表来源
 - [Sidebar.tsx:66-84](file://src/components/layout/Sidebar.tsx#L66-L84)
 - [Sidebar.tsx:109-218](file://src/components/layout/Sidebar.tsx#L109-L218)
+- [Sidebar.tsx:223-244](file://src/components/layout/Sidebar.tsx#L223-L244)
 - [Sidebar.tsx:444-499](file://src/components/layout/Sidebar.tsx#L444-L499)
 
 ## 详细组件分析
@@ -110,13 +119,13 @@ S->>P : onToggleConversationFavorite / onDeleteConversation / export / onRenameC
 - onRenameConversation?(id: string, title: string) — 重命名回调。
 
 章节来源
-- [Sidebar.tsx:12-21](file://src/components/layout/Sidebar.tsx#L12-L21)
+- [Sidebar.tsx:12-23](file://src/components/layout/Sidebar.tsx#L12-L23)
 - [index.ts:143-175](file://src/types/index.ts#L143-L175)
 
 ### 会话列表与分组
 - 过滤空会话：基于 hasAnyMessage，避免未加载消息导致列表为空。
 - 搜索：支持标题模糊匹配与拼音匹配。
-- 分组：按更新时间分为“今天/昨天/本月/更早”。
+- 分组：按更新时间分为"今天/昨天/本月/更早"。
 
 ```mermaid
 flowchart TD
@@ -130,11 +139,11 @@ Group --> Render["渲染列表项"]
 ```
 
 图表来源
-- [Sidebar.tsx:220-263](file://src/components/layout/Sidebar.tsx#L220-L263)
+- [Sidebar.tsx:246-263](file://src/components/layout/Sidebar.tsx#L246-L263)
 - [conversationView.ts:10-23](file://src/utils/conversationView.ts#L10-L23)
 
 章节来源
-- [Sidebar.tsx:220-263](file://src/components/layout/Sidebar.tsx#L220-L263)
+- [Sidebar.tsx:246-263](file://src/components/layout/Sidebar.tsx#L246-L263)
 - [conversationView.ts:10-33](file://src/utils/conversationView.ts#L10-L33)
 
 ### 当前会话高亮与切换逻辑
@@ -160,16 +169,53 @@ S->>S : onSwitchConversation(id)
 - [Sidebar.tsx:66-84](file://src/components/layout/Sidebar.tsx#L66-L84)
 - [Sidebar.tsx:373-405](file://src/components/layout/Sidebar.tsx#L373-L405)
 
+### 增强的滚动锁定机制
+
+**最新更新**：实现了全面的滚动锁定机制，当上下文菜单打开时防止背景滚动干扰。
+
+#### 实现原理
+1. **DOM 属性直接操作**：通过 useEffect 监听 menuOpenId 变化，直接操作历史列表容器的 style.overflowY 和 style.touchAction 属性
+2. **滚动位置保持**：在禁用滚动前保存 scrollTop，恢复时还原位置，避免滚动跳跃
+3. **遮罩层增强**：上下文菜单遮罩层添加 touch-none 和 overscroll-none 类，配合 onTouchMove 处理器阻止滚动事件传播
+
+#### 技术细节
+- 使用 `scroller.style.overflowY = 'hidden'` 完全禁用垂直滚动
+- 使用 `scroller.style.touchAction = 'none'` 阻止触摸手势触发滚动
+- 遮罩层使用 `className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay touch-none overscroll-none"`
+- 添加 `onTouchMove={e => e.preventDefault()}` 处理器阻止滚动事件冒泡
+
+```mermaid
+flowchart TD
+A["菜单打开"] --> B["获取历史列表引用"]
+B --> C["保存当前滚动状态"]
+C --> D["设置 overflowY = 'hidden'"]
+D --> E["设置 touchAction = 'none'"]
+E --> F["应用遮罩层样式"]
+F --> G["阻止触摸滚动事件"]
+G --> H["菜单关闭时恢复"]
+H --> I["恢复 overflowY"]
+I --> J["恢复 touchAction"]
+J --> K["还原 scrollTop"]
+```
+
+图表来源
+- [Sidebar.tsx:223-244](file://src/components/layout/Sidebar.tsx#L223-L244)
+- [Sidebar.tsx:470-478](file://src/components/layout/Sidebar.tsx#L470-L478)
+
+章节来源
+- [Sidebar.tsx:223-244](file://src/components/layout/Sidebar.tsx#L223-L244)
+- [Sidebar.tsx:470-478](file://src/components/layout/Sidebar.tsx#L470-L478)
+
 ### 收藏功能
-- 通过长按菜单中的“收藏/取消收藏”触发 onToggleConversationFavorite。
-- 支持“收藏”筛选模式，快速查看已收藏会话。
+- 通过长按菜单中的"收藏/取消收藏"触发 onToggleConversationFavorite。
+- 支持"收藏"筛选模式，快速查看已收藏会话。
 
 章节来源
 - [Sidebar.tsx:330-353](file://src/components/layout/Sidebar.tsx#L330-L353)
 - [Sidebar.tsx:477-486](file://src/components/layout/Sidebar.tsx#L477-L486)
 
 ### 重命名功能
-- 长按菜单“编辑标题”打开 PromptModal，输入新标题后调用 onRenameConversation。
+- 长按菜单"编辑标题"打开 PromptModal，输入新标题后调用 onRenameConversation。
 - ConversationList 也支持双击标题进入行内编辑。
 
 章节来源
@@ -179,14 +225,14 @@ S->>S : onSwitchConversation(id)
 - [ConversationList.tsx:111-139](file://src/components/chat/ConversationList.tsx#L111-L139)
 
 ### 导出功能
-- 长按菜单“导出”调用 exportSingleConversation，生成包含图片 base64 的 JSON 文件供下载。
+- 长按菜单"导出"调用 exportSingleConversation，生成包含图片 base64 的 JSON 文件供下载。
 
 章节来源
 - [Sidebar.tsx:267-272](file://src/components/layout/Sidebar.tsx#L267-L272)
 - [backup.ts:161-171](file://src/services/backup.ts#L161-L171)
 
 ### 删除功能（单个与批量）
-- 单个删除：长按菜单“删除”，弹出 ConfirmModal 确认后调用 onDeleteConversation。
+- 单个删除：长按菜单"删除"，弹出 ConfirmModal 确认后调用 onDeleteConversation。
 - 批量删除：进入选择模式，勾选多个会话后点击删除，弹出批量确认框，确认后调用 onDeleteConversations。
 
 ```mermaid
@@ -230,6 +276,7 @@ C --> |否| H["继续选择/退出选择模式"]
 - 弹窗组件：ConfirmModal、PromptModal 提供统一的确认与输入弹窗。
 - 备份服务：backup.ts 提供 exportSingleConversation。
 - 存储：storage.ts 提供 localStorage 读写（如记住上次活跃会话）。
+- **样式系统**：Tailwind CSS v4 提供 touch-none 和 overscroll-none 实用类，自定义动画和样式在 index.css 中定义。
 
 ```mermaid
 graph LR
@@ -239,6 +286,8 @@ CM["common/ConfirmModal.tsx"] --> S
 PM["common/PromptModal.tsx"] --> S
 BK["services/backup.ts"] --> S
 ST["services/storage.ts"] --> S
+CSS["index.css"] --> S
+MB["chat/MessageBubble.tsx"] --> S
 ```
 
 图表来源
@@ -248,6 +297,8 @@ ST["services/storage.ts"] --> S
 - [PromptModal.tsx:1-200](file://src/components/common/PromptModal.tsx#L1-L200)
 - [backup.ts:1-257](file://src/services/backup.ts#L1-L257)
 - [storage.ts:1-63](file://src/services/storage.ts#L1-L63)
+- [index.css:343-375](file://src/index.css#L343-L375)
+- [MessageBubble.tsx:400-421](file://src/components/chat/MessageBubble.tsx#L400-L421)
 
 章节来源
 - [Sidebar.tsx:1-11](file://src/components/layout/Sidebar.tsx#L1-L11)
@@ -258,6 +309,8 @@ ST["services/storage.ts"] --> S
 - 点击切换采用短延迟高亮，提升交互流畅度。
 - 菜单使用 portal 与固定定位，避免复杂祖先导致的重排与裁剪。
 - 会话预览使用 lastMessagePreviewOf，在未加载消息时回退到冗余字段，降低额外查询。
+- **滚动锁定优化**：通过直接操作 DOM 样式而非重新渲染来禁用滚动，避免不必要的 React 重渲染。
+- **事件处理优化**：使用 onTouchMove 处理器阻止滚动事件传播，减少浏览器默认行为的开销。
 
 [本节为通用性能建议，不直接分析具体代码]
 
@@ -266,15 +319,19 @@ ST["services/storage.ts"] --> S
 - 菜单被裁剪：确认菜单已 portal 到 body，且 useLayoutEffect 正确计算位置。
 - 删除失败：确认 onDeleteConversation/onDeleteConversations 已正确传递并处理；检查 ConfirmModal 的 onConfirm 回调。
 - 导出为空：确认从 DB 读取完整消息（非内存快照），参考 backup.ts 的导出流程。
+- **滚动锁定问题**：检查 historyListRef 是否正确引用滚动容器，确认 useEffect 清理函数正确恢复滚动状态。
+- **触摸事件冲突**：确认遮罩层的 onTouchMove 处理器正确阻止事件传播，检查 touch-none 和 overscroll-none 类是否生效。
 
 章节来源
 - [conversationView.ts:10-33](file://src/utils/conversationView.ts#L10-L33)
-- [Sidebar.tsx:220-263](file://src/components/layout/Sidebar.tsx#L220-L263)
+- [Sidebar.tsx:246-263](file://src/components/layout/Sidebar.tsx#L246-L263)
 - [Sidebar.tsx:444-499](file://src/components/layout/Sidebar.tsx#L444-L499)
 - [backup.ts:161-171](file://src/services/backup.ts#L161-L171)
+- [Sidebar.tsx:223-244](file://src/components/layout/Sidebar.tsx#L223-L244)
+- [Sidebar.tsx:470-478](file://src/components/layout/Sidebar.tsx#L470-L478)
 
 ## 结论
-Sidebar 提供了完整的会话管理能力，涵盖搜索、分组、收藏、重命名、导出、删除（单个/批量）以及友好的长按菜单与可访问性支持。通过清晰的 Props 接口与事件驱动设计，易于集成到不同父组件中，并与上层状态管理（如 useChat）协同工作。
+Sidebar 提供了完整的会话管理能力，涵盖搜索、分组、收藏、重命名、导出、删除（单个/批量）以及友好的长按菜单与可访问性支持。**最新的滚动锁定机制显著提升了用户体验**，通过在上下文菜单打开时完全禁用背景滚动，避免了移动端和桌面端的滚动干扰问题。通过清晰的 Props 接口与事件驱动设计，易于集成到不同父组件中，并与上层状态管理（如 useChat）协同工作。
 
 [本节为总结性内容，不直接分析具体代码]
 
@@ -286,14 +343,18 @@ Sidebar 提供了完整的会话管理能力，涵盖搜索、分组、收藏、
 - 如需新建会话，实现 onNewConversation 并在父组件创建新会话记录。
 
 章节来源
-- [Sidebar.tsx:12-21](file://src/components/layout/Sidebar.tsx#L12-L21)
+- [Sidebar.tsx:12-23](file://src/components/layout/Sidebar.tsx#L12-L23)
 - [storage.ts:25-38](file://src/services/storage.ts#L25-L38)
 
 ### 样式定制选项
 - 主题变量：组件广泛使用 CSS 变量（如 --color-bg-primary、--color-accent、--color-text-secondary 等），可通过全局样式覆盖以实现主题切换。
 - 尺寸常量：组件定义了 SIDEBAR_WIDTH、COLLAPSED_WIDTH，可在外层容器控制宽度与折叠行为。
 - 弹窗样式：ConfirmModal 与 PromptModal 使用统一的背景与边框变量，便于整体风格一致。
+- **滚动锁定样式**：通过 Tailwind 的 touch-none 和 overscroll-none 类实现触摸滚动控制，配合自定义的 context-menu-overlay 和 context-menu-pop 动画类。
+- **动画效果**：上下文菜单使用淡入和缩放动画，遮罩层使用模糊效果，提升视觉体验。
 
 章节来源
-- [Sidebar.tsx:23-25](file://src/components/layout/Sidebar.tsx#L23-L25)
+- [Sidebar.tsx:25-27](file://src/components/layout/Sidebar.tsx#L25-L27)
 - [ConfirmModal.tsx:83-133](file://src/components/common/ConfirmModal.tsx#L83-L133)
+- [index.css:343-375](file://src/index.css#L343-L375)
+- [index.css:227-237](file://src/index.css#L227-L237)

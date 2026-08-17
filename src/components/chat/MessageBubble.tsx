@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo, Children } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,6 +18,8 @@ import CompareButton from './CompareButton';
 import Toast from '../common/Toast';
 import { getPlainText, firstLineOf } from '../../utils/messageText';
 import { haptic } from '../../utils/haptics';
+import { useDeviceMode } from '../../platform/useDeviceMode';
+import { isElectron } from '../../platform/capabilities';
 
 /* ─── 打开外部链接辅助函数 ─── */
 function openUrl(url: string) {
@@ -250,55 +252,19 @@ function renderTextWithHighlight(
 }
 
 /* ─── 搜索高亮：markdown 分支 ───
- * ReactMarkdown 把字符串解析成 AST 再渲染，不能对渲染前的源文本插 <mark> 标签
- * （会被转义或破坏语法），所以改成渲染完成后用 TreeWalker 遍历文本节点做包裹。
- * 跳过 code/pre 内部，避免打断代码高亮的 dangerouslySetInnerHTML 结构。
+ * ReactMarkdown 把字符串解析成 AST 再渲染，不能对渲染前的源文本插 <mark>
+ * 标签（会被转义或破坏语法）。也不能渲染完再直接操作 DOM 包裹 <mark>：
+ * 拆文本节点 + normalize 会替换/合并 React fiber 引用的节点，流式追加或
+ * 插入新消息时 React commit 用失效节点做 insertBefore 会抛 NotFoundError。
+ * 因此高亮必须发生在渲染层：覆盖文本容器/行内组件，对其直接字符串 children
+ * 复用 renderTextWithHighlight 拆成 <mark>（高亮节点由 React 管理，与
+ * commit 阶段 DOM 操作不再冲突）。code/pre 不覆盖，代码内部保持不高亮，
+ * 与旧 DOM 方案的 TreeWalker 跳过行为一致。 */
+
+/* ─── 搜索高亮：markdown 分支的渲染期游标 ───
+ * 每条消息一个 useRef 游标：markdown 渲染前重置为 0，各组件按文档顺序
+ * （ReactMarkdown 深度优先渲染）累加命中次数，用于标记当前跳转项。
  */
-function unwrapSearchHighlights(container: HTMLElement) {
-  const marks = container.querySelectorAll('mark.search-highlight');
-  marks.forEach(mark => {
-    const parent = mark.parentNode;
-    if (!parent) return;
-    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-    parent.removeChild(mark);
-  });
-  container.normalize();
-}
-
-function highlightTextNodes(container: HTMLElement, query: string, activeOccurrence?: number) {
-  const q = query.toLowerCase();
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const tag = node.parentElement?.tagName;
-      return tag === 'CODE' || tag === 'PRE' ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
-    },
-  });
-  const textNodes: Text[] = [];
-  let n: Node | null;
-  while ((n = walker.nextNode())) textNodes.push(n as Text);
-
-  let occurrence = 0;
-  for (const textNode of textNodes) {
-    const text = textNode.textContent || '';
-    const lower = text.toLowerCase();
-    if (!lower.includes(q)) continue;
-    const frag = document.createDocumentFragment();
-    let lastIdx = 0;
-    let idx = lower.indexOf(q);
-    while (idx !== -1) {
-      if (idx > lastIdx) frag.appendChild(document.createTextNode(text.slice(lastIdx, idx)));
-      const mark = document.createElement('mark');
-      mark.className = `search-highlight${occurrence === activeOccurrence ? ' search-highlight-active' : ''}`;
-      mark.textContent = text.slice(idx, idx + query.length);
-      frag.appendChild(mark);
-      occurrence++;
-      lastIdx = idx + query.length;
-      idx = lower.indexOf(q, lastIdx);
-    }
-    if (lastIdx < text.length) frag.appendChild(document.createTextNode(text.slice(lastIdx)));
-    textNode.parentNode?.replaceChild(frag, textNode);
-  }
-}
 
 
 interface MessageBubbleProps {
@@ -329,6 +295,9 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName, modelProvider, onOpenArtifact, onRegenerate, onQuote, onSaveMarkdown, isStreaming, onCompareWithModel, onSwitchVersion, collapsed, onOpenSearch, onFold, searchQuery, activeMatchOccurrence }: MessageBubbleProps) {
   const isUser = message.role === 'user';
+  // PC 端（精确指针鼠标/触控板）允许自由选择对话文本、放行右键菜单；
+  // 触摸设备保持禁止选择 + 长按菜单，避免原生文本选择与长按手势冲突
+  const isDesktop = useDeviceMode() === 'desktop' && window.matchMedia('(pointer: fine)').matches;
   const [copied, setCopied] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false); // 新增：控制搜索结果展开/折叠
   const [showToast, setShowToast] = useState(false);
@@ -358,6 +327,18 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     pressOriginRef.current = null;
   };
 
+  /**
+   * 在视口坐标处打开消息级上下文菜单（移动端长按 / PC 端右键共用）。
+   * 坐标含义与长按定时器一致：clientX/Y，定位逻辑会自行做边缘钳制。
+   */
+  const openMenuAt = (x: number, y: number) => {
+    suppressClickRef.current = true;
+    setMenuPos({ x, y });
+    setMenuOpen(true);
+    window.getSelection?.()?.removeAllRanges();
+    haptic();
+  };
+
   const handlePressStart = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     clearPressTimer();
@@ -365,12 +346,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     const { clientX, clientY } = e;
     pressTimerRef.current = setTimeout(() => {
       pressTimerRef.current = null;
-      suppressClickRef.current = true;
-      setMenuPos({ x: clientX, y: clientY });
-      setMenuOpen(true);
-      window.getSelection?.()?.removeAllRanges();
-      // 与点击汉堡菜单图标一致的轻触感（键盘级），菜单弹出瞬间触发
-      haptic();
+      openMenuAt(clientX, clientY);
     }, LONG_PRESS_MS);
   };
 
@@ -556,17 +532,22 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     });
   }, [displaySearchResults]);
 
-  // AI 消息 markdown 容器：搜索高亮在渲染完成后对它做 DOM 后处理
-  const markdownRef = useRef<HTMLDivElement | null>(null);
+  // AI 消息 markdown 搜索高亮：渲染期游标（markdown 分支渲染前重置，
+  // 各覆盖组件按文档顺序累加命中次数，标记当前跳转项）
+  const searchCursorRef = useRef(0);
 
-  useEffect(() => {
-    const el = markdownRef.current;
-    if (!el) return;
-    unwrapSearchHighlights(el);
-    if (searchQuery && searchQuery.trim()) {
-      highlightTextNodes(el, searchQuery.trim(), activeMatchOccurrence);
-    }
-  }, [searchQuery, displayContent, activeMatchOccurrence]);
+  // 渲染层搜索高亮：只处理直接字符串 children（行内组件自身处理自己的文本，
+  // 不递归，避免 mark 被二次拆分）。返回的 <mark> 由 React 管理，不破坏 fiber。
+  const highlightMarkdownChildren = (children: React.ReactNode): React.ReactNode => {
+    const q = searchQuery?.trim();
+    if (!q) return children;
+    return Children.map(children, (child) => {
+      if (typeof child !== 'string') return child;
+      const { nodes, occurrenceCount } = renderTextWithHighlight(child, q, searchCursorRef.current, activeMatchOccurrence);
+      searchCursorRef.current += occurrenceCount;
+      return nodes;
+    });
+  };
 
   const renderContent = () => {
     if (typeof displayContent === 'string') {
@@ -578,16 +559,51 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
         return <p className="whitespace-pre-wrap">{displayContent}</p>;
       }
       const processedContent = preprocessCitations(displayContent);
+      // markdown 渲染前重置高亮游标（各覆盖组件渲染时按文档顺序累加）
+      searchCursorRef.current = 0;
       return (
-        <div ref={markdownRef} className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
+        <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeKatex]}
             urlTransform={(url) => url}
             components={{
-              // react-markdown v10 起 code 不再收 inline prop，只能靠有没有
-              // pre 父节点来区分：行内代码没有 pre，代码块一定有。
-              // 所以代码块统一在 pre 里处理，code 只负责行内。
+              // 搜索高亮覆盖：文本容器/行内组件用渲染层高亮处理直接文本 children，
+              // 与默认标签保持一致（prose 样式由外层容器类负责）。
+              // code/pre 不覆盖：代码块内部保持不高亮，且 CodeBlock 依赖纯字符串 props。
+              p({ children }) {
+                return <p>{highlightMarkdownChildren(children)}</p>;
+              },
+              li({ children }) {
+                return <li>{highlightMarkdownChildren(children)}</li>;
+              },
+              td({ children }) {
+                return <td>{highlightMarkdownChildren(children)}</td>;
+              },
+              th({ children }) {
+                return <th>{highlightMarkdownChildren(children)}</th>;
+              },
+              h1({ children }) { return <h1>{highlightMarkdownChildren(children)}</h1>; },
+              h2({ children }) { return <h2>{highlightMarkdownChildren(children)}</h2>; },
+              h3({ children }) { return <h3>{highlightMarkdownChildren(children)}</h3>; },
+              h4({ children }) { return <h4>{highlightMarkdownChildren(children)}</h4>; },
+              h5({ children }) { return <h5>{highlightMarkdownChildren(children)}</h5>; },
+              h6({ children }) { return <h6>{highlightMarkdownChildren(children)}</h6>; },
+              blockquote({ children }) {
+                return <blockquote>{highlightMarkdownChildren(children)}</blockquote>;
+              },
+              strong({ children }) {
+                return <strong>{highlightMarkdownChildren(children)}</strong>;
+              },
+              em({ children }) {
+                return <em>{highlightMarkdownChildren(children)}</em>;
+              },
+              del({ children }) {
+                return <del>{highlightMarkdownChildren(children)}</del>;
+              },
+              span({ children }) {
+                return <span>{highlightMarkdownChildren(children)}</span>;
+              },
               code({ children }) {
                 // 不展开其余 props：里面带着 react-markdown 的 node 字段，
                 // 传到 DOM 上会触发 React 未知属性警告
@@ -623,14 +639,14 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                     </button>
                   );
                 }
-                // 普通链接：用系统浏览器打开
+                // 普通链接：用系统浏览器打开（children 过一遍渲染层高亮）
                 return (
                   <a
                     href={href}
                     onClick={(e) => { e.preventDefault(); if (href) openUrl(href); }}
                     className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
                   >
-                    {children}
+                    {highlightMarkdownChildren(children)}
                   </a>
                 );
               }
@@ -744,13 +760,18 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
           document.body
         )}
         <div
-          className={`relative flex flex-col items-end mb-4 select-none [-webkit-touch-callout:none] ${menuOpen ? 'z-[201]' : ''}`}
-          onPointerDown={handlePressStart}
+          className={`relative flex flex-col items-end mb-4 ${isDesktop ? 'select-text' : 'select-none [-webkit-touch-callout:none]'} ${menuOpen ? 'z-[201]' : ''}`}
+          onPointerDown={isDesktop ? undefined : handlePressStart}
           onPointerMove={handlePressMove}
           onPointerUp={clearPressTimer}
           onPointerCancel={clearPressTimer}
           onPointerLeave={clearPressTimer}
-          onContextMenu={e => e.preventDefault()}
+          /* Web PC 端右键弹出与移动端长按一致的消息级菜单；Electron 端不弹
+             （查找走 Ctrl+F），移动端维持拦截默认菜单 */
+          onContextMenu={e => {
+            e.preventDefault();
+            if (isDesktop && !isElectron()) openMenuAt(e.clientX, e.clientY);
+          }}
           onClick={() => {
             if (suppressClickRef.current) {
               suppressClickRef.current = false;
@@ -882,13 +903,18 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
            （比如 context-menu-pop 的 scale）：一是整条回复被缩放看着像"内容被放大"，
            二是带 transform 的祖先会成为 position:fixed 的包含块，把菜单从
            手指坐标拽回这条消息的角上 */
-        className={`relative flex justify-start mb-4 select-none [-webkit-touch-callout:none] ${menuOpen ? 'z-[201]' : ''}`}
-        onPointerDown={!displayIsStreaming && !isStreaming ? handlePressStart : undefined}
+        className={`relative flex justify-start mb-4 ${isDesktop ? 'select-text' : 'select-none [-webkit-touch-callout:none]'} ${menuOpen ? 'z-[201]' : ''}`}
+        onPointerDown={!displayIsStreaming && !isStreaming && !isDesktop ? handlePressStart : undefined}
         onPointerMove={handlePressMove}
         onPointerUp={clearPressTimer}
         onPointerCancel={clearPressTimer}
         onPointerLeave={clearPressTimer}
-        onContextMenu={e => e.preventDefault()}
+        /* Web PC 端右键弹出与移动端长按一致的消息级菜单（流式中不弹，与长按禁用条件一致）；
+           Electron 端不弹（查找走 Ctrl+F），移动端维持拦截默认菜单 */
+        onContextMenu={e => {
+          e.preventDefault();
+          if (isDesktop && !isElectron() && !displayIsStreaming && !isStreaming) openMenuAt(e.clientX, e.clientY);
+        }}
         onClick={() => {
           if (suppressClickRef.current) {
             suppressClickRef.current = false;

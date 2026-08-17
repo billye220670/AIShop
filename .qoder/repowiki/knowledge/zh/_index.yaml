@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: master
 nodes_managed: true
-exported_at: "2026-08-15T10:35:05Z"
+exported_at: "2026-08-15T12:33:17Z"
 modules:
     "":
-        dir_name: PortAI 前端根工程
-        title: PortAI 前端根工程
+        dir_name: PortAI 单仓多端应用（Web_Electron_Android）
+        title: PortAI 单仓多端应用（Web/Electron/Android）
         scope:
             - README.md
             - .gitignore
@@ -54,8 +54,8 @@ modules:
         related_to:
             - path: app_shell
     app_shell:
-        dir_name: 应用外壳与根入口
-        title: 应用外壳与根入口
+        dir_name: 应用外壳与入口（App Shell）
+        title: 应用外壳与入口（App Shell）
         scope:
             - src/App.tsx
             - src/main.tsx

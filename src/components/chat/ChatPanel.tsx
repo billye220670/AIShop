@@ -16,6 +16,7 @@ import ContextSummarySheet from './ContextSummarySheet';
 import type { ContextSegment, ContextSummary } from '../../types';
 import type { RoleData } from '../../db';
 import type { UsageTotals } from '../../utils/tokenEstimate';
+import { isElectron } from '../../platform/capabilities';
 
 interface ChatPanelProps {
   messages: Message[];
@@ -50,6 +51,8 @@ interface ChatPanelProps {
   /** 外部请求打开某个 segment 的摘要面板（例如压缩完成 toast 的"查看"按钮） */
   openSegmentIdRequest?: string | null;
   onOpenSegmentIdRequestHandled?: () => void;
+  /** Electron Ctrl+F 请求信号（自增计数），变化时打开对话内搜索 */
+  findSignal?: number;
   // 模型与角色选择（桌面形态透传给 ChatInput 工具栏）
   models?: Model[];
   selectedModel?: string;
@@ -91,6 +94,7 @@ export default function ChatPanel({
   onUpdateSegment,
   openSegmentIdRequest,
   onOpenSegmentIdRequestHandled,
+  findSignal,
   models,
   selectedModel,
   onModelChange,
@@ -152,6 +156,15 @@ export default function ChatPanel({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Electron：主进程转发 Ctrl+F（findSignal 自增）→ 打开搜索栏并聚焦输入框
+  // （信号计数而非布尔，保证从其他 Tab 切回 chat 时挂载后也能触发）
+  useEffect(() => {
+    if (!findSignal) return;
+    setSearchOpen(true);
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  }, [findSignal]);
 
   const matches = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -487,6 +500,7 @@ export default function ChatPanel({
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <input
+                ref={searchInputRef}
                 type="text"
                 autoFocus
                 value={searchQuery}
@@ -518,6 +532,11 @@ export default function ChatPanel({
           ref={messagesContainerRef}
           data-messages-container
           className="flex-1 overflow-y-auto px-4 py-4"
+          /* Electron：对话区域右键不弹任何菜单（含空白处/折叠气泡），
+             查找统一走 Ctrl+F；Web 端维持原有行为 */
+          onContextMenu={e => {
+            if (isElectron()) e.preventDefault();
+          }}
         >
          <div ref={messagesContentRef} className={foldPhase === 'collapsing' ? 'chat-folding' : undefined}>
           {messages.length === 0 && (

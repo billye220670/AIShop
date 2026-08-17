@@ -236,19 +236,35 @@ body,
   background-color: var(--color-bg-base);
 }
 
-/* 防止文本被选中（输入框除外） */
-* {
-  user-select: none;
-  -webkit-user-select: none;
+/* 防止文本被选中（输入框除外）。
+ * 必须放进 @layer base：未分层规则优先级高于所有 @layer 规则，
+ * 会压死 Tailwind utilities 层的 select-text/select-none 工具类
+ * （PC 端对话文本选择曾因此不生效）。 */
+@layer base {
+  * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* 允许输入框、文本域等可编辑元素选择文本 */
+  input,
+  textarea,
+  [contenteditable="true"],
+  [contenteditable="plaintext-only"] {
+    user-select: text;
+    -webkit-user-select: text;
+  }
 }
 
-/* 允许输入框、文本域等可编辑元素选择文本 */
-input,
-textarea,
-[contenteditable="true"],
-[contenteditable="plaintext-only"] {
-  user-select: text;
-  -webkit-user-select: text;
+/* PC 端对话文本选择：user-select 不穿透显式声明——base 层的 * 规则直接命中
+   气泡内每个文字节点（<p>/<li>/代码块等），父级 .select-text 无法覆盖它们。
+   用后代选择器把整个气泡子树拉回可选中。 */
+@layer utilities {
+  .select-text,
+  .select-text * {
+    user-select: text;
+    -webkit-user-select: text;
+  }
 }
 
 /* 自定义滚动条 */

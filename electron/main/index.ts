@@ -50,10 +50,11 @@ function createWindow() {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
 
-  // 注册 F12 / Ctrl+Shift+I 打开 DevTools；Escape 转发给渲染进程
+  // 注册 F12 / Ctrl+Shift+I 打开 DevTools；Escape 转发给渲染进程；
+  // Ctrl+F 转发给渲染进程激活对话查找（对话右键已禁用菜单，查找是唯一入口）
   // （焦点在 iframe 内部时页面收不到键盘事件，before-input-event 在主进程
   //  派发输入前捕获，任何焦点位置都有效）
-  mainWindow.webContents.on('before-input-event', (_event, input) => {
+  mainWindow.webContents.on('before-input-event', (event, input) => {
     if (
       input.key === 'F12' ||
       (input.control && input.shift && input.key.toLowerCase() === 'i')
@@ -61,6 +62,14 @@ function createWindow() {
       mainWindow?.webContents.toggleDevTools();
     } else if (input.type === 'keyDown' && input.key === 'Escape') {
       mainWindow?.webContents.send('app:escape');
+    } else if (
+      input.type === 'keyDown' &&
+      (input.control || input.meta) &&
+      !input.shift &&
+      input.key.toLowerCase() === 'f'
+    ) {
+      event.preventDefault();
+      mainWindow?.webContents.send('app:find');
     }
   });
 

@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: PortAI 前端根工程
+title: PortAI 单仓多端应用（Web/Electron/Android）
 scope:
     - README.md
     - .gitignore
