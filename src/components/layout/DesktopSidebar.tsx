@@ -45,10 +45,10 @@ export default function DesktopSidebar({
       <div className={`flex items-center px-4 py-4 ${collapsed ? 'justify-center' : 'justify-between'}`}>
         {!collapsed && (
           <span
-            className="text-2xl text-white select-none tracking-tight"
+            className="text-2xl text-[var(--color-text-primary)] select-none tracking-tight"
             style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900 }}
           >
-            AIShop
+            PortA<span className="relative inline-block">I<span className="absolute bottom-[6px] -right-[14px] w-[12px] h-[5px] bg-[var(--color-accent)] rounded-[1px]" /></span>
           </span>
         )}
         <button

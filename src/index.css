@@ -153,6 +153,11 @@
   & .hover\:bg-white\/10:hover { background-color: rgba(0, 0, 0, 0.06); }
   & .hover\:bg-white\/20:hover { background-color: rgba(0, 0, 0, 0.10); }
 
+  /* 桌面端顶栏首页 tab：浅色下背景加深，胶囊轮廓可辨认 */
+  & .desktop-home-tab {
+    background-color: rgba(0, 0, 0, 0.06);
+  }
+
   /* active:bg-white/N */
   & .active\:bg-white\/10:active { background-color: rgba(0, 0, 0, 0.06); }
 

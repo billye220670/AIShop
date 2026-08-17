@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Home } from 'lucide-react';
 import DesktopSidebar, {
   SIDEBAR_WIDTH,
-  COLLAPSED_WIDTH,
   COLLAPSED_STORAGE_KEY,
 } from './DesktopSidebar';
 import type { MainLayoutProps } from './MainLayout';
@@ -31,23 +30,21 @@ export default function DesktopLayout(props: MainLayoutProps) {
     }
   }, [sidebarCollapsed]);
 
-  const sidebarWidth = sidebarCollapsed ? COLLAPSED_WIDTH : SIDEBAR_WIDTH;
-
   return (
     <div className="h-[100dvh] flex flex-col bg-[var(--color-bg-base)] text-[var(--color-text-primary)] overflow-hidden">
-      {/* 顶部 52px 栏：左侧首页区（与侧边栏等宽，折叠时同步收窄），右侧留白。
+      {/* 顶部 52px 栏：左侧首页区（固定宽度，不随侧边栏折叠收窄），右侧留白。
           Electron 下整条为窗口拖拽区（原生窗口按钮由 titleBarOverlay 绘制在右上角） */}
       <div
         className="h-[52px] shrink-0 w-full flex pt-2"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div
-          className="shrink-0 h-full flex items-center px-3 transition-all duration-200"
-          style={{ width: `${sidebarWidth}px` }}
+          className="shrink-0 h-full flex items-center px-3"
+          style={{ width: `${SIDEBAR_WIDTH}px` }}
         >
-          <div className="w-full h-full flex items-center gap-2 px-3 rounded-md bg-white/[0.08] text-white/90 text-sm font-medium select-none cursor-default">
+          <div className="desktop-home-tab w-full h-full flex items-center gap-2 px-3 rounded-md bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] text-sm font-medium select-none cursor-default">
             <Home className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && <span>首页</span>}
+            <span>首页</span>
           </div>
         </div>
         <div className="flex-1 h-full" />
