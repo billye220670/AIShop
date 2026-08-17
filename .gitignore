@@ -35,3 +35,7 @@ release/
 *.njsproj
 *.sln
 *.sw?
+
+# 构建产物/截图
+*.7z
+selection-check.png
