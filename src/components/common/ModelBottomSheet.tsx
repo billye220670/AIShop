@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Globe, SquareCode, Sparkles, Plus, UserRound, Trash2, Check, Pencil, Wand2 } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, Globe, SquareCode, Sparkles, Plus, UserRound, Trash2, Check, Pencil, Wand2, Image as ImageIcon } from 'lucide-react';
 import BottomSheet from './BottomSheet';
 import Toast from './Toast';
 import { haptic } from '../../utils/haptics';
 import { createRole, updateRole, deleteRole } from '../../db';
 import { optimizeRolePrompt } from '../../services/rolePromptOptimizer';
+import { settingsService } from '../../services/settingsService';
+import { getImageModelsByApiProvider } from '../../config/models';
 import type { Model } from '../../types';
 import type { RoleData } from '../../db';
 
@@ -119,8 +121,8 @@ const MODEL_DESCRIPTIONS: Record<string, string> = {
   'xiaomimimo/mimo-v2-flash': '小米 MiMo 快速模型，极高性价比，适合大规模应用',
 };
 
-/** 底部抽屉内的页面：聊天设置（推荐）/ 所有模型 / 角色列表 / 创建角色 / 编辑角色 */
-type SheetPage = 'recommended' | 'models' | 'roles' | 'create' | 'edit';
+/** 底部抽屉内的页面：聊天设置（推荐）/ 所有模型 / 角色列表 / 创建角色 / 编辑角色 / 图片模型 */
+type SheetPage = 'recommended' | 'models' | 'roles' | 'create' | 'edit' | 'image';
 
 /** 每页的上级页面（返回按钮的目标） */
 const PARENT_PAGE: Record<SheetPage, SheetPage | null> = {
@@ -129,6 +131,7 @@ const PARENT_PAGE: Record<SheetPage, SheetPage | null> = {
   roles: 'recommended',
   create: 'roles',
   edit: 'roles',
+  image: 'recommended',
 };
 
 export default function ModelBottomSheet({
@@ -170,6 +173,47 @@ export default function ModelBottomSheet({
   // 删除角色：第一次点击进入确认态，3 秒内再点才真正删除
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // ---- 高级功能里的图片模型选择：状态与图片面板共享（localStorage aishop_image_model） ----
+  const [imageProvider, setImageProvider] = useState<string>('fastapi');
+  const [imageModel, setImageModel] = useState<string>(() => {
+    try { return localStorage.getItem('aishop_image_model') || ''; } catch { return ''; }
+  });
+
+  // 按当前图片提供商过滤可选生图模型
+  const imageModels = useMemo(
+    () => getImageModelsByApiProvider(imageProvider),
+    [imageProvider]
+  );
+  const currentImageModelLabel =
+    imageModels.find(m => m.id === imageModel)?.name
+    || imageModels[0]?.name
+    || '未选择';
+
+  // 挂载时读取图片提供商，并保证选中模型有效（无效时回落为该提供商第一个模型）
+  useEffect(() => {
+    let cancelled = false;
+    void settingsService.getProvider('image').then(p => {
+      if (cancelled) return;
+      setImageProvider(p);
+      const list = getImageModelsByApiProvider(p);
+      let current = '';
+      try { current = localStorage.getItem('aishop_image_model') || ''; } catch { /* ignore */ }
+      if (!current && imageModel) current = imageModel;
+      if (!list.some(m => m.id === current) && list.length > 0) {
+        setImageModel(list[0].id);
+        try { localStorage.setItem('aishop_image_model', list[0].id); } catch { /* ignore */ }
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在挂载时校正一次
+  }, []);
+
+  const handleImageModelSelect = (id: string) => {
+    setImageModel(id);
+    try { localStorage.setItem('aishop_image_model', id); } catch { /* ignore */ }
+    haptic();
+  };
 
   useEffect(() => () => clearTimeout(navTimer.current), []);
   useEffect(() => () => clearTimeout(deleteTimer.current), []);
@@ -512,6 +556,23 @@ export default function ModelBottomSheet({
                 />
               </button>
             </div>
+
+            <div className="h-px bg-white/10 my-4" />
+
+            {/* 图片生成模型选择：点击进入独立页面选择，样式与角色设置一致 */}
+            <button
+              onClick={() => navigate('image')}
+              className="w-full flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <ImageIcon className="w-5 h-5 text-gray-400" />
+                <div className="text-left">
+                  <div className="text-white text-sm font-medium">图片生成</div>
+                  <div className="text-gray-400 text-xs mt-0.5">{currentImageModelLabel}</div>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400" />
+            </button>
           </div>
         </div>
       </div>
@@ -584,6 +645,60 @@ export default function ModelBottomSheet({
             </div>
           </div>
         ))}
+      </div>
+    </>
+  );
+
+  /** 图片生成模型选择页：列出当前图片提供商支持的全部生图模型，点击选中即写回共享状态 */
+  const renderImageModelView = () => (
+    <>
+      {/* 顶部导航栏 - 固定在 BottomSheet 顶部 */}
+      <div className="shrink-0 bg-[var(--color-bg-primary)] px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              goBack();
+            }}
+            className="text-white p-1 hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <h2 className="text-white text-lg font-semibold">图片生成</h2>
+        </div>
+      </div>
+
+      {/* 模型列表 - 可滚动区域 */}
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
+        {imageModels.length === 0 && (
+          <div className="text-gray-400 text-xs text-center py-10">当前图片提供商暂无可用模型</div>
+        )}
+        <div className="space-y-2">
+          {imageModels.map((m) => {
+            const active = m.id === imageModel;
+            return (
+              <button
+                key={m.id}
+                onClick={() => handleImageModelSelect(m.id)}
+                className={`w-full rounded-xl px-4 py-4 flex items-center gap-3 text-left transition-all ${
+                  active
+                    ? 'bg-[var(--color-accent-soft)] border border-[var(--color-accent)]'
+                    : 'bg-[var(--color-bg-secondary)] border border-transparent hover:border-white/10'
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-white text-sm font-medium">{m.name}</div>
+                  <div className="text-gray-400 text-xs mt-0.5 truncate">{m.provider}</div>
+                </div>
+                {active && (
+                  <div className="w-5 h-5 rounded-full bg-[var(--color-accent)] flex items-center justify-center">
+                    <span className="text-[var(--color-accent-foreground)] text-xs">✓</span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </>
   );
@@ -798,6 +913,13 @@ export default function ModelBottomSheet({
         {isPageActive('edit') && (
           <div className={`absolute inset-0 flex flex-col ${pageAnimClass('edit')}`}>
             {renderRoleFormView()}
+          </div>
+        )}
+
+        {/* 图片生成模型视图 */}
+        {isPageActive('image') && (
+          <div className={`absolute inset-0 flex flex-col ${pageAnimClass('image')}`}>
+            {renderImageModelView()}
           </div>
         )}
       </div>

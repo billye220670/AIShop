@@ -39,4 +39,8 @@
     <!-- 定位：GPS/基站定位用户城市（LocationBridge，比 IP 定位准）；仅 Android 壳使用 -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- 保存图片到相册（GalleryBridge）：仅 Android 9 及以下需要；Android 10+ 走 MediaStore 免权限 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 </manifest>

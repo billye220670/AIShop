@@ -21,6 +21,10 @@ function isGptModel(id: string): boolean {
 function isGoogleModel(id: string): boolean {
   return id === 'gemini-3.1-flash' || id === 'gemini-3-pro';
 }
+// Fal AI 图片模型：带 fal- 前缀，处理大致等同 Google 系（支持比例/尺寸），但编辑参考图上限较低
+function isFalModel(id: string): boolean {
+  return id.startsWith('fal-');
+}
 
 // ---------- 选项定义 ----------
 const GOOGLE_ASPECT_RATIOS = ['1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', '21:9'];
@@ -41,6 +45,7 @@ function getDefaultAspectRatio(modelId: string): string {
 function getMaxUploadCount(modelId: string): number {
   if (isGptModel(modelId)) return 1;
   if (isGoogleModel(modelId)) return 14;
+  if (isFalModel(modelId)) return 3;
   return 1;
 }
 
@@ -259,6 +264,7 @@ export function useImage() {
     if (isGptModel(selectedModel)) return GPT_SIZES;
     if (selectedModel === 'gemini-3.1-flash') return GOOGLE_FLASH_SIZES;
     if (selectedModel === 'gemini-3-pro') return GOOGLE_PRO_SIZES;
+    if (isFalModel(selectedModel)) return ['1K', '2K', '4K'];
     return ['1K'];
   }, [selectedModel]);
 
@@ -317,7 +323,7 @@ export function useImage() {
         prompt: params.prompt,
         model: params.model,
         timestamp: Date.now(),
-        aspectRatio: isGoogleModel(params.model) ? params.aspectRatio : undefined,
+        aspectRatio: (isGoogleModel(params.model) || isFalModel(params.model)) ? params.aspectRatio : undefined,
         size: params.size,
         quality: isGptModel(params.model) ? params.quality : undefined,
         sourceImages: params.images ? params.images.length : undefined,
@@ -375,7 +381,7 @@ export function useImage() {
       if (isGptModel(selectedModel)) {
         params.size = effectiveSize;
         params.quality = quality;
-      } else if (isGoogleModel(selectedModel)) {
+      } else if (isGoogleModel(selectedModel) || isFalModel(selectedModel)) {
         params.size = effectiveSize;
         params.aspectRatio = isEdit ? 'auto' : effectiveAspectRatio;
       }

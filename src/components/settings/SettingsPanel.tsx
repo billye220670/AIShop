@@ -23,6 +23,10 @@ const PROVIDER_OPTIONS: Record<string, { value: string; label: string }[]> = {
   default: [
     { value: 'fastapi', label: '接口 AI' },
   ],
+  image: [
+    { value: 'fastapi', label: '接口 AI' },
+    { value: 'falai', label: 'Fal AI' },
+  ],
   search: [
     { value: 'bocha', label: '博查 AI 搜索' },
     { value: 'tavily', label: 'Tavily' },

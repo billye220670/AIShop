@@ -268,6 +268,62 @@ export const IMAGE_MODELS: Model[] = [
     outputCapabilities: ['image'],
     price: { input: '按张计费', output: '按张计费' },
   },
+  // Fal AI 提供商（网关 provider = 'falai'）下的图片模型，model 前缀 fal- 便于与 接口AI 网关区分
+  {
+    id: 'fal-nano-banana-pro',
+    name: 'NanoBanana Pro',
+    provider: 'Fal AI',
+    type: 'image',
+    maxTokens: 0,
+    contextLength: 0,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['image'],
+    price: { input: '按张计费', output: '按张计费' },
+  },
+  {
+    id: 'fal-nano-banana-2',
+    name: 'NanoBanana 2',
+    provider: 'Fal AI',
+    type: 'image',
+    maxTokens: 0,
+    contextLength: 0,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['image'],
+    price: { input: '按张计费', output: '按张计费' },
+  },
+  {
+    id: 'fal-grok-imagine',
+    name: 'Grok Imagine 2.0',
+    provider: 'Fal AI',
+    type: 'image',
+    maxTokens: 0,
+    contextLength: 0,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['image'],
+    price: { input: '按张计费', output: '按张计费' },
+  },
+  {
+    id: 'fal-seedream-5',
+    name: 'Seedream 5.0 Pro',
+    provider: 'Fal AI',
+    type: 'image',
+    maxTokens: 0,
+    contextLength: 0,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['image'],
+    price: { input: '按张计费', output: '按张计费' },
+  },
+  {
+    id: 'fal-gpt-image-2',
+    name: 'GPT Image 2.0',
+    provider: 'Fal AI',
+    type: 'image',
+    maxTokens: 0,
+    contextLength: 0,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['image'],
+    price: { input: '按张计费', output: '按张计费' },
+  },
 ];
 export const VIDEO_MODELS: Model[] = [];
 export const MUSIC_MODELS: Model[] = [];
@@ -280,4 +336,18 @@ export function getModelsByType(type: Model['type']): Model[] {
     case 'music': return MUSIC_MODELS;
     default: return [];
   }
+}
+
+// 图片模型归属的 API 网关（设置里的 providers.image）→ 模型 provider 品牌值的映射。
+// 过滤「当前图片提供商下支持哪些生图模型」时用。
+const IMAGE_MODEL_PROVIDER_BY_GATEWAY: Record<string, string[]> = {
+  fastapi: ['OpenAI', 'Google'],
+  falai: ['Fal AI'],
+};
+
+/** 当前图片提供商（网关 id）下可用的图片模型列表 */
+export function getImageModelsByApiProvider(apiProvider: string): Model[] {
+  const brands = IMAGE_MODEL_PROVIDER_BY_GATEWAY[apiProvider || 'fastapi'];
+  if (!brands) return IMAGE_MODELS;
+  return IMAGE_MODELS.filter(m => brands.includes(m.provider));
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
+import { useState, useRef, useEffect, useMemo, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Plus, Square, X, FileText, MessageSquareQuote, ArrowUp, Globe, Paperclip, SlidersHorizontal, SendHorizontal, Clock } from 'lucide-react';
 import { Camera, MediaTypeSelection } from '@capacitor/camera';
 import { FilePicker } from '@capawesome/capacitor-file-picker';
@@ -20,6 +20,10 @@ import AttachmentSheet from './AttachmentSheet';
 import LibraryPickerSheet from './LibraryPickerSheet';
 import LibraryAtPanel from './LibraryAtPanel';
 import PinyinMatch from 'pinyin-match';
+import CustomSelect from '../common/CustomSelect';
+import { settingsService } from '../../services/settingsService';
+import { getImageModelsByApiProvider } from '../../config/models';
+import { ATTACH_CHAT_IMAGE_EVENT } from '../../services/imageContextActions';
 
 interface ChatInputProps {
   onSend: (content: string | MessageContent[], attachments?: FileAttachment[]) => void;
@@ -87,6 +91,9 @@ export default function ChatInput({
   onOpenSegment,
   onDeleteSegment,
 }: ChatInputProps) {
+  // 上传限制常量提前到 useImage 事件监听之前声明，供附件面板与「修改图片」塞图统一使用
+  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+  const MAX_TOTAL_FILES = 5;
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [files, setFiles] = useState<ParsedFile[]>([]);
@@ -109,6 +116,15 @@ export default function ChatInput({
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
   // 安卓端「库」选择面板开关（附件面板点「库」后切换出的更高面板）
   const [showLibrarySheet, setShowLibrarySheet] = useState(false);
+  // ---- 聊天控件里的图片模型选择器（仅桌面形态渲染），与图片面板共享 localStorage 选中态 ----
+  const [imageProvider, setImageProvider] = useState<string>('fastapi');
+  const [imageModel, setImageModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('aishop_image_model') || '';
+    } catch {
+      return '';
+    }
+  });
   // PC 端 @ 引用「我的库」面板状态：open 时 atIndex 是 @ 在完整文本中的位置，query 是 @ 后的搜索词，
   // pos 是 @ 光标的像素坐标（viewport，面板 Portal 到 body 后 fixed 定位直接使用）
   const [atPanel, setAtPanel] = useState<{
@@ -126,6 +142,40 @@ export default function ChatInput({
 
   // 桌面形态：输入框呈现 electron 版两行结构（工具栏 + 圆角边框输入容器），功能逻辑与移动形态共用
   const desktop = useDeviceMode() === 'desktop';
+
+  // 当前图片提供商下可选用的生图模型（聊天控件面板里的图片模型选择器用）
+  const imageModels = useMemo(
+    () => getImageModelsByApiProvider(imageProvider),
+    [imageProvider]
+  );
+
+  // 挂载时读取图片提供商，并保证选中模型属于当前 provider：
+  // 切到选不中的模型时回落为该 provider 的第一个模型（仅自动校正，不覆盖用户显式选择）。
+  // 当前选中值从 localStorage 读（与 state 同源），避免依赖引入闭包。
+  useEffect(() => {
+    let cancelled = false;
+    void settingsService.getProvider('image').then(p => {
+      if (cancelled) return;
+      setImageProvider(p);
+      const list = getImageModelsByApiProvider(p);
+      let current = '';
+      try { current = localStorage.getItem('aishop_image_model') || ''; } catch { /* ignore */ }
+      if (!current && imageModel) current = imageModel; // 首次挂载 fallback
+      const valid = list.some(m => m.id === current);
+      if (!valid && list.length > 0) {
+        setImageModel(list[0].id);
+        try { localStorage.setItem('aishop_image_model', list[0].id); } catch { /* ignore */ }
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在挂载时校正一次
+  }, []);
+
+  // 用户从选择器切换图片模型：写 localStorage，与图片面板（useImage）共享选中态
+  const handleImageModelChange = (id: string) => {
+    setImageModel(id);
+    try { localStorage.setItem('aishop_image_model', id); } catch { /* ignore */ }
+  };
 
   const hasContent = text.trim().length > 0 || images.length > 0 || files.length > 0 || !!quotedMessage;
 
@@ -186,13 +236,29 @@ export default function ChatInput({
     }
   }, [isFocused, hasContent]);
 
-  // 激活态（展开布局）同步给父组件，用于隐藏“回到底部”按钮等
+  // 激活态（展开布局）同步给父组件，用于隐藏”回到底部”按钮等
   useEffect(() => {
     onActiveChange?.(isFocused || hasContent);
   }, [isFocused, hasContent, onActiveChange]);
 
-  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-  const MAX_TOTAL_FILES = 5;
+  // 图片上下文菜单「修改图片」：把图片塞进输入框预览区并聚焦，等用户补充修改文字后发送。
+  // 限制最多 MAX_TOTAL_FILES 张（与手动上传一致），自动聚焦让用户接着输入。
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const url = (e as CustomEvent<string>).detail;
+      if (!url) return;
+      setImages(prev => {
+        if (prev.length + files.length >= MAX_TOTAL_FILES) return prev;
+        return prev.includes(url) ? prev : [...prev, url];
+      });
+      // 展开输入框并聚焦，键盘弹起
+      shouldFocusRef.current = true;
+      setIsFocused(true);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    };
+    window.addEventListener(ATTACH_CHAT_IMAGE_EVENT, handler);
+    return () => window.removeEventListener(ATTACH_CHAT_IMAGE_EVENT, handler);
+  }, [files]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes}B`;
@@ -829,6 +895,20 @@ export default function ChatInput({
                     className="absolute bottom-full right-0 mb-2 w-64 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-xl p-4 shadow-2xl z-50"
                   >
                     <div className="text-[var(--color-text-primary)] font-medium text-sm mb-3">聊天控件</div>
+                    {/* 图片生成模型选择器：列出当前图片提供商支持的全部生图模型，选中态与图片面板共享 */}
+                    <div className="mb-3">
+                      <div className="text-gray-500 text-xs mb-1.5">图片生成</div>
+                      {imageModels.length > 0 ? (
+                        <CustomSelect
+                          value={imageModel}
+                          onChange={handleImageModelChange}
+                          options={imageModels.map(m => ({ value: m.id, label: m.name }))}
+                          className="!py-2 !px-3"
+                        />
+                      ) : (
+                        <div className="text-xs text-gray-500 py-1.5">当前图片提供商暂无可用模型</div>
+                      )}
+                    </div>
                     <div className="text-gray-500 text-xs mb-2">功能</div>
                     {/* Artifact 开关 */}
                     <div className="flex items-center justify-between py-1.5">

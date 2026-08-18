@@ -18,6 +18,7 @@ import { requestPersistentStorage } from './utils/pwa';
 import { scheduleAutoSync, safeSync, BYOC_SYNC_DONE_EVENT } from './services/byoc';
 import { useDeviceMode } from './platform/useDeviceMode';
 import { isElectron, isNativePlatform } from './platform/capabilities';
+import { POST_IMAGE_MESSAGE_EVENT } from './services/imageContextActions';
 import { messageCountOf } from './utils/conversationView';
 import { getPlainText } from './utils/messageText';
 import type { TabMode } from './types';
@@ -116,6 +117,18 @@ function App() {
 
   const chat = useChat();
   const { assets, isSaved, toggleArtifact, removeAsset, renameAsset, saveMarkdown, saveImage, refresh: refreshAssets } = useAssets();
+
+  // 图片处理（高清放大 / 去背景）的结果插入当前会话：接收图片上下文菜单发来的事件，交给 useChat 追加一条 AI 图片消息
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ title: string; urls: string[] }>).detail;
+      if (detail && Array.isArray(detail.urls) && detail.urls.length > 0) {
+        chat.postImageMessage(detail.title, detail.urls);
+      }
+    };
+    window.addEventListener(POST_IMAGE_MESSAGE_EVENT, handler);
+    return () => window.removeEventListener(POST_IMAGE_MESSAGE_EVENT, handler);
+  }, [chat.postImageMessage]);
 
   // 聊天内生成的图片自动存入「我的库」：按消息 id 去重（同一消息只入库一次），
   // 入库链路复用 useAssets.saveImage——其内部落库后触发 3 秒防抖 BYOC 同步，即"合适的同步时机"

@@ -28,6 +28,36 @@ public class MainActivity extends BridgeActivity {
     /** 权限弹窗期间挂起的 JS 定位回调名 */
     private volatile String pendingLocationCallback = null;
 
+    /** 相册保存（GalleryBridge）状态：仅 Android 9 及以下需要存储权限 */
+    private volatile boolean galleryBridgeRegistered = false;
+    /** Android 9 及以下保存图片时待用的字节与回调（权限弹框期间挂起） */
+    private volatile byte[] pendingGalleryBytes = null;
+    private volatile String pendingGalleryFilename = null;
+    private volatile String pendingGalleryCallback = null;
+    private volatile boolean galleryPermissionAsked = false;
+
+    /** 相册写权限请求（仅 Android 9 及以下走此路径） */
+    private final androidx.activity.result.ActivityResultLauncher<String[]> galleryPermissionLauncher =
+        registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+            result -> {
+                boolean granted = Boolean.TRUE.equals(result.get(android.Manifest.permission.WRITE_EXTERNAL_STORAGE));
+                galleryPermissionAsked = true;
+                byte[] bytes = pendingGalleryBytes;
+                String filename = pendingGalleryFilename;
+                String cb = pendingGalleryCallback;
+                pendingGalleryBytes = null;
+                pendingGalleryFilename = null;
+                pendingGalleryCallback = null;
+                if (cb != null) {
+                    if (granted) {
+                        writeImageToLegacyStorage(bytes, filename, cb);
+                    } else {
+                        callbackSaveResult(cb, false, "存储权限被拒绝，无法保存到相册");
+                    }
+                }
+            });
+
     /** 定位权限请求（ComponentActivity 字段初始化注册，onCreate 前可用） */
     private final androidx.activity.result.ActivityResultLauncher<String[]> locationPermissionLauncher =
         registerForActivityResult(
@@ -209,6 +239,133 @@ public class MainActivity extends BridgeActivity {
         if (wv != null) wv.post(() -> wv.evaluateJavascript(js, null));
     }
 
+    /**
+     * 相册桥：前端把图片 data URL 交给原生，用系统相册（MediaStore）写入磁盘，
+     * 一步直达相册，与主流 App「长按保存图片」的行为一致。
+     * - Android 10+（API 29+）：MediaStore + RELATIVE_PATH=Pictures/PortAI，免权限
+     * - Android 9 及以下：请求写外部存储权限后用公共 PICTURES 目录
+     * 回调格式 cb(success:boolean, message:string)，走主线程。
+     */
+    private class GalleryBridge {
+        @android.webkit.JavascriptInterface
+        public void saveImage(String dataUrl, String filename, String callbackName) {
+            WebView wv = getBridge().getWebView();
+            if (wv == null || dataUrl == null) {
+                callbackSaveResult(callbackName, false, "保存失败：无可用 WebView");
+                return;
+            }
+            wv.post(() -> {
+                try {
+                    byte[] bytes = decodeDataUrl(dataUrl);
+                    if (bytes == null) {
+                        callbackSaveResult(callbackName, false, "图片数据无效");
+                        return;
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        // Android 10+：写 MediaStore 相册（默认 Pictures/PortAI），免权限
+                        boolean ok = writeImageToMediaStore(bytes, filename);
+                        callbackSaveResult(callbackName, ok, ok ? null : "写入相册失败");
+                    } else if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        writeImageToLegacyStorage(bytes, filename, callbackName);
+                    } else if (!galleryPermissionAsked) {
+                        // 首次：把字节挂到外层字段，弹权限框，授权后回写相册
+                        galleryPermissionAsked = true;
+                        pendingGalleryBytes = bytes;
+                        pendingGalleryFilename = filename;
+                        pendingGalleryCallback = callbackName;
+                        galleryPermissionLauncher.launch(new String[]{
+                            android.Manifest.permission.WRITE_EXTERNAL_STORAGE});
+                    } else {
+                        callbackSaveResult(callbackName, false, "存储权限被拒绝，无法保存到相册");
+                    }
+                } catch (Exception e) {
+                    callbackSaveResult(callbackName, false, "保存失败：" + e.getMessage());
+                }
+            });
+        }
+    }
+
+    /** 解析 data URL（data:image/png;base64,xxxx）→ 字节 */
+    private byte[] decodeDataUrl(String dataUrl) {
+        int comma = dataUrl.indexOf(',');
+        if (comma < 0) return null;
+        String b64 = dataUrl.substring(comma + 1);
+        return android.util.Base64.decode(b64, android.util.Base64.DEFAULT);
+    }
+
+    /** Android 10+：MediaStore 直接写入相册（免权限） */
+    private boolean writeImageToMediaStore(byte[] bytes, String filename) {
+        try {
+            android.content.ContentValues values = new android.content.ContentValues();
+            values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, filename);
+            values.put(android.provider.MediaStore.Images.Media.MIME_TYPE, guessMime(filename));
+            values.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_PICTURES + "/PortAI");
+            android.net.Uri uri = getContentResolver().insert(
+                    android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) return false;
+            try (java.io.OutputStream os = getContentResolver().openOutputStream(uri)) {
+                if (os == null) return false;
+                os.write(bytes);
+            }
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /** Android 9 及以下：写公共 PICTURES 目录（含权限回调路径复用） */
+    private void writeImageToLegacyStorage(byte[] bytes, String filename, String callbackName) {
+        wvRun(() -> {
+            try {
+                java.io.File dir = android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_PICTURES);
+                java.io.File appDir = new java.io.File(dir, "PortAI");
+                if (!appDir.exists() && !appDir.mkdirs()) {
+                    callbackSaveResult(callbackName, false, "无法创建相册目录");
+                    return;
+                }
+                java.io.File file = new java.io.File(appDir, filename);
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+                    fos.write(bytes);
+                }
+                // 广播一次媒体扫描，让相册立刻识别新图
+                sendBroadcast(new android.content.Intent(
+                        android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE,
+                        android.net.Uri.fromFile(file)));
+                callbackSaveResult(callbackName, true, null);
+            } catch (Exception e) {
+                callbackSaveResult(callbackName, false, "保存失败：" + e.getMessage());
+            }
+        });
+    }
+
+    private void wvRun(java.lang.Runnable r) {
+        WebView wv = getBridge().getWebView();
+        if (wv != null) wv.post(r);
+    }
+
+    private void callbackSaveResult(String callbackName, boolean success, String message) {
+        wvRun(() -> {
+            WebView wv = getBridge().getWebView();
+            if (wv == null) return;
+            String js = String.format(Locale.US, "%s(%b, %s)",
+                    callbackName,
+                    success,
+                    message == null ? "null" : org.json.JSONObject.quote(message));
+            wv.evaluateJavascript(js, null);
+        });
+    }
+
+    private String guessMime(String filename) {
+        String lower = filename.toLowerCase();
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        return "image/png";
+    }
+
     private void setupWebViewInterfaces() {
         WebView webView = getBridge().getWebView();
         if (webView == null) return;
@@ -231,6 +388,11 @@ public class MainActivity extends BridgeActivity {
         if (!locationBridgeRegistered) {
             webView.addJavascriptInterface(new LocationBridge(), "AndroidLocation");
             locationBridgeRegistered = true;
+        }
+
+        if (!galleryBridgeRegistered) {
+            webView.addJavascriptInterface(new GalleryBridge(), "AndroidGallery");
+            galleryBridgeRegistered = true;
         }
 
         if (!nativeLongPressDisabled) {

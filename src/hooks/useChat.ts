@@ -40,7 +40,7 @@ import { searchWeb, formatSearchResultsForContext } from '../services/webSearch'
 import { judgeSearchNeed } from '../services/searchJudge';
 import { judgeImageIntent } from '../services/imageIntentJudge';
 import { optimizeImagePrompt } from '../services/promptOptimizer';
-import { generateImage as apiGenerateImage } from '../services/imageApi';
+import { generateImage as apiGenerateImage, processImage as apiProcessImage, type ImageProcessKind } from '../services/imageApi';
 import { ensureCity, prefetchCity } from '../services/locationService';
 import { settingsService } from '../services/settingsService';
 import { syncNow, getByocConfig, validateConfig, recordLocalDeletions, recordLocalRoleDeletions, BYOC_SYNC_DONE_EVENT } from '../services/byoc';
@@ -597,6 +597,31 @@ export function useChat() {
     );
   }, []);
 
+  /**
+   * 往当前会话追加一条 AI 图片消息（结果图片以 generatedImages 形式回显，与聊天生图一致）。
+   * 图片上下文菜单的"高清处理 / 去除背景"结果经此插入会话；落盘由 conversations 持久化 effect 自动完成，
+   * 且 App 层的存库 effect 会把带 generatedImages 的消息自动收录进「我的库」。
+   */
+  const postImageMessage = useCallback(
+    (title: string, urls: string[]) => {
+      if (!urls || urls.length === 0) return;
+      updateActiveConversation(conv => {
+        const now = monotonicNow();
+        const msg: Message = {
+          id: `${now}-image`,
+          role: 'assistant',
+          content: title,
+          timestamp: now,
+          isStreaming: false,
+          generatedImages: urls,
+          model: selectedModel,
+        };
+        return { ...conv, messages: [...conv.messages, msg], updatedAt: Date.now() };
+      });
+    },
+    [updateActiveConversation, selectedModel]
+  );
+
   const setSelectedModel = useCallback(
     (modelId: string) => {
       updateActiveConversation(conv => ({ ...conv, selectedModel: modelId, updatedAt: Date.now() }));
@@ -861,6 +886,68 @@ export function useChat() {
                 : editImages
               : prevAiImages;
           const isEditMode = !!editSource && editSource.length > 0;
+
+          // ---- 特殊图像处理（高清放大 / 去除背景）：判断器输出 process 意图时走独立分支 ----
+          // 处理模型只吃单张参考图：优先用户本条上传的图，其次上一张 AI 生成的图。
+          // 若无参考图（用户没带图也没有上一张 AI 图）则无法处理，回落普通生图/编辑流程。
+          const processKind = imageIntent.process as ImageProcessKind | undefined;
+          const processSourceUrl = processKind ? (editSource && editSource[0]) || undefined : undefined;
+          if (processKind && processSourceUrl) {
+            const processReply =
+              imageIntent.reply ||
+              (processKind === 'upscale' ? '好的，我来为您高清放大～' : '好的，正在为您去除背景～');
+            const processPrompt =
+              processKind === 'upscale'
+                ? '将参考图高清放大'
+                : '移除参考图的背景，保留主体';
+
+            updateActiveConversation(conv => {
+              const updated = [...conv.messages];
+              const lastIdx = updated.length - 1;
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                content: processReply,
+                isStreaming: false,
+                imageGenerating: true,
+                generatedImage: {
+                  model: CHAT_IMAGE_MODEL,
+                  prompt: processPrompt,
+                  aspectRatio: 'auto',
+                },
+              };
+              return { ...conv, messages: updated, updatedAt: Date.now() };
+            });
+
+            const targetConvId = activeId;
+            const targetMsgId = assistantMessage.id;
+            void (async () => {
+              try {
+                // 参考图落盘为 aishop-blob: 引用，先还原成 data URL 再交给处理服务
+                const inlined = await inlineBlobsForApi([
+                  { type: 'image_url' as const, image_url: { url: processSourceUrl } },
+                ]);
+                const src = Array.isArray(inlined) && inlined[0] && inlined[0].type === 'image_url'
+                  ? inlined[0].image_url?.url || ''
+                  : '';
+                if (!src) throw new Error('参考图读取失败');
+                const resultUrl = await apiProcessImage(processKind, src);
+                patchMessage(targetConvId, targetMsgId, {
+                  imageGenerating: false,
+                  generatedImages: [resultUrl],
+                  generatedImage: { model: CHAT_IMAGE_MODEL, prompt: processPrompt, aspectRatio: 'auto' },
+                });
+              } catch (err) {
+                patchMessage(targetConvId, targetMsgId, {
+                  imageGenerating: false,
+                  imageGenerateError:
+                    err instanceof Error ? err.message : '图片处理失败，请稍后重试',
+                });
+              }
+            })();
+
+            return; // 处理路径不走 LLM 流式
+          }
+
           const reply =
             imageIntent.reply ||
             (isEditMode ? CHAT_IMAGE_EDIT_REPLY_FALLBACK : CHAT_IMAGE_REPLY_FALLBACK);
@@ -1893,6 +1980,8 @@ export function useChat() {
     regenerateMessage,
     featureSettings,
     setFeatureSettings,
+    // 把一张图片消息以 AI 回复形式插入当前会话（图片处理的入口复用）
+    postImageMessage,
     // 角色系统
     roles,
     selectedRoleId,
