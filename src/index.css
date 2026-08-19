@@ -26,6 +26,9 @@
   --color-scrollbar-hover: rgb(88, 88, 83);
   --color-code-bg: rgb(18, 18, 17);
   --color-ring-track: rgba(255, 255, 255, 0.15);
+  /* 对话内 artifact 卡片渐变（暗色保持原始样式：顶部半透明 accent 晕染 + 近黑底） */
+  --color-artifact-bg-top: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  --color-artifact-bg-bottom: rgba(25, 25, 25, 0.9);
 }
 
 [data-theme="purple"] {
@@ -107,6 +110,9 @@
   /* --- 代码块背景 --- */
   --color-code-bg: #f1f1f4;
   --color-ring-track: rgba(0, 0, 0, 0.12);
+  /* 对话内 artifact 卡片渐变（仅浅色覆盖）：顶部主题高亮半透明 + 半透白底 */
+  --color-artifact-bg-top: color-mix(in srgb, var(--color-accent) 85%, transparent);
+  --color-artifact-bg-bottom: rgba(255, 255, 255, 0.8);
 
   /* ======== 覆盖组件中残留的硬编码 Tailwind 暗色类 ======== */
 
@@ -227,6 +233,9 @@
   & .model-icon-bg { background-color: #ffffff; }
   /* Kimi：仅浅色模式加纯黑圆形背景（深色模式保持无背景彩色图标） */
   & .model-icon-bg-black { background-color: #000000; }
+
+  /* 对话内 artifact 卡片地球图标：浅色模式下保持白色（深色模式回退原始 text-white） */
+  & .artifact-globe-icon { color: #ffffff; }
 }
 
 /* 全局：禁止页面级滚动与下拉刷新/橡皮筋效果，禁止缩放 */

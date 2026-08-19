@@ -1,5 +1,5 @@
 import { type ComponentType } from 'react';
-import { MessageSquare, Image as ImageIcon, Library, User, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { MessageSquare, Library, User, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { TabMode } from '../../types';
 import { useByocStatus } from '../../hooks/useByocStatus';
 
@@ -17,14 +17,13 @@ export const COLLAPSED_STORAGE_KEY = 'sidebar-collapsed';
 
 type TabIcon = ComponentType<{ className?: string }>;
 
-/** 左侧模式页签（「我的」不是页签：常驻底部、点击不高亮） */
+/** 左侧模式页签（「我的」不是页签：常驻底部、点击不高亮；桌面端不含「图片」，图片生成在聊天中通过资产通道使用） */
 const MODE_TABS: { id: TabMode; label: string; Icon: TabIcon }[] = [
   { id: 'chat', label: '聊天', Icon: MessageSquare },
-  { id: 'image', label: '图片', Icon: ImageIcon },
   { id: 'library', label: '我的库', Icon: Library },
 ];
 
-/** 桌面侧边栏：模式页签（聊天/图片/我的库）+ 折叠按钮 + 底部「我的」入口；
+/** 桌面侧边栏：模式页签（聊天/我的库）+ 折叠按钮 + 底部「我的」入口；
  *  历史会话列表已移到右侧 HistoryPanel，这里不再展示 */
 export default function DesktopSidebar({
   activeTab,

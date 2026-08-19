@@ -35,6 +35,9 @@ export default function PasswordInput({ value, onValueChange, placeholder, class
   const menuRef = useRef<HTMLDivElement | null>(null);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  /** 菜单弹出时刻。长按松手瞬间的合成 click 会命中刚覆盖全屏的遮罩，
+   *  不吞掉的话菜单弹出即被自己关闭。 */
+  const menuOpenedAtRef = useRef(0);
 
   // 明文/密文切换不走 focus 事件，主动把当前 type 同步给原生层
   useEffect(() => {
@@ -64,6 +67,7 @@ export default function PasswordInput({ value, onValueChange, placeholder, class
     const { clientX, clientY } = e;
     pressTimerRef.current = setTimeout(() => {
       pressTimerRef.current = null;
+      menuOpenedAtRef.current = Date.now();
       setMenuPos({ x: clientX, y: clientY });
       // 与消息长按菜单一致的键盘级轻触感
       haptic();
@@ -174,7 +178,12 @@ export default function PasswordInput({ value, onValueChange, placeholder, class
         /* 遮罩：点击关闭，touch-none 防止背景手势穿透 */
         <div
           className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay touch-none overscroll-none"
-          onClick={closeMenu}
+          onClick={() => {
+            // 长按松手后的合成 click target 会被刚覆盖全屏的遮罩接住，
+            // 不吞掉的话菜单弹出即被自己关闭
+            if (Date.now() - menuOpenedAtRef.current < 500) return;
+            closeMenu();
+          }}
           onPointerDown={closeMenu}
           onTouchMove={e => e.preventDefault()}
         />,

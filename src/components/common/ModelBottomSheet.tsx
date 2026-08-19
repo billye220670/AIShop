@@ -7,6 +7,7 @@ import { createRole, updateRole, deleteRole } from '../../db';
 import { optimizeRolePrompt } from '../../services/rolePromptOptimizer';
 import { settingsService } from '../../services/settingsService';
 import { getImageModelsByApiProvider } from '../../config/models';
+import { AUTO_MODEL_ID } from '../../services/routeJudge';
 import type { Model } from '../../types';
 import type { RoleData } from '../../db';
 
@@ -465,6 +466,21 @@ export default function ModelBottomSheet({
 
           {/* 推荐模型横向滚动 */}
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {/* 智能路由：伪模型卡片，选中后每条消息由小模型自动选择回答模型 */}
+            <button
+              key={AUTO_MODEL_ID}
+              onClick={() => handleModelSelect(AUTO_MODEL_ID)}
+              className={`relative flex-shrink-0 w-28 rounded-2xl overflow-hidden p-4 flex flex-col items-center gap-2 transition-all ${
+                selectedModel === AUTO_MODEL_ID
+                  ? 'bg-[var(--color-accent-soft)] border-2 border-[var(--color-accent)]'
+                  : 'bg-[var(--color-bg-elevated)] border-2 border-transparent'
+              }`}
+            >
+              <div className="w-12 h-12 rounded-full bg-[var(--color-accent)]/20 flex items-center justify-center">
+                <Sparkles className="w-6 h-6 text-[var(--color-accent)]" />
+              </div>
+              <span className="text-white text-sm text-center leading-tight">智能路由</span>
+            </button>
             {recommendedModels.map((model) => {
               const isSelected = model.id === selectedModel;
               return (
@@ -599,6 +615,30 @@ export default function ModelBottomSheet({
 
       {/* 模型列表 - 可滚动区域 */}
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
+        {/* 智能路由：伪模型选项，不归属任何厂商分组 */}
+        <button
+          onClick={() => handleModelSelect(AUTO_MODEL_ID)}
+          className={`w-full h-24 rounded-xl px-4 py-5 flex items-center gap-3 transition-all mb-6 ${
+            selectedModel === AUTO_MODEL_ID
+              ? 'bg-[var(--color-accent-soft)] border border-[var(--color-accent)]'
+              : 'bg-[var(--color-bg-secondary)] border border-transparent hover:border-white/10'
+          }`}
+        >
+          <div className="w-10 h-10 shrink-0 rounded-full bg-[var(--color-accent)]/20 flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-[var(--color-accent)]" />
+          </div>
+          <div className="flex-1 text-left">
+            <div className="text-white text-sm font-medium">智能路由</div>
+            <div className="text-gray-400 text-xs mt-0.5 line-clamp-2">
+              自动判断任务类型选择最合适的模型回答；简单问题由轻量模型直接回答
+            </div>
+          </div>
+          {selectedModel === AUTO_MODEL_ID && (
+            <div className="w-5 h-5 rounded-full bg-[var(--color-accent)] flex items-center justify-center">
+              <span className="text-[var(--color-accent-foreground)] text-xs">✓</span>
+            </div>
+          )}
+        </button>
         {sortedGroups.map((group) => (
           <div key={group} className="mb-6">
             <div className="text-gray-400 text-xs font-medium mb-3 uppercase">{group}</div>

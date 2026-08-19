@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CSSProperties } from 'react';
 
@@ -35,11 +35,16 @@ export default function ConfirmModal({
   const [visible, setVisible] = useState(false);
   // mounted 为派生值：open=true 或退出动画尚未结束（visible 仍为 true）时保持挂载
   const mounted = open || visible;
+  /** 弹窗打开时刻。从长按菜单等指针手势打开时，松手瞬间的合成 click 会命中
+   *  刚覆盖全屏的弹窗遮罩（触发按钮已随菜单卸载，target 判定落到遮罩上），
+   *  不吞掉的话弹窗刚弹出就被 onCancel 自己关掉，看起来就像"点了没反应"。 */
+  const openedAtRef = useRef(0);
 
   // 同步 open 状态：打开时下一帧触发进入动画；关闭时延迟将 visible 置为 false，
   // 保留 DOM 直到退出动画结束，之后 mounted 自然变为 false 完成卸载
   useEffect(() => {
     if (open) {
+      openedAtRef.current = Date.now();
       const raf = requestAnimationFrame(() => setVisible(true));
       return () => cancelAnimationFrame(raf);
     }
@@ -86,7 +91,12 @@ export default function ConfirmModal({
       className="fixed inset-0 z-[500] flex items-center justify-center bg-[var(--color-bg-base)]/60 backdrop-blur-sm"
       style={overlayStyle}
       data-swipe-ignore
-      onClick={onCancel}
+      onClick={() => {
+        // 打开后立刻派发的合成 click（长按菜单松手那一下）会命中本遮罩，
+        // 吞掉短暂窗口内的 click，避免弹窗刚弹出就被自己取消
+        if (Date.now() - openedAtRef.current < 500) return;
+        onCancel();
+      }}
       role="presentation"
     >
       <div

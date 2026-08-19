@@ -150,7 +150,14 @@ export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: L
   const LONG_PRESS_MOVE_TOLERANCE = 10;
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
-  const suppressClickRef = useRef(false);
+  /** 长按已触发，记录时间戳用于吞掉紧随其后的合成 click。
+   *  用时间戳而不是布尔：长按后的合成 click 往往被遮罩接住（不落在卡片上），
+   *  布尔标志会残留到下一次普通点击，把那次点击误吞成"没反应"。 */
+  const suppressClickRef = useRef(0);
+  const SUPPRESS_WINDOW_MS = 500;
+  /** 菜单弹出时刻。长按松手瞬间的合成 click 会命中刚覆盖全屏的遮罩，
+   *  不吞掉的话菜单弹出即被自己关闭。 */
+  const menuOpenedAtRef = useRef(0);
 
   const visibleAssets = filter === 'all' ? assets : assets.filter(a => a.kind === filter);
 
@@ -168,7 +175,8 @@ export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: L
     pressOriginRef.current = { x: e.clientX, y: e.clientY };
     pressTimerRef.current = setTimeout(() => {
       pressTimerRef.current = null;
-      suppressClickRef.current = true;
+      suppressClickRef.current = Date.now();
+      menuOpenedAtRef.current = Date.now();
       setMenuOpenId(id);
       window.getSelection?.()?.removeAllRanges();
       haptic();
@@ -340,7 +348,12 @@ export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: L
         {menuOpenId && (
           <div
             className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay"
-            onClick={() => setMenuOpenId(null)}
+            onClick={() => {
+              // 长按松手后的合成 click target 会被刚覆盖全屏的遮罩接住，
+              // 不吞掉的话菜单弹出即被自己关闭
+              if (Date.now() - menuOpenedAtRef.current < 500) return;
+              setMenuOpenId(null);
+            }}
             onPointerDown={() => setMenuOpenId(null)}
           />
         )}
@@ -382,8 +395,8 @@ export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: L
                     }}
                     onDragStart={e => e.preventDefault()}
                     onClick={() => {
-                      if (suppressClickRef.current) {
-                        suppressClickRef.current = false;
+                      if (Date.now() - suppressClickRef.current < SUPPRESS_WINDOW_MS) {
+                        suppressClickRef.current = 0;
                         return;
                       }
                       // 图片资产点开直接全屏预览（与聊天同一套手势），应用/文档仍走详情页

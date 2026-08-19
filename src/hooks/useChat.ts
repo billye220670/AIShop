@@ -39,6 +39,7 @@ import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
 import { judgeSearchNeed } from '../services/searchJudge';
 import { judgeImageIntent } from '../services/imageIntentJudge';
+import { AUTO_MODEL_ID, ROUTER_MODEL, judgeRoute, quickAnswer } from '../services/routeJudge';
 import { optimizeImagePrompt } from '../services/promptOptimizer';
 import { generateImage as apiGenerateImage, processImage as apiProcessImage, type ImageProcessKind } from '../services/imageApi';
 import { ensureCity, prefetchCity } from '../services/locationService';
@@ -271,6 +272,8 @@ export function useChat() {
 
   // 供 async 回调读取最新会话，避免把 conversations 放进依赖导致回调频繁重建
   const conversationsRef = useRef(conversations);
+  /** 智能路由兜底：auto 之前最近一次实际使用的具体模型 id（判断/直答失败时回落目标） */
+  const lastConcreteModelRef = useRef<string>('');
   /** 上一次落盘的版本，用于 diff 出真正变化的消息 */
   const persistedRef = useRef<Map<string, Conversation>>(new Map());
 
@@ -614,7 +617,10 @@ export function useChat() {
           timestamp: now,
           isStreaming: false,
           generatedImages: urls,
-          model: selectedModel,
+          // 智能路由下记录回落模型，避免消息 model 出现 'auto' 伪 id
+          model: selectedModel === AUTO_MODEL_ID
+            ? (lastConcreteModelRef.current || CHAT_MODELS[0].id)
+            : selectedModel,
         };
         return { ...conv, messages: [...conv.messages, msg], updatedAt: Date.now() };
       });
@@ -626,8 +632,14 @@ export function useChat() {
     (modelId: string) => {
       updateActiveConversation(conv => ({ ...conv, selectedModel: modelId, updatedAt: Date.now() }));
       saveLastModel(modelId);
+      if (modelId === AUTO_MODEL_ID) {
+        // 切到智能路由：记住切换前的具体模型，路由判断失败时兜底用
+        if (selectedModel !== AUTO_MODEL_ID) lastConcreteModelRef.current = selectedModel;
+      } else {
+        lastConcreteModelRef.current = modelId;
+      }
     },
-    [updateActiveConversation]
+    [updateActiveConversation, selectedModel]
   );
 
   const setWebSearchEnabled = useCallback((enabled: boolean) => {
@@ -777,16 +789,20 @@ export function useChat() {
       if (featureSettings.autoCompactEnabled) {
         const conv = conversationsRef.current.find(c => c.id === activeId);
         if (conv) {
+          // 智能路由下用回落模型做上下文估算（'auto' 会被保守估成 32000，误触发压缩）
+          const compactModel = conv.selectedModel === AUTO_MODEL_ID
+            ? (lastConcreteModelRef.current || CHAT_MODELS[0].id)
+            : conv.selectedModel;
           const usage = getContextUsage(
             conv,
-            conv.selectedModel,
+            compactModel,
             compactSettings.threshold,
             compactSettings.hotWindowSize
           );
 
           // 判断水位优先用上一轮的真实 promptTokens——它精确反映了上下文规模。
           // 只有还没有任何真实数据时（会话第一轮）才退回估算。
-          const real = sumRealUsage(conv.messages, conv.selectedModel);
+          const real = sumRealUsage(conv.messages, compactModel);
           const overThreshold =
             real.lastPromptTokens > 0
               ? real.lastPromptTokens / usage.limit >= compactSettings.threshold
@@ -796,7 +812,7 @@ export function useChat() {
           // 「大上下文切小模型」这种落差，白花调用还毁掉 prompt 缓存。
           const viable = isCompactionViable(
             conv,
-            conv.selectedModel,
+            compactModel,
             compactSettings.hotWindowSize,
             compactSettings.threshold
           );
@@ -1020,7 +1036,10 @@ export function useChat() {
               // 生图提示词：用用户当前模型整理优化（失败静默回退原文+参考图说明）
               const optimized = await optimizeImagePrompt({
                 userText,
-                model: selectedModel,
+                // 智能路由下用回落模型做提示词优化（'auto' 不是真实模型 id，不能直接请求）
+                model: selectedModel === AUTO_MODEL_ID
+                  ? (lastConcreteModelRef.current || CHAT_MODELS[0].id)
+                  : selectedModel,
                 aspectRatio: isEditMode ? undefined : genAspectRatio !== '1:1' ? genAspectRatio : undefined,
                 sceneNote,
               });
@@ -1167,47 +1186,85 @@ export function useChat() {
           }
         }
 
+        // ---- 智能路由：选中「智能路由」时由小模型决定本次回答方式 ----
+        // 判断与直接回答是两次独立的小模型调用：judgeRoute 只输出分类结果
+        // （direct / 路由目标模型），判断为 direct 后再由 quickAnswer 单独发起
+        // 一次回答请求（见 routeJudge.ts）。三条路径都保证有实际模型可答：
+        // route → 路由目标；direct → 小模型直答；判断/直答失败 → 回落最近一次
+        // 具体模型，发送永不中断。
+        let actualModel = selectedModel;
+        let directAnswer: string | undefined;
+        if (selectedModel === AUTO_MODEL_ID) {
+          const route = await judgeRoute(
+            userText,
+            messages,
+            lastConcreteModelRef.current || undefined,
+            hasEditImages,
+            searchContext || undefined
+          );
+          if (route?.action === 'route' && route.model) {
+            actualModel = route.model;
+            lastConcreteModelRef.current = route.model;
+          } else if (route?.action === 'direct') {
+            directAnswer = (await quickAnswer(userText, messages, searchContext || undefined)) ?? undefined;
+            if (directAnswer) {
+              // 消息 model 字段如实记录实际回答者（小模型），版本导航可正常显示
+              actualModel = ROUTER_MODEL;
+            } else {
+              actualModel = lastConcreteModelRef.current || CHAT_MODELS[0].id;
+            }
+          } else {
+            actualModel = lastConcreteModelRef.current || CHAT_MODELS[0].id;
+          }
+          patchMessage(activeId, assistantMessage.id, { model: actualModel });
+        }
+
         let fullContent = '';
         let artifactStreamStarted = false;
         const currentRole = roles.find(r => r.id === selectedRoleId) ?? null;
-        const systemPrompt = buildSystemPrompt(
-          featureSettings.artifactEnabled,
-          webSearchEnabled,
-          selectedModel,
-          currentRole
-        );
         let realUsage: TokenUsage | undefined;
         let firstChunkDone = false;
-        for await (const chunk of streamChat(
-          allMessages,
-          selectedModel,
-          abortControllerRef.current.signal,
-          searchContext || undefined,
-          systemPrompt,
-          u => { realUsage = u; }
-        )) {
-          if (!firstChunkDone) {
-            firstChunkDone = true;
-            // AI 开始回答（第一次流式返回收到）：与汉堡菜单一致的短促轻触感
-            haptic();
-          }
-          fullContent += chunk;
-          const displayContent = getDisplayContent(fullContent);
-          updateActiveConversation(conv => {
-            const updated = [...conv.messages];
-            const lastIdx = updated.length - 1;
-            updated[lastIdx] = { ...updated[lastIdx], content: displayContent };
-            return { ...conv, messages: updated };
-          });
+        if (directAnswer !== undefined) {
+          // 智能路由直接回答：小模型一次返回，不走流式（下方统一后处理照常执行）
+          fullContent = directAnswer;
+        } else {
+          const systemPrompt = buildSystemPrompt(
+            featureSettings.artifactEnabled,
+            webSearchEnabled,
+            actualModel,
+            currentRole
+          );
+          for await (const chunk of streamChat(
+            allMessages,
+            actualModel,
+            abortControllerRef.current.signal,
+            searchContext || undefined,
+            systemPrompt,
+            u => { realUsage = u; }
+          )) {
+            if (!firstChunkDone) {
+              firstChunkDone = true;
+              // AI 开始回答（第一次流式返回收到）：与汉堡菜单一致的短促轻触感
+              haptic();
+            }
+            fullContent += chunk;
+            const displayContent = getDisplayContent(fullContent);
+            updateActiveConversation(conv => {
+              const updated = [...conv.messages];
+              const lastIdx = updated.length - 1;
+              updated[lastIdx] = { ...updated[lastIdx], content: displayContent };
+              return { ...conv, messages: updated };
+            });
 
-          // 流式 artifact 检测（仅在 artifact 功能开启时）
-          if (featureSettings.artifactEnabled && isArtifactStreaming(fullContent)) {
-            const streaming = extractStreamingArtifact(fullContent);
-            if (streaming) {
-              if (!artifactStreamStarted) {
-                artifactStreamStarted = true;
+            // 流式 artifact 检测（仅在 artifact 功能开启时）
+            if (featureSettings.artifactEnabled && isArtifactStreaming(fullContent)) {
+              const streaming = extractStreamingArtifact(fullContent);
+              if (streaming) {
+                if (!artifactStreamStarted) {
+                  artifactStreamStarted = true;
+                }
+                setStreamingArtifact(streaming);
               }
-              setStreamingArtifact(streaming);
             }
           }
         }
@@ -1562,12 +1619,19 @@ export function useChat() {
         conv.segments
       );
 
+      // 智能路由残留兜底：主发送路径已把消息 model 修正为实际回答模型，
+      // 若因异常仍为 'auto'，回落最近一次具体模型，避免拿伪 id 直接请求 API
+      const regenModel = conv.messages[msgIndex].model || selectedModel;
+      const safeRegenModel = regenModel === AUTO_MODEL_ID
+        ? (lastConcreteModelRef.current || CHAT_MODELS[0].id)
+        : regenModel;
+
       // 如果该消息已有 versions，初始化第一个版本
       let existingVersions: MessageVersion[] = conv.messages[msgIndex].versions || [];
       if (existingVersions.length === 0) {
         existingVersions = [{
           id: conv.messages[msgIndex].id + '-v0',
-          model: conv.messages[msgIndex].model || selectedModel,
+          model: safeRegenModel,
           content: conv.messages[msgIndex].content || '',
           timestamp: conv.messages[msgIndex].timestamp,
           suggestions: conv.messages[msgIndex].suggestions,
@@ -1580,7 +1644,7 @@ export function useChat() {
       }
 
       // 检查当前模型是否已存在于 versions 中
-      const currentModelIndex = existingVersions.findIndex(v => v.model === (conv.messages[msgIndex].model || selectedModel));
+      const currentModelIndex = existingVersions.findIndex(v => v.model === safeRegenModel);
       // 如果当前版本被用户停止了，允许重新生成；否则检查是否已经是最新版本
       const currentVersionStoppedByUser = existingVersions[currentModelIndex]?.stoppedByUser || conv.messages[msgIndex].stoppedByUser;
       if (currentModelIndex >= 0 && currentModelIndex === existingVersions.length - 1 && !currentVersionStoppedByUser) {
@@ -1607,7 +1671,7 @@ export function useChat() {
         newVersionId = Date.now().toString() + '-v' + existingVersions.length;
         const newVersion: MessageVersion = {
           id: newVersionId,
-          model: conv.messages[msgIndex].model || selectedModel,
+          model: safeRegenModel,
           content: '',
           timestamp: Date.now(),
           isStreaming: true,
@@ -1636,7 +1700,7 @@ export function useChat() {
         const systemPrompt = buildSystemPrompt(
           featureSettings.artifactEnabled,
           webSearchEnabled,
-          conv.messages[msgIndex].model || selectedModel,
+          safeRegenModel,
           roles.find(r => r.id === selectedRoleId) ?? null
         );
 
@@ -1644,7 +1708,7 @@ export function useChat() {
         let firstChunkDone = false;
         for await (const chunk of streamChat(
           contextMessages,
-          conv.messages[msgIndex].model || selectedModel,
+          safeRegenModel,
           abortControllerRef.current.signal,
           undefined,
           systemPrompt,

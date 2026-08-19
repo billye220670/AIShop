@@ -94,14 +94,21 @@ export default function Sidebar({
   const LONG_PRESS_MOVE_TOLERANCE = 10;
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
-  /** 长按已触发，用于吞掉紧随其后的 click，避免顺带切换会话 */
-  const suppressClickRef = useRef(false);
+  /** 长按已触发，记录时间戳用于吞掉紧随其后的合成 click（避免顺带切换会话）。
+   *  用时间戳而不是布尔：长按后的合成 click 往往不落在列表项上（遮罩/弹窗
+   *  接住），布尔标志会残留到下一次普通点击，把那次点击误吞成"没反应"。 */
+  const suppressClickRef = useRef(0);
+  const SUPPRESS_WINDOW_MS = 500;
   /**
    * 菜单锚点 = 手指按下的视口坐标。
    * 菜单本身要 portal 到 body 才能定位，不能再沿用列表项的 absolute 定位。
    */
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  /** 菜单弹出时刻。长按松手瞬间 Chrome 会把合成 click 派发给刚覆盖全屏的
+   *  遮罩（target 判定发生在 pointerup，此时遮罩已压住手指），若遮罩 onClick
+   *  立刻执行，菜单会被自己"点外关闭"——弹出后短暂窗口内的 click 必须吞掉。 */
+  const menuOpenedAtRef = useRef(0);
 
   const clearPressTimer = () => {
     if (pressTimerRef.current) {
@@ -119,7 +126,8 @@ export default function Sidebar({
     const { clientX, clientY } = e;
     pressTimerRef.current = setTimeout(() => {
       pressTimerRef.current = null;
-      suppressClickRef.current = true;
+      suppressClickRef.current = Date.now();
+      menuOpenedAtRef.current = Date.now();
       setMenuPos({ x: clientX, y: clientY });
       setMenuOpenId(id);
       // 长按已选中的文本会残留，主动清掉
@@ -213,13 +221,20 @@ export default function Sidebar({
   // 点击/触摸外部关闭菜单
   useEffect(() => {
     if (!menuOpenId) return;
-    const handleClick = () => setMenuOpenId(null);
+    // 长按松手后的合成 click 会命中刚覆盖全屏的遮罩并继续冒泡到这里，
+    // 必须吞掉弹出后短暂窗口内的 click（合成 click 在松手后几毫秒内派发），
+    // 否则菜单会被"点外关闭"逻辑自己关掉；pointerdown 是真实触摸无需过滤
+    const handleClick = () => {
+      if (Date.now() - menuOpenedAtRef.current < 500) return;
+      setMenuOpenId(null);
+    };
+    const handlePointerDown = () => setMenuOpenId(null);
     // 捕获阶段监听，保证在菜单项自身的 stopPropagation 之外也能关闭
     document.addEventListener('click', handleClick);
-    document.addEventListener('pointerdown', handleClick);
+    document.addEventListener('pointerdown', handlePointerDown);
     return () => {
       document.removeEventListener('click', handleClick);
-      document.removeEventListener('pointerdown', handleClick);
+      document.removeEventListener('pointerdown', handlePointerDown);
     };
   }, [menuOpenId]);
 
@@ -421,9 +436,13 @@ export default function Sidebar({
                   onPointerLeave={clearPressTimer}
                   // 长按在部分浏览器仍会尝试弹出原生菜单/选词，这里一并拦掉
                   onContextMenu={e => e.preventDefault()}
-                  onClick={() => {
-                    if (suppressClickRef.current) {
-                      suppressClickRef.current = false;
+                  onClick={e => {
+                    if (Date.now() - suppressClickRef.current < SUPPRESS_WINDOW_MS) {
+                      suppressClickRef.current = 0;
+                      // 长按松手后的合成 click 会继续冒泡到 document，被「点击外部
+                      // 关闭菜单」的监听器接住，把刚弹出的菜单立刻关掉（菜单存活
+                      // 时间只有松手到 click 派发这几毫秒）。必须在此掐断冒泡。
+                      e.stopPropagation();
                       return;
                     }
                     if (selectMode) {
@@ -492,7 +511,12 @@ export default function Sidebar({
       {menuOpenId && createPortal(
         <div
           className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay touch-none overscroll-none"
-          onClick={() => setMenuOpenId(null)}
+          onClick={() => {
+            // 长按松手后的合成 click target 会被刚覆盖全屏的遮罩接住（pointerup
+            // 时遮罩已压住手指），这里不吞掉的话菜单弹出即被自己关闭
+            if (Date.now() - menuOpenedAtRef.current < 500) return;
+            setMenuOpenId(null);
+          }}
           onPointerDown={() => setMenuOpenId(null)}
           onTouchMove={e => e.preventDefault()}
         />,

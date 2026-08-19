@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Settings2, ChevronDown } from 'lucide-react';
+import { Settings2, ChevronDown, Sparkles } from 'lucide-react';
 import { haptic } from '../../utils/haptics';
 import ModelBottomSheet from './ModelBottomSheet';
+import { AUTO_MODEL_ID } from '../../services/routeJudge';
 import type { Model } from '../../types';
 import type { RoleData } from '../../db';
 
@@ -63,6 +64,19 @@ function getProviderIcon(provider: string): string | null {
   return file ? `${import.meta.env.BASE_URL}providers/${file}` : null;
 }
 
+/** 智能路由伪模型项：非真实模型，选中后每条消息由小模型自动决定回答方式 */
+const AUTO_ITEM: Model = {
+  id: AUTO_MODEL_ID,
+  name: '智能路由',
+  provider: 'Auto',
+  type: 'chat',
+  maxTokens: 0,
+  contextLength: 0,
+  inputCapabilities: [],
+  outputCapabilities: [],
+  price: { input: '', output: '' },
+};
+
 const MENU_GAP = 4;
 const MENU_TOP_PADDING = 16; // 菜单距视口顶部的最小间距
 
@@ -86,7 +100,9 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
   const menuRef = useRef<HTMLDivElement>(null);
   const unmountTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const current = models.find((m) => m.id === selectedModel) ?? models[0];
+  const current = selectedModel === AUTO_MODEL_ID
+    ? AUTO_ITEM
+    : models.find((m) => m.id === selectedModel) ?? models[0];
 
   // 关闭菜单：在事件回调中同步清除动画状态，避免 effect 内 setState
   const close = () => {
@@ -241,6 +257,13 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
 
   // 渲染触发器上的图标
   const renderTriggerIcon = () => {
+    if (current.id === AUTO_MODEL_ID) {
+      return (
+        <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-[var(--color-accent)]/20">
+          <Sparkles className="w-3.5 h-3.5 text-[var(--color-accent)]" />
+        </span>
+      );
+    }
     if (!currentIcon) return <span className="w-4 h-4 shrink-0" />;
     if (DARK_ICON_PROVIDERS.includes(current.provider) || BLACK_BG_PROVIDERS.includes(current.provider)) {
       return (
@@ -312,6 +335,24 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
               role="listbox"
               className="overflow-y-auto py-3 h-full max-h-[inherit]"
             >
+              {/* 智能路由：伪模型选项，不归属任何厂商分组 */}
+              <li key={AUTO_MODEL_ID}>
+                <button
+                  type="button"
+                  onClick={() => { onModelChange(AUTO_MODEL_ID); close(); }}
+                  className={`w-full flex items-center gap-2.5 px-4 py-2 text-sm text-left transition-colors ${
+                    selectedModel === AUTO_MODEL_ID
+                      ? 'bg-[var(--color-accent-soft)] text-white rounded-lg mx-2 !w-[calc(100%-1rem)] border border-[var(--color-accent)]'
+                      : 'text-gray-300 hover:bg-[var(--color-bg-hover)]'
+                  }`}
+                >
+                  <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-[var(--color-accent)]/20">
+                    <Sparkles className="w-3.5 h-3.5 text-[var(--color-accent)]" />
+                  </span>
+                  <span className="whitespace-nowrap">智能路由</span>
+                  <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">自动选择最佳模型</span>
+                </button>
+              </li>
             {hasGroups ? (
               sortedGroups.map((group) => (
                 <li key={group}>

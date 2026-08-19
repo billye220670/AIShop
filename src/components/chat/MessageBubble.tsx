@@ -310,7 +310,11 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
   const LONG_PRESS_MOVE_TOLERANCE = 10;
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
-  const suppressClickRef = useRef(false);
+  /** 长按已触发，记录时间戳用于吞掉紧随其后的合成 click。
+   *  用时间戳而不是布尔：长按后的合成 click 往往不落在消息上（遮罩/弹窗
+   *  接住），布尔标志会残留到下一次普通点击，把那次点击误吞成"没反应"。 */
+  const suppressClickRef = useRef(0);
+  const SUPPRESS_WINDOW_MS = 500;
   /**
    * 菜单锚点 = 手指按下的视口坐标。
    * 之前菜单是 `absolute right-3 top-3`，锚在整条消息的右上角——长回复有好几屏高，
@@ -318,6 +322,10 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
    */
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  /** 菜单弹出时刻。长按松手瞬间 Chrome 会把合成 click 派发给刚覆盖全屏的
+   *  遮罩（pointerup 时遮罩已压住手指），若遮罩 onClick 立刻执行，菜单会被
+   *  自己"点外关闭"——弹出后短暂窗口内的 click 必须吞掉。 */
+  const menuOpenedAtRef = useRef(0);
 
   const clearPressTimer = () => {
     if (pressTimerRef.current) {
@@ -332,7 +340,8 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
    * 坐标含义与长按定时器一致：clientX/Y，定位逻辑会自行做边缘钳制。
    */
   const openMenuAt = (x: number, y: number) => {
-    suppressClickRef.current = true;
+    suppressClickRef.current = Date.now();
+    menuOpenedAtRef.current = Date.now();
     setMenuPos({ x, y });
     setMenuOpen(true);
     window.getSelection?.()?.removeAllRanges();
@@ -364,12 +373,19 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
 
   useEffect(() => {
     if (!menuOpen) return;
-    const handleClick = () => setMenuOpen(false);
+    // 长按松手后的合成 click 会命中刚覆盖全屏的遮罩并继续冒泡到这里，
+    // 必须吞掉弹出后短暂窗口内的 click，否则菜单会被"点外关闭"自己关掉；
+    // pointerdown 是真实触摸，无需过滤
+    const handleClick = () => {
+      if (Date.now() - menuOpenedAtRef.current < 500) return;
+      setMenuOpen(false);
+    };
+    const handlePointerDown = () => setMenuOpen(false);
     document.addEventListener('click', handleClick);
-    document.addEventListener('pointerdown', handleClick);
+    document.addEventListener('pointerdown', handlePointerDown);
     return () => {
       document.removeEventListener('click', handleClick);
-      document.removeEventListener('pointerdown', handleClick);
+      document.removeEventListener('pointerdown', handlePointerDown);
     };
   }, [menuOpen]);
 
@@ -753,7 +769,12 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
           /* 同 AI 分支：portal + touch-none，避免遮罩上的手势被误传成背景滚动 */
           <div
             className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay touch-none overscroll-none"
-            onClick={() => setMenuOpen(false)}
+            onClick={() => {
+              // 长按松手后的合成 click target 会被刚覆盖全屏的遮罩接住，
+              // 不吞掉的话菜单弹出即被自己关闭
+              if (Date.now() - menuOpenedAtRef.current < 500) return;
+              setMenuOpen(false);
+            }}
             onPointerDown={() => setMenuOpen(false)}
             onTouchMove={e => e.preventDefault()}
           />,
@@ -772,9 +793,12 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
             e.preventDefault();
             if (isDesktop && !isElectron()) openMenuAt(e.clientX, e.clientY);
           }}
-          onClick={() => {
-            if (suppressClickRef.current) {
-              suppressClickRef.current = false;
+          onClick={e => {
+            if (Date.now() - suppressClickRef.current < SUPPRESS_WINDOW_MS) {
+              suppressClickRef.current = 0;
+              // 长按松手后的合成 click 若继续冒泡到 document，会被「点击外部
+              // 关闭菜单」的监听器接住，把刚弹出的菜单立刻关掉，这里必须掐断
+              e.stopPropagation();
             }
           }}
         >
@@ -892,7 +916,12 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
            而 touch-action:none 保证落在遮罩上的手势不会传成背景滚动 */
         <div
           className="fixed inset-0 z-[150] bg-black/30 context-menu-overlay touch-none overscroll-none"
-          onClick={() => setMenuOpen(false)}
+          onClick={() => {
+            // 长按松手后的合成 click target 会被刚覆盖全屏的遮罩接住，
+            // 不吞掉的话菜单弹出即被自己关闭
+            if (Date.now() - menuOpenedAtRef.current < 500) return;
+            setMenuOpen(false);
+          }}
           onPointerDown={() => setMenuOpen(false)}
           onTouchMove={e => e.preventDefault()}
         />,
@@ -915,9 +944,12 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
           e.preventDefault();
           if (isDesktop && !isElectron() && !displayIsStreaming && !isStreaming) openMenuAt(e.clientX, e.clientY);
         }}
-        onClick={() => {
-          if (suppressClickRef.current) {
-            suppressClickRef.current = false;
+        onClick={e => {
+          if (Date.now() - suppressClickRef.current < SUPPRESS_WINDOW_MS) {
+            suppressClickRef.current = 0;
+            // 长按松手后的合成 click 若继续冒泡到 document，会被「点击外部
+            // 关闭菜单」的监听器接住，把刚弹出的菜单立刻关掉，这里必须掐断
+            e.stopPropagation();
           }
         }}
       >
@@ -1079,20 +1111,22 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
                 onClick={() => onOpenArtifact?.(displayArtifact)}
                 className="mt-3 p-4 rounded-2xl cursor-pointer hover:brightness-110 transition-all flex items-center gap-3 relative overflow-hidden"
               >
-                {/* 渐变背景层 */}
+                {/* 渐变背景层：顶部色/底部色由 --color-artifact-bg-top/bottom 按模式区分（暗色保持原始样式） */}
                 <div
                   className="absolute inset-0"
                   style={{
-                    background: `linear-gradient(to bottom, color-mix(in srgb, var(--color-accent) 18%, transparent), rgba(25, 25, 25, 0.9))`
+                    background: `linear-gradient(to bottom, var(--color-artifact-bg-top), var(--color-artifact-bg-bottom))`
                   }}
                 />
 
                 {/* 内容层 */}
                 <div className="relative z-10 flex items-center gap-3 w-full">
                   <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-                    <Globe className="w-5 h-5 text-white" />
+                    {/* 浅色模式下由 .artifact-globe-icon 保持白色（深色模式回退原始 text-white） */}
+                    <Globe className="artifact-globe-icon w-5 h-5 text-white" />
                   </div>
                   <div>
+                    {/* 文字用原始类：深色模式白字/灰字；浅色模式由全局 text-white/text-gray-400 覆盖为深色文字 */}
                     <div className="text-white font-medium text-sm">{displayArtifact.title}</div>
                     <div className="text-gray-400 text-xs">点击预览</div>
                   </div>
