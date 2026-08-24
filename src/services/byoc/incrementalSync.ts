@@ -202,14 +202,39 @@ export async function pushLocal(
     pushedConvs: 0, pushedMessages: 0, pushedBlobs: 0,
     pulledConvs: 0, pulledMessages: 0, pulledBlobs: 0, deletedConvs: 0,
   };
-  const localConvs = await listConversations();
+  // 「已应用的云端版本」基准：判断本地条目是否有删除后新产生的未推送数据
+  const applied = await getAppliedVersions();
+  let localConvs = await listConversations();
+
+  // 0. 云端 tombstone 与本地仍存在的会话冲突。旧实现一律清 tombstone，默认
+  //    「本地还在 = 别的设备恢复了它」；但更常见的真实情形是：本轮 pull 读到
+  //    的是 tombstone 写入之前的旧清单（另一端的删除推送恰好夹在本机拉取与
+  //    推送之间），本机只是还没应用删除。此时清 tombstone 会把删除从云端撤销——
+  //    若该会话本地无变更不会被重推，清单里会话与 tombstone 双双消失，而删除
+  //    检测只扫描 manifest.convs，删除传播就此永久中断：仍持有会话的设备
+  //    （如后台挂起后才同步的 iOS PWA）会永远残留已被别端删除的对话。
+  //    因此只有本地确有未推送的新数据（删除之后又改过，数据优先）才撤销
+  //    tombstone；否则以云端删除为准就地删掉本地会话，tombstone 保留继续传播。
+  const tombAppliedConvs = new Set<string>();
+  const keptConvTombs: string[] = [];
+  for (const id of manifest.tombstones.convs) {
+    const local = localConvs.find(c => c.id === id);
+    if (!local) {
+      keptConvTombs.push(id);
+      continue;
+    }
+    if (local.updatedAt > (local.syncedAt ?? 0)) continue; // 数据优先：撤销删除
+    await deleteConversation(id);
+    tombAppliedConvs.add(id);
+    keptConvTombs.push(id);
+  }
+  manifest.tombstones.convs = keptConvTombs;
+  if (tombAppliedConvs.size) {
+    localConvs = localConvs.filter(c => !tombAppliedConvs.has(c.id));
+  }
   const localIds = new Set(localConvs.map(c => c.id));
   const syncedConvs: StoredConversation[] = [];
   const syncedMessages: Array<{ convId: string; msgs: StoredMessage[] }> = [];
-
-  // 0. 删除回退清理：本地还存在的会话，说明别的设备恢复了它（或从未删过），
-  //    旧 tombstone 不再有效——清掉，否则其他设备会"删了又拉"
-  manifest.tombstones.convs = manifest.tombstones.convs.filter(id => !localIds.has(id));
 
   // 1. 删除检测：云端有而本地没有的会话 → tombstone，清理云端对象。
   //    只处理"缓存清单里同步过"或"本机明确删除过"的会话（本地 tombstone
@@ -253,6 +278,19 @@ export async function pushLocal(
     } catch (e) {
       console.warn(`[byoc] 会话 ${convId} 云端对象清理失败（下轮重试）`, e);
     }
+  }
+
+  // 1.5 删除兜底补记：本机明确删过（recordLocalDeletions 记录还在），但云端
+  //     清单里该会话既不在 convs 也没有 tombstone——tombstone 曾被并发推送整体
+  //     覆盖丢失（旧实现的回退逻辑正是这样把删除撤销的）。清单重写时补回去，
+  //     仍残留该会话的设备下一轮拉取即可收到删除。云端清单带上它之后，pull
+  //     阶段会清掉本地记录，不会重复挂账。
+  const pendingTombs = await getLocalTombstones();
+  for (const t of pendingTombs.convs) {
+    if (localIds.has(t.id)) continue;
+    if (manifest.tombstones.convs.includes(t.id)) continue;
+    manifest.tombstones.convs.push(t.id);
+    result.deletedConvs += 1;
   }
 
   // 2. 变更会话
@@ -315,7 +353,22 @@ export async function pushLocal(
   }
 
   // 3. 图片历史：以本地为准推全量索引；云端有而本地没有的记 tombstone（不删对象）
-  const history = await listStoredImageHistory();
+  let history = await listStoredImageHistory();
+  // 云端 tombstone 与本地仍存在的条目冲突：与步骤 0 同理——本地版本不新于
+  // 「已应用的云端版本」说明本机只是还没应用删除：就地删除、tombstone 保留
+  // 传播；本地确有删除后的新数据才撤销删除（数据优先）。必须在上传前判定，
+  // 否则已删条目会被重传云端、tombstone 又被回退清掉（删除被复活）
+  const tombAppliedHist = new Set<string>();
+  for (const id of manifest.tombstones.history) {
+    const item = history.find(h => h.id === id);
+    if (!item) continue;
+    if (localVer(item) > (applied.history[id] ?? 0)) continue; // 数据优先
+    tombAppliedHist.add(id);
+  }
+  for (const id of tombAppliedHist) await deleteImageHistoryItem(id);
+  if (tombAppliedHist.size) {
+    history = history.filter(h => !tombAppliedHist.has(h.id));
+  }
   const historyIds = history.map(h => h.id);
   for (const item of history) {
     await client.putObject(
@@ -353,7 +406,21 @@ export async function pushLocal(
   // 4. 「我的库」资产：以本地为准推全量索引 + 对象；云端有而本地没有的记 tombstone。
   //    assets 目录承载三种 kind；favs 目录保留为 artifact 资产的兼容镜像，让仍运行
   //    旧版本（无 assets store）的设备继续收到 artifact 收藏/删除。
-  const assets = await listStoredAssets();
+  let assets = await listStoredAssets();
+  // 云端 tombstone 与本地仍存在的资产冲突：与步骤 0 同理。favs 镜像与 assets
+  //    的 id 一致，两类 tombstone 一并判定，否则旧设备发的 favs tombstone 会被
+  //    本地副本静默撤销，别端删掉的收藏/资产在这里复活
+  const tombAppliedAssets = new Set<string>();
+  for (const id of new Set([...(manifest.tombstones.assets ?? []), ...manifest.tombstones.favs])) {
+    const asset = assets.find(a => a.id === id);
+    if (!asset) continue;
+    if (asset.updatedAt > (applied.assets[id] ?? 0)) continue; // 数据优先
+    tombAppliedAssets.add(id);
+  }
+  for (const id of tombAppliedAssets) await removeAsset(id);
+  if (tombAppliedAssets.size) {
+    assets = assets.filter(a => !tombAppliedAssets.has(a.id));
+  }
   const assetIds = assets.map(a => a.id);
   for (const asset of assets) {
     await client.putObject(
@@ -421,7 +488,19 @@ export async function pushLocal(
   await client.putObject(syncKey(cfg.prefix, 'favs', 'index.json'), jsonBlob({ ids: favIds }));
 
   // 5. 角色：同上（旧版本清单可能没有 roleIds 字段，读侧一律兜底空数组）
-  const roles = await listStoredRoles();
+  let roles = await listStoredRoles();
+  // 云端 tombstone 与本地仍存在的角色冲突：与步骤 0 同理
+  const tombAppliedRoles = new Set<string>();
+  for (const id of manifest.tombstones.roles ?? []) {
+    const role = roles.find(r => r.id === id);
+    if (!role) continue;
+    if (role.updatedAt > (applied.roles[id] ?? 0)) continue; // 数据优先
+    tombAppliedRoles.add(id);
+  }
+  for (const id of tombAppliedRoles) await deleteRole(id);
+  if (tombAppliedRoles.size) {
+    roles = roles.filter(r => !tombAppliedRoles.has(r.id));
+  }
   const roleIds = roles.map(r => r.id);
   for (const role of roles) {
     const stored: Record<string, unknown> = { ...role };
