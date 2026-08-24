@@ -324,6 +324,19 @@ export const IMAGE_MODELS: Model[] = [
     outputCapabilities: ['image'],
     price: { input: '按张计费', output: '按张计费' },
   },
+  // Pix2Real 自建服务：服务端自己用 Grok 选工作流，前端只暴露这一个入口，
+  // 提示词与参考图全程透传（不做前端提示词优化）
+  {
+    id: 'pix2real-smart',
+    name: 'Pix2Real',
+    provider: 'Pix2Real',
+    type: 'image',
+    maxTokens: 0,
+    contextLength: 0,
+    inputCapabilities: ['text', 'image'],
+    outputCapabilities: ['image'],
+    price: { input: '自建服务', output: '自建服务' },
+  },
 ];
 export const VIDEO_MODELS: Model[] = [];
 export const MUSIC_MODELS: Model[] = [];
@@ -343,6 +356,8 @@ export function getModelsByType(type: Model['type']): Model[] {
 const IMAGE_MODEL_PROVIDER_BY_GATEWAY: Record<string, string[]> = {
   fastapi: ['OpenAI', 'Google'],
   falai: ['Fal AI'],
+  // Pix2Real 只有一个入口（服务端自动选工作流），所以选择器里只会出现一个选项
+  pix2real: ['Pix2Real'],
 };
 
 /** 当前图片提供商（网关 id）下可用的图片模型列表 */

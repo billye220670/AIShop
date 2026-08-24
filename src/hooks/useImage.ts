@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { ImageGenerationParams, ImageHistoryItem, PendingImageTask } from '../types';
 import { IMAGE_MODELS } from '../config/models';
 import { generateImage as apiGenerateImage } from '../services/imageApi';
+import { PIX2REAL_MODEL_ID, PIX2REAL_MAX_IMAGES } from '../services/pix2realApi';
 import {
   listImageHistory,
   putImageHistoryItem,
@@ -40,12 +41,16 @@ function getDefaultSize(modelId: string): string {
 function getDefaultAspectRatio(modelId: string): string {
   // GPT 不使用 aspect_ratio，统一占位 'auto'
   if (isGptModel(modelId)) return 'auto';
+  // Pix2Real 的比例由服务端按工作流决定，同样占位 'auto'
+  if (modelId === PIX2REAL_MODEL_ID) return 'auto';
   return '1:1';
 }
 function getMaxUploadCount(modelId: string): number {
   if (isGptModel(modelId)) return 1;
   if (isGoogleModel(modelId)) return 14;
   if (isFalModel(modelId)) return 3;
+  // Pix2Real：smart-tasks 最多吃 2 张参考图（第一张主图、第二张脸图）
+  if (modelId === PIX2REAL_MODEL_ID) return PIX2REAL_MAX_IMAGES;
   return 1;
 }
 
@@ -256,6 +261,8 @@ export function useImage() {
 
   const aspectRatioOptions = useMemo(() => {
     if (isGptModel(selectedModel)) return ['auto'];
+    // Pix2Real：比例由服务端按选中的工作流决定，前端不提供选项
+    if (selectedModel === PIX2REAL_MODEL_ID) return ['auto'];
     // Google
     return isEditMode ? ['auto', ...GOOGLE_ASPECT_RATIOS] : [...GOOGLE_ASPECT_RATIOS];
   }, [selectedModel, isEditMode]);

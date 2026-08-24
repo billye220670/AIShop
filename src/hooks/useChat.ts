@@ -39,6 +39,13 @@ import { generateTitle } from '../services/titleGenerator';
 import { searchWeb, formatSearchResultsForContext } from '../services/webSearch';
 import { judgeSearchNeed } from '../services/searchJudge';
 import { judgeImageIntent } from '../services/imageIntentJudge';
+import {
+  generateViaPix2Real,
+  PIX2REAL_MODEL_ID,
+  PIX2REAL_PROVIDER,
+  PIX2REAL_MAX_IMAGES,
+  Pix2RealClarificationError,
+} from '../services/pix2realApi';
 import { AUTO_MODEL_ID, ROUTER_MODEL, judgeRoute, quickAnswer } from '../services/routeJudge';
 import { optimizeImagePrompt } from '../services/promptOptimizer';
 import { generateImage as apiGenerateImage, processImage as apiProcessImage, type ImageProcessKind } from '../services/imageApi';
@@ -673,6 +680,132 @@ export function useChat() {
       });
   }, []);
 
+  /**
+   * Pix2Real 生图分支：**提示词与参考图全程透传**。
+   *
+   * Pix2Real 服务端自己带 Grok 路由——它读用户原话来选工作流、补参数、必要时反问。
+   * 前端再做一轮提示词优化会破坏它的判断依据，所以这里既不调 optimizeImagePrompt，
+   * 也不拼「参考图说明」，更不挑比例/尺寸（这些都由服务端按工作流决定）。
+   * 特殊处理（放大/抠图）同样交给服务端路由，不走 Fal 的 processImage 分支。
+   *
+   * 参考图顺序有语义（第一张主图、第二张脸图）：用户本条上传的图在前，
+   * 需要延续上一张 AI 图时把它接在后面，与其余分支的顺序约定保持一致。
+   */
+  const runPix2RealGeneration = useCallback(
+    async (args: {
+      userText: string;
+      reply?: string;
+      editImages?: string[];
+      editPrevious: boolean;
+      messages: Message[];
+      userMessage: Message;
+      assistantMessage: Message;
+      convId: string;
+    }): Promise<void> => {
+      const {
+        userText, reply, editImages, editPrevious,
+        messages: history, userMessage, assistantMessage, convId,
+      } = args;
+      const assistantMessageId = assistantMessage.id;
+
+      let prevAiImages: string[] | undefined;
+      if (editPrevious) {
+        for (let i = history.length - 1; i >= 0; i--) {
+          const m = history[i];
+          if (m.role === 'assistant' && m.generatedImages && m.generatedImages.length > 0) {
+            prevAiImages = m.generatedImages;
+            break;
+          }
+        }
+      }
+      const hasEditImages = !!editImages && editImages.length > 0;
+      const refSource = hasEditImages && editImages
+        ? (editPrevious && prevAiImages ? [...editImages, ...prevAiImages] : editImages)
+        : prevAiImages;
+
+      const confirmReply = reply
+        || (refSource && refSource.length > 0 ? CHAT_IMAGE_EDIT_REPLY_FALLBACK : CHAT_IMAGE_REPLY_FALLBACK);
+      // prompt 记原话：这就是真正发给服务端的内容，回显时不该看到被改写过的版本
+      const genMeta = { model: PIX2REAL_MODEL_ID, prompt: userText, aspectRatio: 'auto' };
+
+      // 1) 先落确认回复，并在气泡下方挂起骨架
+      updateActiveConversation(conv => {
+        const updated = [...conv.messages];
+        const lastIdx = updated.length - 1;
+        updated[lastIdx] = {
+          ...updated[lastIdx],
+          content: confirmReply,
+          isStreaming: false,
+          imageGenerating: true,
+          generatedImage: genMeta,
+        };
+        return { ...conv, messages: updated, updatedAt: Date.now() };
+      });
+
+      // 新会话第一轮对聊完成，立即生成标题（与 LLM 流式完成后的行为一致）。
+      // 用入参拼消息而不是读 conversationsRef：上面的 setState 可能还没落到 ref 上。
+      if (history.length === 0) {
+        const snapshot = conversationsRef.current.find(c => c.id === convId);
+        if (snapshot && !snapshot.isRenamed && snapshot.title === '新对话') {
+          triggerTitleGeneration({
+            ...snapshot,
+            messages: [
+              ...history,
+              userMessage,
+              { ...assistantMessage, content: confirmReply, isStreaming: false },
+            ],
+          });
+        }
+      }
+
+      // 2) 非阻塞发起生成，骨架期间保持显示
+      void (async () => {
+        try {
+          // 参考图落盘后是 aishop-blob: 引用，先还原成 data URL 再透传
+          let images: string[] = [];
+          if (refSource && refSource.length > 0) {
+            const inlined = await inlineBlobsForApi(
+              refSource.map(url => ({ type: 'image_url' as const, image_url: { url } }))
+            );
+            images = (Array.isArray(inlined) ? inlined : [])
+              .map(p => (p.type === 'image_url' ? p.image_url?.url || '' : ''))
+              .filter(Boolean);
+          }
+          const result = await generateViaPix2Real(userText, images);
+          // 服务端选了哪个工作流是有用信息，附在确认回复后面；
+          // 超上限被丢掉的参考图也要明说，不能默默少传
+          const notes: string[] = [];
+          if (result.droppedImages > 0) {
+            notes.push(`（Pix2Real 最多支持 ${PIX2REAL_MAX_IMAGES} 张参考图，已用前 ${PIX2REAL_MAX_IMAGES} 张）`);
+          }
+          if (result.reason) notes.push(result.reason);
+          patchMessage(convId, assistantMessageId, {
+            imageGenerating: false,
+            generatedImages: result.urls,
+            generatedImage: genMeta,
+            ...(notes.length > 0 ? { content: `${confirmReply}\n\n${notes.join('\n')}` } : {}),
+          });
+        } catch (err) {
+          // 服务端判定素材不足：把追问原样落成 AI 回复，不显示成生成失败
+          if (err instanceof Pix2RealClarificationError) {
+            patchMessage(convId, assistantMessageId, {
+              imageGenerating: false,
+              content: err.message,
+              generatedImage: undefined,
+            });
+            return;
+          }
+          patchMessage(convId, assistantMessageId, {
+            imageGenerating: false,
+            imageGenerateError:
+              err instanceof Error ? err.message : '图片生成失败，请稍后重试',
+          });
+        }
+      })();
+    },
+    [updateActiveConversation, patchMessage, triggerTitleGeneration]
+  );
+
   const setCompactSettings = useCallback((patch: Partial<typeof compactSettings>) => {
     settingsService.setCompactSettings(patch);
     setCompactSettingsState(settingsService.getCompactSettings());
@@ -881,6 +1014,24 @@ export function useChat() {
         );
 
         if (imageIntent.needImage) {
+          // Pix2Real 提供商：服务端自带 Grok 路由，会读用户原话选工作流、补参数。
+          // 前端再做提示词优化只会破坏它的判断依据，因此这条分支全程透传原话与原图，
+          // 也不走 upscale/bgRemove 的 Fal 专用分支（放大/抠图同样交给服务端路由）。
+          const imageProvider = await settingsService.getProvider('image');
+          if (imageProvider === PIX2REAL_PROVIDER) {
+            await runPix2RealGeneration({
+              userText,
+              reply: imageIntent.reply,
+              editImages,
+              editPrevious: imageIntent.editPrevious === true,
+              messages,
+              userMessage,
+              assistantMessage,
+              convId: activeId,
+            });
+            return; // Pix2Real 路径不走 LLM 流式
+          }
+
           // 判断为"修改/合并上一张 AI 图"：从历史里找最近一条带 generatedImages 的 AI 消息
           let prevAiImages: string[] | undefined;
           if (imageIntent.editPrevious) {
@@ -1354,7 +1505,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [messages, selectedModel, updateActiveConversation, patchMessage, webSearchEnabled, featureSettings, activeId, compactSettings, compactConversation, triggerTitleGeneration, roles, selectedRoleId]
+    [messages, selectedModel, updateActiveConversation, patchMessage, webSearchEnabled, featureSettings, activeId, compactSettings, compactConversation, triggerTitleGeneration, runPix2RealGeneration, roles, selectedRoleId]
   );
 
   const stopGeneration = useCallback(() => {

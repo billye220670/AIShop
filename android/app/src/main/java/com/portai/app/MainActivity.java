@@ -36,6 +36,16 @@ public class MainActivity extends BridgeActivity {
     private volatile String pendingGalleryCallback = null;
     private volatile boolean galleryPermissionAsked = false;
 
+    /** Pix2Real 原生 HTTP 桥是否已注册 */
+    private volatile boolean nativeHttpBridgeRegistered = false;
+    /** 原生 HTTP 请求线程池：@JavascriptInterface 方法跑在 WebView JS 线程，网络 I/O 必须挪走 */
+    private final java.util.concurrent.ExecutorService httpExecutor =
+        java.util.concurrent.Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "portai-native-http");
+            t.setDaemon(true);
+            return t;
+        });
+
     /** 相册写权限请求（仅 Android 9 及以下走此路径） */
     private final androidx.activity.result.ActivityResultLauncher<String[]> galleryPermissionLauncher =
         registerForActivityResult(
@@ -102,6 +112,174 @@ public class MainActivity extends BridgeActivity {
         @android.webkit.JavascriptInterface
         public void singleStrongTap() {
             view.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK);
+        }
+    }
+
+    /**
+     * 原生 HTTP 桥：Pix2Real 自建服务的 CORS 没对 WebView origin（https://localhost）放开，
+     * 预检不返回 Access-Control-Allow-Origin，浏览器 fetch 直接被拦（与明文拦截同报"无法连接"）。
+     * 原生 HttpURLConnection 不受同源策略约束，Pix2Real 的请求在安卓上全部走这里。
+     * 回调统一 cb(payload JSON)：成功 {status, body|base64}，网络异常 {error}。
+     */
+    private class NativeHttpBridge {
+
+        /** GET / POST JSON：bodyJson 为 null → GET，否则 POST application/json */
+        @android.webkit.JavascriptInterface
+        public void fetchText(String method, String url, String apiKey, String bodyJson, String callbackName) {
+            httpExecutor.execute(() -> {
+                java.net.HttpURLConnection conn = null;
+                try {
+                    conn = openConn(url, apiKey);
+                    conn.setRequestMethod("GET".equalsIgnoreCase(method) ? "GET" : "POST");
+                    if (bodyJson != null) {
+                        conn.setDoOutput(true);
+                        conn.setRequestProperty("Content-Type", "application/json");
+                        try (java.io.OutputStream os = conn.getOutputStream()) {
+                            os.write(bodyJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        }
+                    }
+                    replyText(callbackName, conn);
+                } catch (Exception e) {
+                    replyHttpError(callbackName, e);
+                    if (conn != null) conn.disconnect();
+                }
+            });
+        }
+
+        /** multipart 直传（字段名 images 可重复，与 curl -F 一致）；images 为 JSON 数组 [{dataUrl, filename}] */
+        @android.webkit.JavascriptInterface
+        public void postMultipart(String url, String apiKey, String prompt, String imagesJson, String callbackName) {
+            httpExecutor.execute(() -> {
+                java.net.HttpURLConnection conn = null;
+                try {
+                    String boundary = "----PortAI" + Long.toHexString(System.nanoTime());
+                    conn = openConn(url, apiKey);
+                    conn.setRequestMethod("POST");
+                    conn.setDoOutput(true);
+                    conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                    try (java.io.OutputStream os = conn.getOutputStream()) {
+                        writePart(os, boundary, "prompt", null, null,
+                                prompt.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        org.json.JSONArray arr = new org.json.JSONArray(imagesJson == null ? "[]" : imagesJson);
+                        for (int i = 0; i < arr.length(); i++) {
+                            org.json.JSONObject it = arr.getJSONObject(i);
+                            String dataUrl = it.optString("dataUrl", "");
+                            byte[] bytes = decodeDataUrl(dataUrl);
+                            if (bytes == null) continue;
+                            String filename = it.optString("filename", "image-" + (i + 1) + ".jpg");
+                            writePart(os, boundary, "images", filename, mimeOfDataUrl(dataUrl, filename), bytes);
+                        }
+                        os.write(("--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    }
+                    replyText(callbackName, conn);
+                } catch (Exception e) {
+                    replyHttpError(callbackName, e);
+                    if (conn != null) conn.disconnect();
+                }
+            });
+        }
+
+        /** 字节下载（带 key 取服务端本机结果图）→ {status, contentType, base64} */
+        @android.webkit.JavascriptInterface
+        public void fetchBytes(String url, String apiKey, String callbackName) {
+            httpExecutor.execute(() -> {
+                java.net.HttpURLConnection conn = null;
+                try {
+                    conn = openConn(url, apiKey);
+                    conn.setRequestMethod("GET");
+                    int status = conn.getResponseCode();
+                    java.io.InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+                    byte[] bytes = is == null ? new byte[0] : readAll(is);
+                    org.json.JSONObject payload = new org.json.JSONObject();
+                    payload.put("status", status);
+                    payload.put("contentType", String.valueOf(conn.getContentType()));
+                    payload.put("base64", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP));
+                    replyHttp(callbackName, payload);
+                } catch (Exception e) {
+                    replyHttpError(callbackName, e);
+                } finally {
+                    if (conn != null) conn.disconnect();
+                }
+            });
+        }
+    }
+
+    /** 带 x-api-key 与超时的连接（读超时放宽到 120s：工作流 5/10 提交前同步跑 SAM） */
+    private java.net.HttpURLConnection openConn(String url, String apiKey) throws java.io.IOException {
+        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(120000);
+        if (apiKey != null && !apiKey.isEmpty()) conn.setRequestProperty("x-api-key", apiKey);
+        return conn;
+    }
+
+    /** 写一个 multipart part：filename 为 null 时是普通表单字段，否则是文件字段 */
+    private void writePart(java.io.OutputStream os, String boundary, String name, String filename,
+                           String mime, byte[] data) throws java.io.IOException {
+        StringBuilder head = new StringBuilder("--").append(boundary).append("\r\n");
+        if (filename != null) {
+            head.append("Content-Disposition: form-data; name=\"").append(name)
+                .append("\"; filename=\"").append(filename).append("\"\r\n");
+            head.append("Content-Type: ").append(mime).append("\r\n");
+        } else {
+            head.append("Content-Disposition: form-data; name=\"").append(name).append("\"\r\n");
+        }
+        head.append("\r\n");
+        os.write(head.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        os.write(data);
+        os.write("\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /** mime：优先取 data URL 前缀，取不到按文件名后缀猜 */
+    private String mimeOfDataUrl(String dataUrl, String filename) {
+        if (dataUrl != null && dataUrl.startsWith("data:")) {
+            int semi = dataUrl.indexOf(';');
+            if (semi > 5) return dataUrl.substring(5, semi);
+        }
+        return guessMime(filename);
+    }
+
+    /** 读状态码与响应体（非 2xx 读 errorStream），回调 {status, body} */
+    private void replyText(String callbackName, java.net.HttpURLConnection conn) {
+        try {
+            int status = conn.getResponseCode();
+            java.io.InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String body = is == null ? "" : new String(readAll(is), java.nio.charset.StandardCharsets.UTF_8);
+            org.json.JSONObject payload = new org.json.JSONObject();
+            payload.put("status", status);
+            payload.put("body", body);
+            replyHttp(callbackName, payload);
+        } catch (Exception e) {
+            replyHttpError(callbackName, e);
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    private byte[] readAll(java.io.InputStream is) throws java.io.IOException {
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        int n;
+        while ((n = is.read(chunk)) > 0) buf.write(chunk, 0, n);
+        is.close();
+        return buf.toByteArray();
+    }
+
+    private void replyHttp(String callbackName, org.json.JSONObject payload) {
+        wvRun(() -> {
+            WebView wv = getBridge().getWebView();
+            if (wv == null) return;
+            wv.evaluateJavascript(callbackName + "(" + payload + ")", null);
+        });
+    }
+
+    private void replyHttpError(String callbackName, Exception e) {
+        try {
+            org.json.JSONObject payload = new org.json.JSONObject();
+            payload.put("error", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            replyHttp(callbackName, payload);
+        } catch (org.json.JSONException ignored) {
+            // JSON 组装失败时无路可退，丢弃该回调
         }
     }
 
@@ -393,6 +571,11 @@ public class MainActivity extends BridgeActivity {
         if (!galleryBridgeRegistered) {
             webView.addJavascriptInterface(new GalleryBridge(), "AndroidGallery");
             galleryBridgeRegistered = true;
+        }
+
+        if (!nativeHttpBridgeRegistered) {
+            webView.addJavascriptInterface(new NativeHttpBridge(), "AndroidNativeHttp");
+            nativeHttpBridgeRegistered = true;
         }
 
         if (!nativeLongPressDisabled) {

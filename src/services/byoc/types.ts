@@ -110,6 +110,8 @@ export interface SyncManifestV1 {
 export interface SyncedSettings {
   providers: { llm: string; image: string; search: string };
   apiKeys: Record<string, string>;
+  /** 自建提供商服务地址（如 Pix2Real）；旧版本云端数据没有此字段，读侧按缺省处理 */
+  baseUrls?: Record<string, string>;
 }
 
 /** 本地 API 设置变更后触发立即同步的事件名（设置写入侧 dispatch，同步调度侧监听） */

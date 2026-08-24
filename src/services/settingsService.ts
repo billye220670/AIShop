@@ -23,6 +23,8 @@ export interface CompactSettings {
 export interface AppSettings {
   providers: ProviderConfig;
   apiKeys: Record<string, string>;
+  /** 自建类提供商的服务地址覆盖（provider id → baseUrl）；未配置时用 config/providers 的内置默认值 */
+  baseUrls?: Record<string, string>;
   compact?: CompactSettings;
   /** BYOC 云同步配置（自带 S3 兼容存储） */
   byoc?: ByocConfig;
@@ -103,6 +105,25 @@ export const settingsService = {
     notifySettingsChanged();
   },
 
+  /** 自建提供商的服务地址；未配置返回空串，由调用方回落内置默认值 */
+  async getBaseUrl(provider: string): Promise<string> {
+    return (getLocalSettings().baseUrls?.[provider] || '').trim();
+  },
+
+  async setBaseUrl(provider: string, baseUrl: string): Promise<void> {
+    const settings = getLocalSettings();
+    const next = { ...(settings.baseUrls || {}) };
+    const trimmed = baseUrl.trim();
+    if (trimmed) {
+      next[provider] = trimmed;
+    } else {
+      delete next[provider];
+    }
+    settings.baseUrls = next;
+    saveLocalSettings(settings);
+    notifySettingsChanged();
+  },
+
   async getAllSettings(): Promise<AppSettings> {
     return getLocalSettings();
   },
@@ -156,6 +177,7 @@ export const settingsService = {
         search: settings.providers.search || DEFAULT_PROVIDERS.search,
       },
       apiKeys: { ...settings.apiKeys },
+      baseUrls: { ...(settings.baseUrls || {}) },
     };
   },
 
@@ -167,6 +189,8 @@ export const settingsService = {
     const settings = getLocalSettings();
     settings.providers = { ...DEFAULT_PROVIDERS, ...synced.providers };
     settings.apiKeys = { ...synced.apiKeys };
+    // 旧版本云端数据没有 baseUrls，保留本机已配值，避免同步把自建地址清空
+    if (synced.baseUrls) settings.baseUrls = { ...synced.baseUrls };
     saveLocalSettings(settings);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(SETTINGS_SYNCED_EVENT));

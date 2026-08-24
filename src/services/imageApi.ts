@@ -1,6 +1,7 @@
 import type { ImageGenerationParams } from '../types';
 import { settingsService } from './settingsService';
 import { getProviderConfig } from '../config/providers';
+import { generateViaPix2Real, PIX2REAL_MODEL_ID } from './pix2realApi';
 
 // 模型 → 上游 endpoint 路径映射
 const IMAGE_ENDPOINTS: Record<string, { textToImage: string; edit: string }> = {
@@ -192,6 +193,13 @@ export async function generateImage(
   }
   if (!prompt || !prompt.trim()) {
     throw new Error('Missing required field: prompt');
+  }
+
+  // Pix2Real：自建服务，走 smart-tasks 智能任务协议（服务端选工作流）。
+  // 提示词与参考图在这里全程透传，调用方已保证不做优化。
+  if (model === PIX2REAL_MODEL_ID) {
+    const result = await generateViaPix2Real(prompt, images || [], signal);
+    return result.urls;
   }
 
   // API 网关由模型本身决定：fal- 前缀模型走 Fal AI 网关；其余模型的 endpoint 均由

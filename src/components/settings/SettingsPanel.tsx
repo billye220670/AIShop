@@ -8,6 +8,7 @@ import { THEMES } from '../../config/themes';
 import { loadTheme, saveTheme, loadMode, saveMode, type ColorMode } from '../../services/storage';
 import { syncElectronTitleBar } from '../../utils/electronTitleBar';
 import { CHAT_MODELS } from '../../config/models';
+import { PIX2REAL_DEFAULT_BASE_URL } from '../../config/providers';
 import DataSettings from './DataSettings';
 import ByocSettings from './ByocSettings';
 import { getByocConfig, validateConfig, SETTINGS_SYNCED_EVENT } from '../../services/byoc';
@@ -26,6 +27,7 @@ const PROVIDER_OPTIONS: Record<string, { value: string; label: string }[]> = {
   image: [
     { value: 'fastapi', label: '接口 AI' },
     { value: 'falai', label: 'Fal AI' },
+    { value: 'pix2real', label: 'Pix2Real' },
   ],
   search: [
     { value: 'bocha', label: '博查 AI 搜索' },
@@ -50,6 +52,8 @@ export default function SettingsPanel() {
     search: 'bocha',
   });
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  // 自建提供商（Pix2Real）的服务地址；留空则用内置默认值
+  const [baseUrls, setBaseUrls] = useState<Record<string, string>>({});
 
   // 主题状态
   const [selectedTheme, setSelectedTheme] = useState<string>('purple');
@@ -66,12 +70,14 @@ export default function SettingsPanel() {
     settingsService.getAllSettings().then(settings => {
       setProviders(settings.providers);
       setApiKeys({ ...settings.apiKeys });
+      setBaseUrls({ ...(settings.baseUrls || {}) });
     });
     // BYOC 同步拉回云端 API 设置时重读（换设备场景：配好 BYOC 后 key 自动带过来）
     const onSettingsSynced = () => {
       settingsService.getAllSettings().then(settings => {
         setProviders(settings.providers);
         setApiKeys({ ...settings.apiKeys });
+        setBaseUrls({ ...(settings.baseUrls || {}) });
       });
     };
     window.addEventListener(SETTINGS_SYNCED_EVENT, onSettingsSynced);
@@ -150,6 +156,12 @@ export default function SettingsPanel() {
     settingsService.setApiKey(provider, value);
   };
 
+  // 修改自建提供商服务地址并自动保存（留空即回落内置默认值）
+  const handleBaseUrlChange = (provider: string, value: string) => {
+    setBaseUrls(prev => ({ ...prev, [provider]: value }));
+    void settingsService.setBaseUrl(provider, value);
+  };
+
   const TABS: { key: SettingsTab; label: string; desc: string; Icon: typeof MessageSquare }[] = [
     { key: 'api', label: 'API 配置', desc: 'LLM、图片与搜索提供商', Icon: KeyRound },
     { key: 'context', label: '上下文', desc: '自动压缩与摘要设置', Icon: MessageCircle },
@@ -220,6 +232,9 @@ export default function SettingsPanel() {
   // 提供商分支使用的分类（已排除位置信息，key 收窄为 keyof ProviderConfig，供 JSX 闭包内安全引用）
   const activeCat = activeCategory && activeCategory.key !== 'location' ? activeCategory : null;
   const activeApiKey = activeCategory ? (apiKeys[activeProvider] ?? '') : '';
+  // Pix2Real 是自建服务，地址随部署（本机 / frp 公网）变化，需要额外一个地址输入框
+  const needsBaseUrl = activeProvider === 'pix2real';
+  const activeBaseUrl = needsBaseUrl ? (baseUrls[activeProvider] ?? '') : '';
 
   // 移动端为通栏布局：页面背景需与底部菜单栏一致（bg-base）；桌面端是悬浮卡片，保留提亮一档的 bg-primary
   // settings-panel 标识：浅色模式下卡片背景与分割线整体再淡一档（见 index.css [data-mode="light"] 覆盖）
@@ -526,6 +541,26 @@ export default function SettingsPanel() {
                 placeholder="输入 API Key"
                 className="w-full bg-white/5 border border-[var(--color-border)] rounded-lg px-3 py-3.5 pr-10 text-sm text-white placeholder-gray-500 focus:border-[var(--color-accent)] focus:outline-none transition-colors"
               />
+
+              {/* 自建提供商服务地址（Pix2Real）：留空用默认本机地址 */}
+              {needsBaseUrl && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={activeBaseUrl}
+                    onChange={e => handleBaseUrlChange(activeProvider, e.target.value)}
+                    placeholder={PIX2REAL_DEFAULT_BASE_URL}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="w-full bg-white/5 border border-[var(--color-border)] rounded-lg px-3 py-3.5 text-sm text-white placeholder-gray-500 focus:border-[var(--color-accent)] focus:outline-none transition-colors"
+                  />
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Pix2Real 服务地址。留空使用本机默认 {PIX2REAL_DEFAULT_BASE_URL}；
+                    公网接入填 http://VPS_IP:3000/api/v1。
+                  </p>
+                </div>
+              )}
             </div>
           ) : null}
         </div>

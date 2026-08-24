@@ -18,6 +18,45 @@ import { isNativeAndroid } from '../platform/capabilities';
 import { detectPlatform } from '../utils/pwa';
 import { saveImageToAndroidGallery } from '../utils/androidGallery';
 
+/**
+ * 安卓壳：远程图片走原生 HTTP 桥下载成 data URL。
+ * WebView origin 是 https://localhost，fetch 跨域图（如 Pix2Real 的 COS 预签名直链）
+ * 拿不到对方的 CORS 头必被拦（报 Failed to fetch）；原生 HttpURLConnection 不受限。
+ * 桥不存在时返回 null，调用方退回浏览器 fetch。
+ */
+async function fetchRemoteImageViaNative(url: string): Promise<string | null> {
+  const bridge = (window as unknown as {
+    AndroidNativeHttp?: { fetchBytes: (url: string, apiKey: string, cb: string) => void };
+  }).AndroidNativeHttp;
+  if (!bridge?.fetchBytes) return null;
+
+  const cbName = `__img_dl_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
+  type Payload = { status?: number; base64?: string; contentType?: string; error?: string };
+  const payload = await new Promise<Payload>((resolve, reject) => {
+    const w = window as unknown as Record<string, unknown>;
+    const timer = setTimeout(() => { delete w[cbName]; reject(new Error('图片下载超时')); }, 60_000);
+    w[cbName] = (p: Payload) => {
+      clearTimeout(timer);
+      delete w[cbName];
+      if (p?.error) reject(new Error(p.error));
+      else resolve(p || {});
+    };
+    try {
+      // 预签名直链自带鉴权，apiKey 传空（原生侧非空才加 x-api-key 头）
+      bridge.fetchBytes(url, '', cbName);
+    } catch (e) {
+      clearTimeout(timer);
+      delete w[cbName];
+      reject(e instanceof Error ? e : new Error(String(e)));
+    }
+  });
+  const status = payload.status ?? 0;
+  if (!(status >= 200 && status < 300)) throw new Error(`图片读取失败: ${status}`);
+  const ct = payload.contentType || 'image/png';
+  const mime = ct.startsWith('image/') ? ct.split(';')[0] : 'image/png';
+  return `data:${mime};base64,${payload.base64 || ''}`;
+}
+
 /** 把任意形态的图片 src 解析成 data URL；失败抛错 */
 export async function resolveImageDataUrl(src: string): Promise<string> {
   if (src.startsWith('data:')) return src;
@@ -29,6 +68,11 @@ export async function resolveImageDataUrl(src: string): Promise<string> {
     if (!rec) throw new Error('图片不存在');
     blob = rec.blob;
   } else {
+    // 安卓壳优先原生通道下载（绕开 CORS）；拿不到桥再退回浏览器 fetch
+    if (isNativeAndroid() && /^https?:\/\//i.test(src)) {
+      const dataUrl = await fetchRemoteImageViaNative(src);
+      if (dataUrl) return dataUrl;
+    }
     const res = await fetch(src);
     if (!res.ok) throw new Error('图片读取失败');
     blob = await res.blob();
