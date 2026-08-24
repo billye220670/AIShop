@@ -553,14 +553,22 @@ export function useChat() {
    * 变更后自动同步（BYOC）：对话数据一变就防抖触发，3 秒内合并多次变更成一次。
    * 动作与侧栏「同步」按钮一致：先拉后推 + 重载会话列表。
    * 未启用/配置不完整时跳过，scheduleAutoSync 的 60 秒轮询继续兜底。
+   *
+   * 原本「跳过即放弃」的两种情形改为短间隔重试，避免一等就是 60 秒轮询：
+   * - 流式进行中：3 秒后重新挂号，直到流式结束（等效于流式一结束就补同步）；
+   * - 同步失败：最多重试 2 次（间隔 3 秒），再往后才交给 60 秒轮询。
    */
+  const syncRetryRef = useRef(0);
   useEffect(() => {
     if (pendingSyncTick === 0) return;
     const timer = setTimeout(() => {
-      // 流式进行中（含带图请求的上传与等待首 token）跳过本轮：同步会
+      // 流式进行中（含带图请求的上传与等待首 token）不抢带宽：同步会
       // 抢占移动端带宽拖垮大请求体，reloadConversations 还会用库里快照
-      // 替换正在流式的内存状态。60 秒轮询 countPending 会兜底补同步。
-      if (abortControllerRef.current) return;
+      // 替换正在流式的内存状态。但也不放弃：3 秒后重新挂号，流式结束自然补上。
+      if (abortControllerRef.current) {
+        setPendingSyncTick(t => t + 1);
+        return;
+      }
       const cfg = getByocConfig();
       if (!cfg.enabled || validateConfig(cfg)) return;
       void (async () => {
@@ -572,8 +580,16 @@ export function useChat() {
           // 这一轮同步同样可能拉到别端的资产/角色/图片历史，
           // 不广播的话「我的库」与角色列表不会刷新（只有 safeSync 会发）。
           window.dispatchEvent(new CustomEvent(BYOC_SYNC_DONE_EVENT));
+          syncRetryRef.current = 0;
         } catch (e) {
-          console.warn('[useChat] 变更后自动同步失败（稍后轮询兜底）', e);
+          console.warn('[useChat] 变更后自动同步失败', e);
+          // 失败短间隔重试：最多补 2 次，之后交给 60 秒轮询兜底
+          if (syncRetryRef.current < 2) {
+            syncRetryRef.current += 1;
+            setPendingSyncTick(t => t + 1);
+          } else {
+            syncRetryRef.current = 0;
+          }
         }
       })();
     }, 3000);
@@ -1689,6 +1705,21 @@ export function useChat() {
       // 删除动作发生时立即落本地 tombstone：即使本次自动同步失败，
       // 60 秒轮询的 countPending 也能感知删除并兜底传播，不会静默丢失。
       await recordLocalDeletions(ids).catch(() => undefined);
+
+      // 删除低频且确定性强：tombstone 立即推云端，不等 3 秒防抖，也不因流式跳过
+      // （推送体积极小；reloadConversations 对流式状态有合并保护，由事件广播触发）。
+      // 上面的 pendingSyncTick 同时充当重试：这轮失败时 3 秒防抖轮会接着补。
+      void (async () => {
+        const cfg = getByocConfig();
+        if (!cfg.enabled || validateConfig(cfg)) return;
+        try {
+          await flushPendingWrites();
+          await syncNow(cfg);
+          window.dispatchEvent(new CustomEvent(BYOC_SYNC_DONE_EVENT));
+        } catch (e) {
+          console.warn('[useChat] 删除后即时同步失败（防抖轮与轮询兜底）', e);
+        }
+      })();
 
       const remaining = conversationsRef.current.filter(c => !idSet.has(c.id));
       if (remaining.length === 0) {
