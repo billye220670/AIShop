@@ -11,7 +11,7 @@ import { CHAT_MODELS } from '../../config/models';
 import { PIX2REAL_DEFAULT_BASE_URL } from '../../config/providers';
 import DataSettings from './DataSettings';
 import ByocSettings from './ByocSettings';
-import { getByocConfig, validateConfig, SETTINGS_SYNCED_EVENT } from '../../services/byoc';
+import { getByocConfig, testConnection, validateConfig, SETTINGS_SYNCED_EVENT } from '../../services/byoc';
 import CustomSelect from '../common/CustomSelect';
 import { haptic } from '../../utils/haptics';
 import { useDeviceMode } from '../../platform/useDeviceMode';
@@ -183,6 +183,17 @@ export default function SettingsPanel() {
     };
     window.addEventListener('aishop:byoc-connection-status', handler);
     return () => window.removeEventListener('aishop:byoc-connection-status', handler);
+  }, []);
+
+  // 挂载（进入设置面板）即检测一次 BYOC 连通性：否则只有进 BYOC 页（ByocSettings 挂载）才触发检测，
+  // 一级列表的对勾/警告图标要进出一次才显示
+  useEffect(() => {
+    if (validateConfig(getByocConfig()) !== null) return; // 配置不完整：保持未检测（不显示图标）
+    let alive = true;
+    testConnection()
+      .then(() => { if (alive) setByocStatus(true); })
+      .catch(() => { if (alive) setByocStatus(false); });
+    return () => { alive = false; };
   }, []);
 
   const openTab = (tab: (typeof TABS)[number]) => {
