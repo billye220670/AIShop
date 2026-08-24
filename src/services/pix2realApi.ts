@@ -13,7 +13,7 @@
  */
 import { settingsService } from './settingsService';
 import { PIX2REAL_DEFAULT_BASE_URL } from '../config/providers';
-import { isNativeAndroid } from '../platform/capabilities';
+import { isNativeAndroid, isNativePlatform, isElectron } from '../platform/capabilities';
 
 /** 提供商 id，与设置面板 / 模型归属映射共用 */
 export const PIX2REAL_PROVIDER = 'pix2real';
@@ -70,6 +70,24 @@ async function ensureNativeHttp(): Promise<AndroidNativeHttpBridge | undefined> 
   }
   if (!bridge) console.error('[pix2real] 警告:检测到安卓壳但 AndroidNativeHttp 桥未注入,将退回浏览器 fetch');
   return bridge;
+}
+
+/**
+ * Web 版（https 页面，如 Vercel 部署的 PWA）走同源代理转发。
+ * 浏览器对 https 页有两道墙：fetch http 自建服务被混合内容拦截；
+ * 服务端 CORS 未放行时跨域也被拦——客户端无解，交给 /api/pix2real-proxy
+ * （Vercel serverless 函数）服务端转发。真实目标地址放 x-p2r-url 头。
+ * Electron（file:// 不受限）/ 原生壳（安卓走原生桥）/ http 本地开发保持直连。
+ */
+function p2rFetch(target: string, init: RequestInit = {}): Promise<Response> {
+  const needProxy = typeof location !== 'undefined'
+    && location.protocol === 'https:'
+    && !isElectron()
+    && !isNativePlatform();
+  if (!needProxy) return fetch(target, init);
+  const headers = new Headers(init.headers as HeadersInit | undefined);
+  headers.set('x-p2r-url', target);
+  return fetch('/api/pix2real-proxy', { ...init, headers });
 }
 
 /**
@@ -239,7 +257,7 @@ function blobFromBase64(image: string): Blob {
  * 所以这里前端拉下来当字节传，避免"能看见却传不进去"。
  */
 async function fetchRemoteAsBlob(url: string, signal?: AbortSignal): Promise<Blob> {
-  const res = await fetch(url, { signal });
+  const res = await p2rFetch(url, { signal });
   if (!res.ok) throw new Error(`参考图读取失败: ${res.status}`);
   return res.blob();
 }
@@ -326,7 +344,7 @@ async function resolveDisplayUrls(
         out.push(`data:${mime};base64,${payload.base64 || ''}`);
         continue;
       }
-      const res = await fetch(absolute, { headers: { 'x-api-key': apiKey }, signal });
+      const res = await p2rFetch(absolute, { headers: { 'x-api-key': apiKey }, signal });
       if (!res.ok) throw new Error(String(res.status));
       out.push(await blobToDataUrl(await res.blob()));
     } catch (e) {
@@ -431,7 +449,7 @@ async function submitSmartTask(
       status = payload.status ?? 0;
       text = payload.body ?? '';
     } else {
-      const res = await fetch(`${baseUrl}/smart-tasks`, init as RequestInit);
+      const res = await p2rFetch(`${baseUrl}/smart-tasks`, init as RequestInit);
       status = res.status;
       text = await res.text();
       if (!res.ok) {
@@ -516,7 +534,7 @@ async function pollTask(
         }
         task = JSON.parse(body) as Record<string, unknown>;
       } else {
-        const res = await fetch(`${baseUrl}/tasks/${encodeURIComponent(taskId)}`, {
+        const res = await p2rFetch(`${baseUrl}/tasks/${encodeURIComponent(taskId)}`, {
           headers: { 'x-api-key': apiKey },
           signal,
         });
