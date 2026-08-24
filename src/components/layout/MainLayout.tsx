@@ -25,6 +25,7 @@ export interface MainLayoutProps {
   onDeleteConversation?: (id: string) => void;
   onDeleteConversations?: (ids: string[]) => void;
   onToggleConversationFavorite?: (id: string) => void;
+  onToggleConversationHidden?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
   /** BYOC 同步完成后重载会话列表（透传给 Sidebar） */
   onRefreshConversations?: () => Promise<void> | void;
@@ -70,6 +71,7 @@ function MobileLayout(props: MainLayoutProps) {
     onDeleteConversation,
     onDeleteConversations,
     onToggleConversationFavorite,
+    onToggleConversationHidden,
     onRenameConversation,
     onRefreshConversations,
     models,
@@ -219,6 +221,7 @@ function MobileLayout(props: MainLayoutProps) {
           onDeleteConversation={onDeleteConversation}
           onDeleteConversations={onDeleteConversations}
           onToggleConversationFavorite={onToggleConversationFavorite}
+          onToggleConversationHidden={onToggleConversationHidden}
           onRenameConversation={onRenameConversation}
           onRefreshConversations={onRefreshConversations}
         />

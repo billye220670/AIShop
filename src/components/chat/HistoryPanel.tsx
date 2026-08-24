@@ -13,6 +13,7 @@ interface HistoryPanelProps {
   onDeleteConversation?: (id: string) => void;
   onDeleteConversations?: (ids: string[]) => void;
   onToggleConversationFavorite?: (id: string) => void;
+  onToggleConversationHidden?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
   /** BYOC 同步完成后重新加载会话列表（透传给 Sidebar） */
   onRefreshConversations?: () => Promise<void> | void;
@@ -31,6 +32,7 @@ export default function HistoryPanel({
   onDeleteConversation,
   onDeleteConversations,
   onToggleConversationFavorite,
+  onToggleConversationHidden,
   onRenameConversation,
   onRefreshConversations,
 }: HistoryPanelProps) {
@@ -82,6 +84,7 @@ export default function HistoryPanel({
             onDeleteConversation={onDeleteConversation}
             onDeleteConversations={onDeleteConversations}
             onToggleConversationFavorite={onToggleConversationFavorite}
+            onToggleConversationHidden={onToggleConversationHidden}
             onRenameConversation={onRenameConversation}
             onRefreshConversations={onRefreshConversations}
           />

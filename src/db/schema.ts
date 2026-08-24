@@ -121,6 +121,8 @@ export interface StoredConversation extends SyncMeta {
   createdAt: number;
   isRenamed: boolean;
   isFavorite?: boolean;
+  /** 隐藏：从会话主列表隐去，仅在「已隐藏」视图可见；随 BYOC 同步 */
+  isHidden?: boolean;
   /** 会话级压缩重点提示，填一次长期生效 */
   compactFocusHint?: string;
 

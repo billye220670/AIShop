@@ -193,6 +193,8 @@ export interface Conversation {
   syncedAt?: number | null;
   isRenamed: boolean;
   isFavorite?: boolean;
+  /** 隐藏：从会话主列表（所有/收藏）中隐去，仅在「已隐藏」视图可见；随 BYOC 同步 */
+  isHidden?: boolean;
   /** 已压缩的历史区间，按 fromMessageId 在 messages 中的顺序排列 */
   segments?: ContextSegment[];
   /** 会话级压缩重点提示，填一次长期生效 */

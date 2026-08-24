@@ -259,6 +259,7 @@ function App() {
         onDeleteConversation={chat.deleteConversation}
         onDeleteConversations={chat.deleteConversations}
         onToggleConversationFavorite={chat.toggleConversationFavorite}
+        onToggleConversationHidden={chat.toggleConversationHidden}
         onRenameConversation={chat.renameConversation}
         onRefreshConversations={chat.reloadConversations}
         realUsage={activeTab === 'chat' ? chat.realUsageTotals : undefined}
@@ -318,6 +319,7 @@ function App() {
           onDeleteConversation={chat.deleteConversation}
           onDeleteConversations={chat.deleteConversations}
           onToggleConversationFavorite={chat.toggleConversationFavorite}
+          onToggleConversationHidden={chat.toggleConversationHidden}
           onRenameConversation={chat.renameConversation}
           onRefreshConversations={chat.reloadConversations}
         />

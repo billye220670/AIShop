@@ -1592,6 +1592,9 @@ export function useChat() {
   }, []);
 
   const newConversation = useCallback(async () => {
+    // 无论之前选了哪个自定义角色，开新会话一律回到默认角色 PortAI（空串 = 默认角色）
+    setSelectedRole('');
+
     const currentConv = conversations.find(c => c.id === activeId);
 
     // 当前是空会话，不需要新建，保持现状即可。
@@ -1611,7 +1614,7 @@ export function useChat() {
     setConversations(prev => [conv, ...prev]);
     setActiveId(conv.id);
     setError(null);
-  }, [conversations, activeId, triggerTitleGeneration]);
+  }, [conversations, activeId, triggerTitleGeneration, setSelectedRole]);
 
   /** 切换会话。目标未加载过消息时按需从库里读最近若干条。 */
   const switchConversation = useCallback(
@@ -1772,6 +1775,12 @@ export function useChat() {
   const toggleConversationFavorite = useCallback((id: string) => {
     setConversations(prev =>
       prev.map(c => (c.id === id ? { ...c, isFavorite: !c.isFavorite } : c))
+    );
+  }, []);
+
+  const toggleConversationHidden = useCallback((id: string) => {
+    setConversations(prev =>
+      prev.map(c => (c.id === id ? { ...c, isHidden: !c.isHidden } : c))
     );
   }, []);
 
@@ -2245,6 +2254,7 @@ export function useChat() {
     deleteConversation,
     deleteConversations,
     toggleConversationFavorite,
+    toggleConversationHidden,
     renameConversation,
     importConversation,
     // BYOC 同步后从 IndexedDB 重读会话列表

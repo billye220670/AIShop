@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Download, Pencil, Trash2, MessageSquare, Star, X, Check, MoreHorizontal } from 'lucide-react';
+import { Search, Download, Pencil, Trash2, MessageSquare, Star, X, Check, MoreHorizontal, EyeOff, Lock } from 'lucide-react';
 import PinyinMatch from 'pinyin-match';
 import type { Conversation } from '../../types';
 import ConfirmModal from '../common/ConfirmModal';
@@ -18,6 +18,7 @@ export interface SidebarProps {
   onDeleteConversation?: (id: string) => void;
   onDeleteConversations?: (ids: string[]) => void;
   onToggleConversationFavorite?: (id: string) => void;
+  onToggleConversationHidden?: (id: string) => void;
   onRenameConversation?: (id: string, title: string) => void;
   /** BYOC 同步完成后重新加载会话列表（由 App 层提供 useChat 的重载能力） */
   onRefreshConversations?: () => Promise<void> | void;
@@ -27,7 +28,7 @@ export const SIDEBAR_WIDTH = 360;
 export const COLLAPSED_WIDTH = 60;
 export const COLLAPSED_STORAGE_KEY = 'sidebar-collapsed';
 
-type FilterMode = 'all' | 'favorite';
+type FilterMode = 'all' | 'favorite' | 'hidden';
 
 export default function Sidebar({
   conversations,
@@ -36,6 +37,7 @@ export default function Sidebar({
   onDeleteConversation,
   onDeleteConversations,
   onToggleConversationFavorite,
+  onToggleConversationHidden,
   onRenameConversation,
 }: SidebarProps) {
   const [historySearch, setHistorySearch] = useState('');
@@ -268,8 +270,15 @@ export default function Sidebar({
     // messages 为空数组，按长度过滤会让全部历史会话消失。
     // 也不能只看 totalMessageCount：它是 hydrate 时的快照，之后新发的消息不计入。
     let nonEmpty = conversations.filter(conv => hasAnyMessage(conv));
-    if (filterMode === 'favorite') {
-      nonEmpty = nonEmpty.filter(conv => conv.isFavorite);
+    if (filterMode === 'hidden') {
+      // 已隐藏视图：只显示隐藏的会话
+      nonEmpty = nonEmpty.filter(conv => conv.isHidden);
+    } else {
+      // 主列表（所有/收藏）不显示隐藏会话
+      nonEmpty = nonEmpty.filter(conv => !conv.isHidden);
+      if (filterMode === 'favorite') {
+        nonEmpty = nonEmpty.filter(conv => conv.isFavorite);
+      }
     }
     const keyword = historySearch.trim();
     if (!keyword) return nonEmpty;
@@ -394,6 +403,17 @@ export default function Sidebar({
               >
                 <Star className="w-4 h-4" />
               </button>
+              <button
+                onClick={() => setFilterMode('hidden')}
+                className={`p-2.5 rounded-full transition-colors ${
+                  filterMode === 'hidden'
+                    ? 'bg-[var(--color-accent)] text-black'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                }`}
+                title="已隐藏"
+              >
+                <Lock className="w-4 h-4" />
+              </button>
             </div>
             <button
               onClick={() => setSelectMode(true)}
@@ -408,8 +428,10 @@ export default function Sidebar({
 
       {/* 会话列表 */}
       <div ref={historyListRef} className="flex-1 overflow-y-auto overflow-x-visible px-2 pt-2">
-        {filteredConversations.length === 0 && historySearch && (
-          <div className="text-center text-gray-500 text-sm py-8">无匹配结果</div>
+        {filteredConversations.length === 0 && (
+          <div className="text-center text-gray-500 text-sm py-8">
+            {filterMode === 'hidden' ? '暂无隐藏的会话' : historySearch ? '无匹配结果' : null}
+          </div>
         )}
         {groupedConversations.map(group => (
           <div key={group.label}>
@@ -573,6 +595,21 @@ export default function Sidebar({
           >
             <Star className="w-5 h-5 flex-shrink-0" fill={menuConv.isFavorite ? 'currentColor' : 'none'} />
             <span>{menuConv.isFavorite ? '取消收藏' : '收藏'}</span>
+          </button>
+          <button
+            onClick={() => {
+              onToggleConversationHidden?.(menuConv.id);
+              setMenuOpenId(null);
+            }}
+            onPointerUp={e => {
+              if (e.button !== 0) return;
+              onToggleConversationHidden?.(menuConv.id);
+              setMenuOpenId(null);
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 text-base text-gray-200 active:bg-white/10 hover:bg-white/10 transition-colors"
+          >
+            <EyeOff className="w-5 h-5 flex-shrink-0" />
+            <span>{menuConv.isHidden ? '取消隐藏' : '隐藏'}</span>
           </button>
           <button
             onClick={() => {

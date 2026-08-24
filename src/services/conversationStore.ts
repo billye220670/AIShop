@@ -54,6 +54,7 @@ function toRuntime(rec: StoredConversation): Conversation {
     syncedAt: rec.syncedAt ?? null,
     isRenamed: rec.isRenamed,
     isFavorite: rec.isFavorite,
+    isHidden: rec.isHidden,
     compactFocusHint: rec.compactFocusHint,
     segments: [],
     hydrated: false,
@@ -122,6 +123,7 @@ function metaChanged(prev: Conversation | undefined, next: Conversation): boolea
     prev.selectedModel !== next.selectedModel ||
     prev.isRenamed !== next.isRenamed ||
     prev.isFavorite !== next.isFavorite ||
+    prev.isHidden !== next.isHidden ||
     prev.compactFocusHint !== next.compactFocusHint
   );
 }
@@ -289,6 +291,7 @@ async function ensureConversationRecord(conv: Conversation): Promise<void> {
     createdAt: conv.createdAt,
     isRenamed: conv.isRenamed,
     isFavorite: conv.isFavorite,
+    isHidden: conv.isHidden,
     compactFocusHint: conv.compactFocusHint,
     messageCount: 0,
     lastMessageAt: conv.updatedAt,
@@ -304,6 +307,7 @@ async function patchConversationMeta(conv: Conversation): Promise<void> {
     selectedModel: conv.selectedModel,
     isRenamed: conv.isRenamed,
     isFavorite: conv.isFavorite,
+    isHidden: conv.isHidden,
     compactFocusHint: conv.compactFocusHint,
   });
 }
