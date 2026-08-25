@@ -1,8 +1,9 @@
 /**
  * 图片生成意图判断。
  *
- * 结构与 searchJudge.ts / titleGenerator.ts 一致：用固定的便宜小模型做一次
- * 非流式请求，失败静默返回兜底结果，不影响正常发送流程。
+ * 结构与 searchJudge.ts / titleGenerator.ts 一致：用便宜小模型做一次
+ * 非流式请求，失败静默返回兜底结果，不影响正常发送流程。判断所用模型由
+ * 用户在设置面板「辅助模型 → 意图识别」中指定（默认 doubao），见 settingsService。
  *
  * 背景：聊天里用户想生成图片时，需要先给一句确认回复、再紧接着调生图服务。
  * 这里加一层轻量判断，让"聊天"和"生图"两条路径自动分流：判断为生图意图时
@@ -11,9 +12,6 @@
 import type { Message } from '../types';
 import { settingsService } from './settingsService';
 import { getProviderConfig } from '../config/providers';
-
-/** 判断本身只是个分类任务，用便宜快模型即可，和 searchJudge 使用同一个模型 */
-const JUDGE_MODEL = 'doubao-1-5-pro-32k-250115';
 
 /** 判断请求本身要快，附带的历史上下文不需要很多，够理解追问就行 */
 const MAX_CONTEXT_MESSAGES = 4;
@@ -187,6 +185,9 @@ export async function judgeImageIntent(
     const config = getProviderConfig(provider);
     if (!apiKey) return FAIL_OPEN;
 
+    // 判断模型由用户在「辅助模型 → 意图识别」中指定（默认 doubao）
+    const judgeModel = await settingsService.getAssistModel('intentJudge');
+
     const context = buildContext(recentMessages);
     // 带图标注：让判断器知道本条消息附带图片，从而识别为图片编辑任务并输出修改语气的回复
     const imageNote = imageCount > 0 ? `（本条消息附带 ${imageCount} 张图片）` : '';
@@ -203,7 +204,7 @@ export async function judgeImageIntent(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: JUDGE_MODEL,
+        model: judgeModel,
         messages: [
           { role: 'system', content: JUDGE_PROMPT },
           { role: 'user', content: userContent },

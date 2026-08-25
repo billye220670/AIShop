@@ -20,12 +20,23 @@ export interface CompactSettings {
   hotWindowSize: number;
 }
 
+/** 辅助模型分类：意图识别（生图前置判断）与生图优化（提示词扩写润色） */
+export type AssistModelCategory = 'intentJudge' | 'promptOptimize';
+
+/** 辅助模型设置；缺项回落 DEFAULT_ASSIST_MODEL */
+export type AssistModels = Partial<Record<AssistModelCategory, string>>;
+
+/** 辅助模型默认值：便宜快的小模型，判断/润色这类轻任务够用 */
+export const DEFAULT_ASSIST_MODEL = 'doubao-1-5-pro-32k-250115';
+
 export interface AppSettings {
   providers: ProviderConfig;
   apiKeys: Record<string, string>;
   /** 自建类提供商的服务地址覆盖（provider id → baseUrl）；未配置时用 config/providers 的内置默认值 */
   baseUrls?: Record<string, string>;
   compact?: CompactSettings;
+  /** 辅助模型（意图识别 / 生图优化）；未配置的项回落 DEFAULT_ASSIST_MODEL */
+  assistModels?: AssistModels;
   /** BYOC 云同步配置（自带 S3 兼容存储） */
   byoc?: ByocConfig;
   /** 是否随 BYOC 同步 API 设置（providers + apiKeys）；缺省视为开启 */
@@ -128,6 +139,18 @@ export const settingsService = {
     return getLocalSettings();
   },
 
+  /** 辅助模型；未配置回落 DEFAULT_ASSIST_MODEL */
+  async getAssistModel(category: AssistModelCategory): Promise<string> {
+    return getLocalSettings().assistModels?.[category] || DEFAULT_ASSIST_MODEL;
+  },
+
+  async setAssistModel(category: AssistModelCategory, model: string): Promise<void> {
+    const settings = getLocalSettings();
+    settings.assistModels = { ...(settings.assistModels || {}), [category]: model };
+    saveLocalSettings(settings);
+    notifySettingsChanged();
+  },
+
   getCompactSettings(): CompactSettings {
     const stored = getLocalSettings().compact;
     // 触发阈值与热窗口已写死为推荐值（不再向用户暴露），仅压缩模型可配置
@@ -167,7 +190,7 @@ export const settingsService = {
     if (enabled) notifySettingsChanged();
   },
 
-  /** 取待同步的 API 设置子集（providers + apiKeys，不含 byoc 配置/主题等） */
+  /** 取待同步的 API 设置子集（providers + apiKeys + assistModels，不含 byoc 配置/主题等） */
   getSyncedSettings(): SyncedSettings {
     const settings = getLocalSettings();
     return {
@@ -178,6 +201,7 @@ export const settingsService = {
       },
       apiKeys: { ...settings.apiKeys },
       baseUrls: { ...(settings.baseUrls || {}) },
+      assistModels: { ...(settings.assistModels || {}) },
     };
   },
 
@@ -189,8 +213,9 @@ export const settingsService = {
     const settings = getLocalSettings();
     settings.providers = { ...DEFAULT_PROVIDERS, ...synced.providers };
     settings.apiKeys = { ...synced.apiKeys };
-    // 旧版本云端数据没有 baseUrls，保留本机已配值，避免同步把自建地址清空
+    // 旧版本云端数据没有 baseUrls/assistModels，保留本机已配值，避免同步把本地配置清空
     if (synced.baseUrls) settings.baseUrls = { ...synced.baseUrls };
+    if (synced.assistModels) settings.assistModels = { ...synced.assistModels };
     saveLocalSettings(settings);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(SETTINGS_SYNCED_EVENT));

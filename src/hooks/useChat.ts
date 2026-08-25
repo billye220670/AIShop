@@ -1153,7 +1153,7 @@ export function useChat() {
           } else {
             genAspectRatio = imageIntent.aspectRatio || '1:1';
           }
-          // ---- 生图提示词：由用户当前模型整理优化（小模型只做调度判断，不负责提示词） ----
+          // ---- 生图提示词：由「辅助模型 → 生图优化」指定模型整理优化（小模型只做调度判断，不负责提示词） ----
           // 优化在 shimmer 挂起期间完成（下方生图块内），确认回复先落回退版；
           // 优化失败静默回退原文 + 参考图说明，生图流程不中断。
           const sceneNote = isEditMode
@@ -1200,13 +1200,11 @@ export function useChat() {
 
           void (async () => {
             try {
-              // 生图提示词：用用户当前模型整理优化（失败静默回退原文+参考图说明）
+              // 生图提示词：由「辅助模型 → 生图优化」指定模型整理优化
+              //（失败静默回退原文+参考图说明）
               const optimized = await optimizeImagePrompt({
                 userText,
-                // 智能路由下用回落模型做提示词优化（'auto' 不是真实模型 id，不能直接请求）
-                model: selectedModel === AUTO_MODEL_ID
-                  ? (lastConcreteModelRef.current || CHAT_MODELS[0].id)
-                  : selectedModel,
+                model: await settingsService.getAssistModel('promptOptimize'),
                 aspectRatio: isEditMode ? undefined : genAspectRatio !== '1:1' ? genAspectRatio : undefined,
                 sceneNote,
               });

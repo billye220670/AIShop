@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { MessageSquare, Image as ImageIcon, Eye, Check, ChevronLeft, ChevronRight, KeyRound, MessageCircle, Database, Palette, Sun, Moon, Cloud, CheckCircle, AlertCircle, MapPin } from 'lucide-react';
+import { MessageSquare, Image as ImageIcon, Eye, Check, ChevronLeft, ChevronRight, KeyRound, MessageCircle, Database, Palette, Sun, Moon, Cloud, CheckCircle, AlertCircle, MapPin, Sparkles } from 'lucide-react';
 import PasswordInput from './PasswordInput';
-import { settingsService, DEFAULT_COMPACT_SETTINGS } from '../../services/settingsService';
-import type { ProviderConfig, CompactSettings } from '../../services/settingsService';
+import { settingsService, DEFAULT_COMPACT_SETTINGS, DEFAULT_ASSIST_MODEL } from '../../services/settingsService';
+import type { ProviderConfig, CompactSettings, AssistModels, AssistModelCategory } from '../../services/settingsService';
 import { getCachedCity, getCitySource, setManualCity, clearManualCity, ensureCity } from '../../services/locationService';
 import { THEMES } from '../../config/themes';
 import { loadTheme, saveTheme, loadMode, saveMode, type ColorMode } from '../../services/storage';
@@ -16,7 +16,7 @@ import CustomSelect from '../common/CustomSelect';
 import { haptic } from '../../utils/haptics';
 import { useDeviceMode } from '../../platform/useDeviceMode';
 
-type SettingsTab = 'api' | 'context' | 'data' | 'byoc' | 'appearance';
+type SettingsTab = 'api' | 'assist' | 'context' | 'data' | 'byoc' | 'appearance';
 
 type CategoryKey = keyof ProviderConfig | 'location';
 
@@ -65,12 +65,16 @@ export default function SettingsPanel() {
   const [compact, setCompact] = useState<CompactSettings>(DEFAULT_COMPACT_SETTINGS);
   const [autoCompactEnabled, setAutoCompactEnabled] = useState(true);
 
+  // 辅助模型（意图识别 / 生图优化），默认 doubao
+  const [assistModels, setAssistModels] = useState<AssistModels>({});
+
   // 加载设置
   useEffect(() => {
     settingsService.getAllSettings().then(settings => {
       setProviders(settings.providers);
       setApiKeys({ ...settings.apiKeys });
       setBaseUrls({ ...(settings.baseUrls || {}) });
+      setAssistModels({ ...(settings.assistModels || {}) });
     });
     // BYOC 同步拉回云端 API 设置时重读（换设备场景：配好 BYOC 后 key 自动带过来）
     const onSettingsSynced = () => {
@@ -78,6 +82,7 @@ export default function SettingsPanel() {
         setProviders(settings.providers);
         setApiKeys({ ...settings.apiKeys });
         setBaseUrls({ ...(settings.baseUrls || {}) });
+        setAssistModels({ ...(settings.assistModels || {}) });
       });
     };
     window.addEventListener(SETTINGS_SYNCED_EVENT, onSettingsSynced);
@@ -162,8 +167,15 @@ export default function SettingsPanel() {
     void settingsService.setBaseUrl(provider, value);
   };
 
+  // 修改辅助模型并自动保存（写入即标记 BYOC 待同步）
+  const handleAssistModelChange = (category: AssistModelCategory, value: string) => {
+    setAssistModels(prev => ({ ...prev, [category]: value }));
+    void settingsService.setAssistModel(category, value);
+  };
+
   const TABS: { key: SettingsTab; label: string; desc: string; Icon: typeof MessageSquare }[] = [
     { key: 'api', label: 'API 配置', desc: 'LLM、图片与搜索提供商', Icon: KeyRound },
+    { key: 'assist', label: '辅助模型', desc: '意图识别与生图优化所用模型', Icon: Sparkles },
     { key: 'context', label: '上下文', desc: '自动压缩与摘要设置', Icon: MessageCircle },
     { key: 'data', label: '数据', desc: '备份、恢复与存储用量', Icon: Database },
     { key: 'byoc', label: 'BYOC', desc: '自带 S3 云同步设置', Icon: Cloud },
@@ -354,6 +366,47 @@ export default function SettingsPanel() {
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {activeSettingsTab === 'assist' && (
+            <div className="space-y-6">
+              <p className="text-xs text-gray-400 leading-relaxed">
+                聊天中部分辅助任务由独立的小模型完成，不影响正文对话使用的模型。
+                这两项配置会随 BYOC 同步到其他设备。
+              </p>
+
+              {/* 意图识别 */}
+              <div className="space-y-2">
+                <label htmlFor="assist-intent-model" className="block text-sm font-medium text-white">
+                  意图识别
+                </label>
+                <CustomSelect
+                  id="assist-intent-model"
+                  value={assistModels.intentJudge || DEFAULT_ASSIST_MODEL}
+                  onChange={value => handleAssistModelChange('intentJudge', value)}
+                  options={CHAT_MODELS.map(m => ({ value: m.id, label: m.name }))}
+                />
+                <p className="text-xs text-gray-500">
+                  发送前判断这条消息是聊天还是生图，并给出确认回复。
+                </p>
+              </div>
+
+              {/* 生图优化 */}
+              <div className="space-y-2">
+                <label htmlFor="assist-prompt-model" className="block text-sm font-medium text-white">
+                  生图优化
+                </label>
+                <CustomSelect
+                  id="assist-prompt-model"
+                  value={assistModels.promptOptimize || DEFAULT_ASSIST_MODEL}
+                  onChange={value => handleAssistModelChange('promptOptimize', value)}
+                  options={CHAT_MODELS.map(m => ({ value: m.id, label: m.name }))}
+                />
+                <p className="text-xs text-gray-500">
+                  生图前把您的需求扩写润色成高质量提示词。
+                </p>
+              </div>
             </div>
           )}
 

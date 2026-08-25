@@ -2,9 +2,8 @@
  * 生图提示词优化。
  *
  * 小模型只负责"是否生图"的调度判断（见 imageIntentJudge.ts），提示词的
- * 整理与优化统一交给用户当前选择的聊天模型完成，保证生图提示词质量与
- * 判断器解耦：用户说"帮我优化提示词"时，优化由大模型完成；日常生图时
- * 口语化需求也被整理成适合生图模型的结构化提示词。
+ * 整理与优化所用模型由用户在设置面板「辅助模型 → 生图优化」中指定（默认
+ * doubao），见 settingsService；聊天任务本身仍走用户选择的模型。
  *
  * 失败静默返回 null，调用方回退使用用户原文，不影响生图流程。
  */
@@ -14,7 +13,7 @@ import { getProviderConfig } from '../config/providers';
 export interface ImagePromptOptimizeInput {
   /** 用户原始需求文本 */
   userText: string;
-  /** 用户当前选择的聊天模型 id（优化走用户模型，成本与质量由用户的选择决定） */
+  /** 执行优化的模型 id（来自设置面板「辅助模型 → 生图优化」） */
   model: string;
   /** 文生图目标宽高比（非 1:1 时传入，提示词需体现对应构图方向）；编辑任务无 */
   aspectRatio?: string;
