@@ -3,6 +3,7 @@ import { ChevronDown, Search, ChevronRight, X } from 'lucide-react';
 
 import type { Conversation, Message, FileAttachment, ChatFeatureSettings, Model } from '../../types';
 import { CHAT_MODELS } from '../../config/models';
+import { AUTO_MODEL_ID } from '../../services/routeJudge';
 import { useArtifact, parseArtifactFromContent } from '../../hooks/useArtifact';
 import { useStickToBottom } from '../../hooks/useStickToBottom';
 import { useFoldGesture } from '../../hooks/useFoldGesture';
@@ -693,7 +694,9 @@ export default function ChatPanel({
               : (msg.role === 'assistant' && msg.model)
                 ? msg.model
                 : conversation?.selectedModel;
-            const currentModel = CHAT_MODELS.find(m => m.id === modelId);
+            const currentModel = modelId === AUTO_MODEL_ID
+              ? { id: AUTO_MODEL_ID, name: 'Portify', provider: 'Auto' }
+              : CHAT_MODELS.find(m => m.id === modelId);
             // 原文照常渲染；压缩区间末尾追加一条标记，说明这段发给模型时用的是摘要
             const endingSegment = segmentByLastMessage.get(msg.id);
             const isActiveMatchHere = activeMatch?.messageId === msg.id;

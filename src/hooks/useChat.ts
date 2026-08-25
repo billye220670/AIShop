@@ -788,13 +788,11 @@ export function useChat() {
               .filter(Boolean);
           }
           const result = await generateViaPix2Real(userText, images);
-          // 服务端选了哪个工作流是有用信息，附在确认回复后面；
-          // 超上限被丢掉的参考图也要明说，不能默默少传
+          // 参考图超上限的提醒仍要保留（不能默默少传）；服务端选工作流的内部说明对用户无意义，不展示
           const notes: string[] = [];
           if (result.droppedImages > 0) {
             notes.push(`（Pix2Real 最多支持 ${PIX2REAL_MAX_IMAGES} 张参考图，已用前 ${PIX2REAL_MAX_IMAGES} 张）`);
           }
-          if (result.reason) notes.push(result.reason);
           patchMessage(convId, assistantMessageId, {
             imageGenerating: false,
             generatedImages: result.urls,

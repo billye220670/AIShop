@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { Globe, TriangleAlert, Copy, Check, FileText, FileDown, RefreshCw, MessageSquareQuote, ChevronDown, ChevronUp, Search, FoldVertical, Loader2 } from 'lucide-react';
+import { Globe, TriangleAlert, Copy, Check, FileText, FileDown, RefreshCw, MessageSquareQuote, ChevronDown, ChevronUp, Search, FoldVertical, Loader2, Brain } from 'lucide-react';
 import type { ArtifactBlock } from '../../types';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
@@ -962,6 +962,11 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
               activeIndex={message.activeVersionIndex ?? 0}
               onSwitch={(idx) => onSwitchVersion?.(message.id, idx)}
             />
+          ) : modelProvider === 'Auto' ? (
+            <>
+              <Brain className="w-5 h-5 text-[var(--color-accent)]" />
+              <span className="text-sm font-medium text-gray-300">{modelName || 'Portify'}</span>
+            </>
           ) : (
             <>
               <img
