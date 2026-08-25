@@ -258,11 +258,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
   // 渲染触发器上的图标
   const renderTriggerIcon = () => {
     if (current.id === AUTO_MODEL_ID) {
-      return (
-        <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-[var(--color-accent)]/20">
-          <Brain className="w-3.5 h-3.5 text-[var(--color-accent)]" />
-        </span>
-      );
+      return <Brain className="w-4 h-4 shrink-0 text-[var(--color-accent)]" />;
     }
     if (!currentIcon) return <span className="w-4 h-4 shrink-0" />;
     if (DARK_ICON_PROVIDERS.includes(current.provider) || BLACK_BG_PROVIDERS.includes(current.provider)) {
@@ -346,9 +342,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
                       : 'text-gray-300 hover:bg-[var(--color-bg-hover)]'
                   }`}
                 >
-                  <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-[var(--color-accent)]/20">
-                    <Brain className="w-3.5 h-3.5 text-[var(--color-accent)]" />
-                  </span>
+                  <Brain className="w-4 h-4 shrink-0 text-[var(--color-accent)]" />
                   <span className="whitespace-nowrap">智能路由</span>
                   <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">自动选择最佳模型</span>
                 </button>

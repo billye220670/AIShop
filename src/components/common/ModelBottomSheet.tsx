@@ -476,9 +476,7 @@ export default function ModelBottomSheet({
                   : 'bg-[var(--color-bg-elevated)] border-2 border-transparent'
               }`}
             >
-              <div className="w-12 h-12 rounded-full bg-[var(--color-accent)]/20 flex items-center justify-center">
-                <Brain className="w-6 h-6 text-[var(--color-accent)]" />
-              </div>
+              <Brain className="w-8 h-8 text-[var(--color-accent)]" />
               <span className="text-white text-sm text-center leading-tight">智能路由</span>
             </button>
             {recommendedModels.map((model) => {
@@ -624,9 +622,7 @@ export default function ModelBottomSheet({
               : 'bg-[var(--color-bg-secondary)] border border-transparent hover:border-white/10'
           }`}
         >
-          <div className="w-10 h-10 shrink-0 rounded-full bg-[var(--color-accent)]/20 flex items-center justify-center">
-            <Brain className="w-5 h-5 text-[var(--color-accent)]" />
-          </div>
+          <Brain className="w-7 h-7 shrink-0 text-[var(--color-accent)]" />
           <div className="flex-1 text-left">
             <div className="text-white text-sm font-medium">智能路由</div>
             <div className="text-gray-400 text-xs mt-0.5 line-clamp-2">
