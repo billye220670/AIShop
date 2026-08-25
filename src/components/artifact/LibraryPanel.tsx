@@ -18,6 +18,8 @@ import { getBlob, parseBlobRefUrl } from '../../db';
 
 interface LibraryPanelProps {
   assets: AssetItem[];
+  /** 已隐藏会话的 id 集合；开关关闭时据此过滤隐藏会话的产物 */
+  hiddenConvIds?: Set<string>;
   onRemoveAsset: (id: string) => void;
   onRenameAsset: (id: string, newTitle: string) => void;
 }
@@ -129,9 +131,11 @@ function PreviewBody({ asset }: { asset: AssetItem }) {
   );
 }
 
-export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: LibraryPanelProps) {
+export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onRenameAsset }: LibraryPanelProps) {
   const [filter, setFilter] = useState<KindFilter>('all');
   const [previewItem, setPreviewItem] = useState<AssetItem | null>(null);
+  // 是否显示隐藏会话的产物：false = 关闭开关（过滤掉隐藏会话产物，默认）；true = 显示
+  const [showHidden, setShowHidden] = useState(false);
   // 图片资产点开直接全屏预览（ImageViewer），不经过详情页
   const [imageViewerAsset, setImageViewerAsset] = useState<AssetItem | null>(null);
   const [isEntering, setIsEntering] = useState(false);
@@ -159,7 +163,13 @@ export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: L
    *  不吞掉的话菜单弹出即被自己关闭。 */
   const menuOpenedAtRef = useRef(0);
 
-  const visibleAssets = filter === 'all' ? assets : assets.filter(a => a.kind === filter);
+  const visibleAssets = assets.filter(a => {
+    if (filter !== 'all' && a.kind !== filter) return false;
+    // 开关关闭（showHidden=false）时过滤掉隐藏会话的产物；
+    // 无会话标记的历史资产（convId 为空）不在隐藏集合里，不受影响
+    if (!showHidden && a.convId && hiddenConvIds?.has(a.convId)) return false;
+    return true;
+  });
 
   const clearPressTimer = () => {
     if (pressTimerRef.current) {
@@ -326,21 +336,41 @@ export default function LibraryPanel({ assets, onRemoveAsset, onRenameAsset }: L
         {/* 顶部标题 */}
         <div className="px-4 py-3 bg-[var(--color-bg-base)] flex items-center justify-between">
           <h2 className="text-white font-medium text-lg">我的库</h2>
-          {/* 类型筛选 */}
-          <div className="flex items-center bg-[var(--color-bg-primary)] rounded-full p-0.5 gap-0.5">
-            {KIND_FILTERS.map(f => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                className={`px-3 py-1 rounded-full text-xs transition-colors ${
-                  filter === f.id
-                    ? 'bg-[var(--color-accent)] text-white'
-                    : 'text-gray-400 hover:text-gray-200'
+          <div className="flex items-center gap-2">
+            {/* 隐藏会话产物过滤开关：关闭（默认）=不显示隐藏会话的产物，开启=显示（复用设置页 toggle 样式） */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showHidden}
+              aria-label="显示隐藏会话的产物"
+              title={showHidden ? '点击隐藏隐藏会话的产物' : '点击显示隐藏会话的产物'}
+              onClick={() => { haptic(); setShowHidden(v => !v); }}
+              className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${
+                showHidden ? 'bg-[var(--color-accent)]' : 'bg-white/15'
+              }`}
+            >
+              <span
+                className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                  showHidden ? 'translate-x-5' : 'translate-x-0'
                 }`}
-              >
-                {f.label}
-              </button>
-            ))}
+              />
+            </button>
+            {/* 类型筛选 */}
+            <div className="flex items-center bg-[var(--color-bg-primary)] rounded-full p-0.5 gap-0.5">
+              {KIND_FILTERS.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setFilter(f.id)}
+                  className={`px-3 py-1 rounded-full text-xs transition-colors ${
+                    filter === f.id
+                      ? 'bg-[var(--color-accent)] text-white'
+                      : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

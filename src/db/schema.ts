@@ -279,6 +279,8 @@ export interface StoredAsset extends SyncMeta {
   thumbnailBlobId?: string;
   /** 来源引用：markdown 存源消息 id（去重用），image 存源历史 id */
   sourceRef?: string;
+  /** 所属会话 id：「我的库」按会话隐藏状态过滤的依据（历史数据无此标记） */
+  convId?: string;
 }
 
 // ---------- 角色 ----------

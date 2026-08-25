@@ -31,6 +31,8 @@ export interface AssetData {
   /** 卡片缩略图：artifact 用截图，image 用首图，markdown 无 */
   thumbnail?: string;
   sourceRef?: string;
+  /** 所属会话 id：「我的库」按会话隐藏状态过滤的依据（历史数据无此标记） */
+  convId?: string;
 }
 
 function isRemoteUrl(id: string): boolean {
@@ -74,6 +76,7 @@ function fromStored(rec: StoredAsset): AssetData {
     urls: rec.blobIds?.map(id => (isRemoteUrl(id) ? id : blobRefUrl(id))),
     thumbnail,
     sourceRef: rec.sourceRef,
+    convId: rec.convId,
   };
 }
 
@@ -99,7 +102,7 @@ export function putStoredAsset(asset: StoredAsset): Promise<void> {
  * 保存 artifact。重复保存同一个 artifact 是无操作——
  * 不该悄悄换掉已有的缩略图。
  */
-export function saveArtifact(artifact: ArtifactBlock, thumbnail: string): Promise<void> {
+export function saveArtifact(artifact: ArtifactBlock, thumbnail: string, convId?: string): Promise<void> {
   return enqueue(QUEUE, async () => {
     const existing = await withDB(db => db.get('assets', artifact.id));
     if (existing) return;
@@ -116,6 +119,7 @@ export function saveArtifact(artifact: ArtifactBlock, thumbnail: string): Promis
         createdAt: now,
         artifact,
         thumbnailBlobId,
+        convId,
         updatedAt: now,
         syncedAt: null,
       })
@@ -136,7 +140,8 @@ export async function findMarkdownBySourceRef(messageId: string): Promise<Stored
 export function saveMarkdown(
   messageId: string,
   title: string,
-  content: string
+  content: string,
+  convId?: string
 ): Promise<{ id: string; alreadySaved: boolean }> {
   return enqueue(QUEUE, async () => {
     const existing = await findMarkdownBySourceRef(messageId);
@@ -155,6 +160,7 @@ export function saveMarkdown(
         content,
         createdAt: now,
         sourceRef: messageId,
+        convId,
         updatedAt: now,
         syncedAt: null,
       })
@@ -166,7 +172,7 @@ export function saveMarkdown(
 /**
  * 保存一张/一批生成图片（整个历史条目入库）。重复保存无操作。
  */
-export function saveImageHistory(item: ImageHistoryItem): Promise<void> {
+export function saveImageHistory(item: ImageHistoryItem, convId?: string): Promise<void> {
   return enqueue(QUEUE, async () => {
     const existing = await withDB(db => db.get('assets', item.id));
     if (existing) return;
@@ -181,6 +187,7 @@ export function saveImageHistory(item: ImageHistoryItem): Promise<void> {
         createdAt: now,
         blobIds,
         sourceRef: item.id,
+        convId,
         updatedAt: now,
         syncedAt: null,
       })

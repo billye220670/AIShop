@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import MainLayout from './components/layout/MainLayout';
@@ -118,6 +118,12 @@ function App() {
   const chat = useChat();
   const { assets, isSaved, toggleArtifact, removeAsset, renameAsset, saveMarkdown, saveImage, refresh: refreshAssets } = useAssets();
 
+  // 已隐藏的会话 id 集合：「我的库」开关关闭时据此过滤隐藏会话的产物
+  const hiddenConvIds = useMemo(
+    () => new Set(chat.conversations.filter(c => c.isHidden).map(c => c.id)),
+    [chat.conversations]
+  );
+
   // 图片处理（高清放大 / 去背景）的结果插入当前会话：接收图片上下文菜单发来的事件，交给 useChat 追加一条 AI 图片消息
   useEffect(() => {
     const handler = (e: Event) => {
@@ -146,7 +152,7 @@ function App() {
           prompt: msg.generatedImage?.prompt || getPlainText(msg.content) || '聊天生成图片',
           model: msg.generatedImage?.model || '',
           timestamp: msg.timestamp,
-        });
+        }, conv.id);
       }
     }
   }, [chat.conversations, saveImage]);
@@ -212,8 +218,9 @@ function App() {
             webSearchEnabled={chat.webSearchEnabled}
             onWebSearchEnabledChange={chat.setWebSearchEnabled}
             isFavorite={chat.streamingArtifact ? false : (() => { const msgs = chat.messages; for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].artifact) return isSaved(msgs[i].artifact!.id); } return false; })()}
-            onToggleFavorite={(thumbnail) => { const msgs = chat.messages; for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].artifact) { toggleArtifact(msgs[i].artifact!, thumbnail); return; } } }}
-            onSaveMarkdown={(messageId, title, content) => saveMarkdown(messageId, title, content)}
+            onToggleFavorite={(thumbnail) => { const msgs = chat.messages; for (let i = msgs.length - 1; i >= 0; i--) { if (msgs[i].artifact) { toggleArtifact(msgs[i].artifact!, thumbnail, chat.activeConversationId ?? undefined); return; } } }}
+            onSaveMarkdown={(messageId, title, content) => saveMarkdown(messageId, title, content, chat.activeConversationId ?? undefined)}
+            hiddenConvIds={hiddenConvIds}
             segments={chat.segments}
             onUpdateSegment={(segmentId, summary) => { if (chat.activeConversationId) chat.updateSegment(chat.activeConversationId, segmentId, summary); }}
             openSegmentIdRequest={openSegmentIdRequest}
@@ -238,7 +245,7 @@ function App() {
       case 'image':
         return <ImagePanel />;
       case 'library':
-        return <LibraryPanel assets={assets} onRemoveAsset={removeAsset} onRenameAsset={renameAsset} />;
+        return <LibraryPanel assets={assets} hiddenConvIds={hiddenConvIds} onRemoveAsset={removeAsset} onRenameAsset={renameAsset} />;
       case 'me':
         return <SettingsPanel />;
       default:

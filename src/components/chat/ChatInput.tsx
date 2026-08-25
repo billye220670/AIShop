@@ -59,6 +59,8 @@ interface ChatInputProps {
   onCompactActive?: () => void;
   onOpenSegment?: (segmentId: string) => void;
   onDeleteSegment?: (segmentId: string) => void;
+  /** 已隐藏会话的 id 集合：@ 引用面板与 +号库面板据此过滤隐藏会话的产物 */
+  hiddenConvIds?: Set<string>;
 }
 
 export default function ChatInput({
@@ -90,6 +92,7 @@ export default function ChatInput({
   onCompactActive,
   onOpenSegment,
   onDeleteSegment,
+  hiddenConvIds,
 }: ChatInputProps) {
   // 上传限制常量提前到 useImage 事件监听之前声明，供附件面板与「修改图片」塞图统一使用
   const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
@@ -139,6 +142,12 @@ export default function ChatInput({
 
   // 「我的库」资产：附件面板选「库」时打开选择器，进入时 refresh 保证拿到最新数据
   const { assets: libraryAssets, refresh: refreshLibrary } = useAssets();
+  // 过滤隐藏会话的产物：@ 引用面板与 +号库面板不展示隐藏会话的资产（与「我的库」开关关闭态一致）；
+  // 无会话标记的历史资产不受影响
+  const visibleLibraryAssets = useMemo(() => {
+    if (!hiddenConvIds || hiddenConvIds.size === 0) return libraryAssets;
+    return libraryAssets.filter(a => !(a.convId && hiddenConvIds.has(a.convId)));
+  }, [libraryAssets, hiddenConvIds]);
 
   // 桌面形态：输入框呈现 electron 版两行结构（工具栏 + 圆角边框输入容器），功能逻辑与移动形态共用
   const desktop = useDeviceMode() === 'desktop';
@@ -368,7 +377,7 @@ export default function ChatInput({
   // 按标题过滤库资产，最多展示 8 项；支持拼音/拼音首字母匹配中文标题（与侧边栏会话搜索同款方案）
   const filterAtAssets = (query: string): AssetItem[] => {
     const q = query.trim().toLowerCase();
-    return libraryAssets
+    return visibleLibraryAssets
       .filter(a => {
         if (!q) return true;
         if (a.title.toLowerCase().includes(q)) return true;
@@ -439,7 +448,7 @@ export default function ChatInput({
       closeAtPanel();
       return;
     }
-    if (libraryAssets.length === 0 || filterAtAssets(query).length === 0) {
+    if (visibleLibraryAssets.length === 0 || filterAtAssets(query).length === 0) {
       closeAtPanel();
       return;
     }
@@ -1351,7 +1360,7 @@ export default function ChatInput({
             <LibraryPickerSheet
               isOpen={showLibrarySheet}
               onClose={() => setShowLibrarySheet(false)}
-              assets={libraryAssets}
+              assets={visibleLibraryAssets}
               onConfirm={handleLibraryConfirm}
             />
           </>

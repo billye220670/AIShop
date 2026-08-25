@@ -55,17 +55,17 @@ export function useAssets() {
       .catch(e => console.error('[useAssets] 刷新失败', e));
   }, []);
 
-  const saveArtifact = useCallback((artifact: ArtifactBlock, thumbnail: string) => {
+  const saveArtifact = useCallback((artifact: ArtifactBlock, thumbnail: string, convId?: string) => {
     setAssets(prev => {
       if (prev.some(a => a.id === artifact.id)) return prev;
       // state 里先放传入的 base64，落库后它会被换成 blob 引用；
       // 两种形式 useBlobUrl 都认，所以中间态不影响渲染。
       return [
         ...prev,
-        { id: artifact.id, kind: 'artifact', title: artifact.title, artifact: { ...artifact }, thumbnail, createdAt: Date.now() },
+        { id: artifact.id, kind: 'artifact', title: artifact.title, artifact: { ...artifact }, thumbnail, convId, createdAt: Date.now() },
       ];
     });
-    void dbSaveArtifact(artifact, thumbnail)
+    void dbSaveArtifact(artifact, thumbnail, convId)
       .then(listAssets)
       .then(setAssets)
       .then(scheduleSync)
@@ -73,7 +73,7 @@ export function useAssets() {
   }, [scheduleSync]);
 
   const saveMarkdown = useCallback(
-    (messageId: string, title: string, content: string) => {
+    (messageId: string, title: string, content: string, convId?: string) => {
       void (async () => {
         // 已保存过的源消息不再重复入库，也跳过标题模型调用
         const existing = await dbFindMarkdownBySourceRef(messageId);
@@ -84,7 +84,7 @@ export function useAssets() {
         // 所有 md 保存到库统一入口：小模型总结标题（无 key/失败时回退内容截取），
         // 以生成结果落库，保证「我的库」里的标题是总结出来的
         const finalTitle = (await generateDocumentTitle(content)) || title;
-        await dbSaveMarkdown(messageId, finalTitle, content);
+        await dbSaveMarkdown(messageId, finalTitle, content, convId);
         await refresh();
         scheduleSync();
       })().catch(e => console.error('[useAssets] 保存 markdown 失败', e));
@@ -93,7 +93,7 @@ export function useAssets() {
   );
 
   const saveImage = useCallback(
-    (item: ImageHistoryItem) => {
+    (item: ImageHistoryItem, convId?: string) => {
       setAssets(prev => {
         if (prev.some(a => a.id === item.id)) return prev;
         return [
@@ -106,10 +106,11 @@ export function useAssets() {
             thumbnail: item.urls[0],
             createdAt: Date.now(),
             sourceRef: item.id,
+            convId,
           },
         ];
       });
-      void dbSaveImageHistory(item)
+      void dbSaveImageHistory(item, convId)
         .then(listAssets)
         .then(setAssets)
         .then(scheduleSync)
@@ -148,14 +149,14 @@ export function useAssets() {
   );
 
   const toggleArtifact = useCallback(
-    (artifact: ArtifactBlock, thumbnail?: string) => {
+    (artifact: ArtifactBlock, thumbnail?: string, convId?: string) => {
       const already = assets.some(a => a.id === artifact.id);
       if (already) {
         removeAsset(artifact.id);
         return;
       }
       if (!thumbnail) return; // 保存时必须有缩略图
-      saveArtifact(artifact, thumbnail);
+      saveArtifact(artifact, thumbnail, convId);
     },
     [assets, saveArtifact, removeAsset]
   );

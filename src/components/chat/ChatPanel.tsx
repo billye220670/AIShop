@@ -63,6 +63,8 @@ interface ChatPanelProps {
   onToggleFavorite?: (thumbnail?: string) => void;
   /** 把消息纯文本保存到「我的库」（markdown 资产） */
   onSaveMarkdown?: (messageId: string, title: string, content: string) => void;
+  /** 已隐藏会话的 id 集合：透传给 ChatInput，供 @ 引用与 +号库面板过滤隐藏会话产物 */
+  hiddenConvIds?: Set<string>;
   // 上下文压缩（水位指示已移到顶栏，这里只保留区间标记与摘要面板所需）
   segments?: ContextSegment[];
   onUpdateSegment?: (segmentId: string, summary: ContextSummary) => void;
@@ -127,6 +129,7 @@ export default function ChatPanel({
   onCompactActive,
   onOpenSegment,
   onDeleteSegment,
+  hiddenConvIds,
 }: ChatPanelProps) {
   const [openSegmentId, setOpenSegmentId] = useState<string | null>(null);
 
@@ -796,6 +799,7 @@ export default function ChatPanel({
           onCompactActive={onCompactActive}
           onOpenSegment={onOpenSegment}
           onDeleteSegment={onDeleteSegment}
+          hiddenConvIds={hiddenConvIds}
         />
       </div>
 
