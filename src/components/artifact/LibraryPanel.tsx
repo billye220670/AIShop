@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { Star, X, ArrowLeft, Loader2, Pencil, Trash2, FileText, Image as ImageIcon, LayoutTemplate, Download } from 'lucide-react';
+import { Star, X, ArrowLeft, Loader2, Pencil, Trash2, FileText, Image as ImageIcon, LayoutTemplate, Download, MoreHorizontal, Check } from 'lucide-react';
 import { isNativePlatform } from '../../platform/capabilities';
 import { useDeviceMode } from '../../platform/useDeviceMode';
 import type { AssetItem } from '../../types';
@@ -26,11 +26,12 @@ interface LibraryPanelProps {
 
 type KindFilter = 'all' | AssetItem['kind'];
 
+// 右上角三点菜单内的筛选项（按展示顺序：全部、应用、图片、文档；隐藏独立于类型筛选）
 const KIND_FILTERS: { id: KindFilter; label: string }[] = [
   { id: 'all', label: '全部' },
   { id: 'artifact', label: '应用' },
-  { id: 'markdown', label: '文档' },
   { id: 'image', label: '图片' },
+  { id: 'markdown', label: '文档' },
 ];
 
 const KIND_META: Record<AssetItem['kind'], { label: string; Icon: typeof FileText }> = {
@@ -132,9 +133,13 @@ function PreviewBody({ asset }: { asset: AssetItem }) {
 }
 
 export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onRenameAsset }: LibraryPanelProps) {
-  const [filter, setFilter] = useState<KindFilter>('all');
+  // 类型多选筛选：集合只存具体类型，空集合 = 全部
+  const [selectedKinds, setSelectedKinds] = useState<Set<AssetItem['kind']>>(new Set());
+  // 右上角三点筛选菜单是否展开
+  const [menuOpen, setMenuOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
   const [previewItem, setPreviewItem] = useState<AssetItem | null>(null);
-  // 是否显示隐藏会话的产物：false = 关闭开关（过滤掉隐藏会话产物，默认）；true = 显示
+  // 是否显示隐藏会话的产物：默认不勾（切换 tab 会重新挂载组件，state 随之重置，必须每次手动勾选）
   const [showHidden, setShowHidden] = useState(false);
   // 图片资产点开直接全屏预览（ImageViewer），不经过详情页
   const [imageViewerAsset, setImageViewerAsset] = useState<AssetItem | null>(null);
@@ -164,8 +169,9 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
   const menuOpenedAtRef = useRef(0);
 
   const visibleAssets = assets.filter(a => {
-    if (filter !== 'all' && a.kind !== filter) return false;
-    // 开关关闭（showHidden=false）时过滤掉隐藏会话的产物；
+    // 类型多选：集合为空 = 全部；否则命中任一选中类型
+    if (selectedKinds.size > 0 && !selectedKinds.has(a.kind)) return false;
+    // 隐藏未勾选（默认）时过滤掉隐藏会话的产物；
     // 无会话标记的历史资产（convId 为空）不在隐藏集合里，不受影响
     if (!showHidden && a.convId && hiddenConvIds?.has(a.convId)) return false;
     return true;
@@ -204,6 +210,18 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
   };
 
   useEffect(() => () => clearPressTimer(), []);
+
+  // 三点筛选菜单：点击面板/按钮外部关闭
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [menuOpen]);
 
   useEffect(() => {
     if (!menuOpenId) return;
@@ -336,41 +354,65 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
         {/* 顶部标题 */}
         <div className="px-4 py-3 bg-[var(--color-bg-base)] flex items-center justify-between">
           <h2 className="text-white font-medium text-lg">我的库</h2>
-          <div className="flex items-center gap-2">
-            {/* 隐藏会话产物过滤开关：关闭（默认）=不显示隐藏会话的产物，开启=显示（复用设置页 toggle 样式） */}
+          {/* 三点筛选菜单：类型多选 + 隐藏开关集中管理 */}
+          <div ref={filterMenuRef} className="relative">
             <button
               type="button"
-              role="switch"
-              aria-checked={showHidden}
-              aria-label="显示隐藏会话的产物"
-              title={showHidden ? '点击隐藏隐藏会话的产物' : '点击显示隐藏会话的产物'}
-              onClick={() => { haptic(); setShowHidden(v => !v); }}
-              className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${
-                showHidden ? 'bg-[var(--color-accent)]' : 'bg-white/15'
-              }`}
+              aria-label="筛选"
+              title="筛选"
+              onClick={() => { haptic(); setMenuOpen(v => !v); }}
+              className="w-9 h-9 rounded-full bg-[var(--color-bg-primary)] flex items-center justify-center text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
             >
-              <span
-                className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                  showHidden ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
+              <MoreHorizontal className="w-5 h-5" />
             </button>
-            {/* 类型筛选 */}
-            <div className="flex items-center bg-[var(--color-bg-primary)] rounded-full p-0.5 gap-0.5">
-              {KIND_FILTERS.map(f => (
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-2 z-[160] w-44 bg-[var(--color-bg-elevated)] border border-white/10 rounded-2xl shadow-2xl py-2">
+                {KIND_FILTERS.map(f => {
+                  const active = f.id === 'all' ? selectedKinds.size === 0 : selectedKinds.has(f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        haptic();
+                        if (f.id === 'all') {
+                          setSelectedKinds(new Set());
+                        } else {
+                          const kind = f.id as AssetItem['kind'];
+                          setSelectedKinds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(kind)) next.delete(kind);
+                            else next.add(kind);
+                            return next;
+                          });
+                        }
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                        active
+                          ? 'text-[var(--color-text-primary)]'
+                          : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'
+                      }`}
+                    >
+                      <span>{f.label}</span>
+                      {active && <Check className="w-4 h-4 text-[var(--color-accent)] ml-auto" />}
+                    </button>
+                  );
+                })}
+                <div className="h-px bg-white/10 my-1" />
                 <button
-                  key={f.id}
-                  onClick={() => setFilter(f.id)}
-                  className={`px-3 py-1 rounded-full text-xs transition-colors ${
-                    filter === f.id
-                      ? 'bg-[var(--color-accent)] text-white'
-                      : 'text-gray-400 hover:text-gray-200'
+                  type="button"
+                  onClick={() => { haptic(); setShowHidden(v => !v); }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                    showHidden
+                      ? 'text-[var(--color-text-primary)]'
+                      : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)]'
                   }`}
                 >
-                  {f.label}
+                  <span>隐藏</span>
+                  {showHidden && <Check className="w-4 h-4 text-[var(--color-accent)] ml-auto" />}
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -395,9 +437,11 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
             <div className="flex flex-col items-center justify-center h-full text-center">
               <Star className="w-12 h-12 text-gray-600 mb-3" />
               <p className="text-gray-500 text-sm">
-                {filter === 'all'
+                {selectedKinds.size === 0
                   ? '还没有保存的内容，对话中收藏应用、保存文档或图片后会出现在这里'
-                  : `还没有${kindLabel(filter)}，去对话或图片页保存一个吧`}
+                  : selectedKinds.size === 1
+                    ? `还没有${kindLabel([...selectedKinds][0])}，去对话或图片页保存一个吧`
+                    : '还没有符合筛选条件的内容，去对话或图片页保存一个吧'}
               </p>
             </div>
           ) : (

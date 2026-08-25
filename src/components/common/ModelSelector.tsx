@@ -67,7 +67,7 @@ function getProviderIcon(provider: string): string | null {
 /** 智能路由伪模型项：非真实模型，选中后每条消息由小模型自动决定回答方式 */
 const AUTO_ITEM: Model = {
   id: AUTO_MODEL_ID,
-  name: '智能路由',
+  name: 'Portify',
   provider: 'Auto',
   type: 'chat',
   maxTokens: 0,
@@ -343,7 +343,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
                   }`}
                 >
                   <Brain className="w-4 h-4 shrink-0 text-[var(--color-accent)]" />
-                  <span className="whitespace-nowrap">智能路由</span>
+                  <span className="whitespace-nowrap">Portify</span>
                   <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">自动选择最佳模型</span>
                 </button>
               </li>

@@ -477,7 +477,7 @@ export default function ModelBottomSheet({
               }`}
             >
               <Brain className="w-8 h-8 text-[var(--color-accent)]" />
-              <span className="text-white text-sm text-center leading-tight">智能路由</span>
+              <span className="text-white text-sm text-center leading-tight">Portify</span>
             </button>
             {recommendedModels.map((model) => {
               const isSelected = model.id === selectedModel;
@@ -624,7 +624,7 @@ export default function ModelBottomSheet({
         >
           <Brain className="w-7 h-7 shrink-0 text-[var(--color-accent)]" />
           <div className="flex-1 text-left">
-            <div className="text-white text-sm font-medium">智能路由</div>
+            <div className="text-white text-sm font-medium">Portify</div>
             <div className="text-gray-400 text-xs mt-0.5 line-clamp-2">
               自动判断任务类型选择最合适的模型回答；简单问题由轻量模型直接回答
             </div>
