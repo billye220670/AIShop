@@ -202,6 +202,9 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
     return true;
   });
 
+  // 仅选中图片时启用照片墙模式：无圆角紧凑 grid（iOS 风格）
+  const isImageWall = selectedKinds.size === 1 && selectedKinds.has('image');
+
   const clearPressTimer = () => {
     if (pressTimerRef.current) {
       clearTimeout(pressTimerRef.current);
@@ -472,16 +475,18 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
               </p>
             </div>
           ) : (
-            /* 网格布局 */
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            /* 网格布局：照片墙模式为紧凑无间距 3 列，普通模式为浮岛卡片 */
+            <div className={`grid ${isImageWall ? 'grid-cols-3 gap-px' : 'grid-cols-2 lg:grid-cols-3 gap-4'}`}>
               {visibleAssets.map(item => {
                 const isMenuOpen = menuOpenId === item.id;
                 return (
                   <div
                     key={item.id}
-                    className={`group relative rounded-xl overflow-hidden bg-[var(--color-bg-secondary)] shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer select-none [-webkit-touch-callout:none] [-webkit-user-select:none] ${
-                      isMenuOpen ? 'relative z-[201] context-menu-pop' : ''
-                    }`}
+                    className={`group relative overflow-hidden cursor-pointer select-none [-webkit-touch-callout:none] [-webkit-user-select:none] ${
+                      isImageWall
+                        ? ''
+                        : 'rounded-xl bg-[var(--color-bg-secondary)] shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200'
+                    } ${isMenuOpen ? 'relative z-[201] context-menu-pop' : ''}`}
                     onPointerDown={e => handlePressStart(item.id, e)}
                     onPointerMove={handlePressMove}
                     onPointerUp={clearPressTimer}
@@ -528,8 +533,47 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
                       )}
                     </div>
 
-                    {/* 底部标题：PC 端 hover 显示编辑图标，点击进入行内重命名；移动端走长按菜单弹窗重命名 */}
-                    <div className="px-3 py-3 pointer-events-none">
+                    {/* 照片墙模式：hover 显示遮罩 + 编辑入口（无标题行，操作放在图片上） */}
+                    {isImageWall && editingId !== item.id && (
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            startRename(item);
+                          }}
+                          onPointerDown={e => e.stopPropagation()}
+                          className="pointer-events-auto p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+                          title="重命名"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 照片墙模式：行内重命名输入框覆盖在图片底部 */}
+                    {isImageWall && editingId === item.id && (
+                      <div className="absolute inset-x-0 bottom-0 p-2 bg-black/60 pointer-events-none">
+                        <input
+                          value={editingText}
+                          autoFocus
+                          onChange={e => setEditingText(e.target.value)}
+                          onKeyDown={e => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') finishRename(true);
+                            else if (e.key === 'Escape') finishRename(false);
+                          }}
+                          onBlur={() => finishRename(true)}
+                          onClick={e => e.stopPropagation()}
+                          onPointerDown={e => e.stopPropagation()}
+                          className="pointer-events-auto w-full bg-[var(--color-bg-base)] border border-[var(--color-accent)] rounded px-1.5 py-0.5 text-sm text-[var(--color-text-primary)] outline-none"
+                        />
+                      </div>
+                    )}
+
+                    {/* 底部标题：照片墙模式隐藏；PC 端 hover 显示编辑图标，点击进入行内重命名；移动端走长按菜单弹窗重命名 */}
+                    {!isImageWall && (
+                      <div className="px-3 py-3 pointer-events-none">
                       {isDesktop && editingId === item.id ? (
                         <input
                           value={editingText}
@@ -567,6 +611,7 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
                         </div>
                       )}
                     </div>
+                    )}
 
                     {/* 悬浮移除按钮 - 非菜单打开时显示 */}
                     {!isMenuOpen && (
