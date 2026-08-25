@@ -154,6 +154,31 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
   const [renameTarget, setRenameTarget] = useState<AssetItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AssetItem | null>(null);
 
+  // PC 端行内重命名：标题 hover 编辑图标点击后，标题变为可输入的重命名区
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  // 提交防重入：Enter 提交后 input 卸载触发的 blur 不再重复提交
+  const editingCommittedRef = useRef(false);
+
+  const startRename = (item: AssetItem) => {
+    editingCommittedRef.current = false;
+    setEditingText(item.title);
+    setEditingId(item.id);
+  };
+
+  const finishRename = (commit: boolean) => {
+    if (editingCommittedRef.current) return;
+    editingCommittedRef.current = true;
+    const id = editingId;
+    if (commit && id) {
+      const text = editingText.trim();
+      if (text && text !== assets.find(a => a.id === id)?.title) {
+        onRenameAsset(id, text);
+      }
+    }
+    setEditingId(null);
+  };
+
   // 长按逻辑
   const LONG_PRESS_MS = 450;
   const LONG_PRESS_MOVE_TOLERANCE = 10;
@@ -186,6 +211,8 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
   };
 
   const handlePressStart = (id: string, e: React.PointerEvent) => {
+    // PC 端不用长按弹上下文菜单（改用标题行 hover 编辑/右上角 X 移除），仅移动端保留长按
+    if (isDesktop) return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     clearPressTimer();
     pressOriginRef.current = { x: e.clientX, y: e.clientY };
@@ -501,11 +528,44 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
                       )}
                     </div>
 
-                    {/* 底部标题 */}
+                    {/* 底部标题：PC 端 hover 显示编辑图标，点击进入行内重命名；移动端走长按菜单弹窗重命名 */}
                     <div className="px-3 py-3 pointer-events-none">
-                      <p className="text-sm text-[var(--color-text-primary)] truncate font-medium">
-                        {item.title}
-                      </p>
+                      {isDesktop && editingId === item.id ? (
+                        <input
+                          value={editingText}
+                          autoFocus
+                          onChange={e => setEditingText(e.target.value)}
+                          onKeyDown={e => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') finishRename(true);
+                            else if (e.key === 'Escape') finishRename(false);
+                          }}
+                          onBlur={() => finishRename(true)}
+                          onClick={e => e.stopPropagation()}
+                          onPointerDown={e => e.stopPropagation()}
+                          className="w-full bg-[var(--color-bg-base)] border border-[var(--color-accent)] rounded px-1.5 py-0.5 text-sm text-[var(--color-text-primary)] outline-none"
+                        />
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm text-[var(--color-text-primary)] truncate font-medium flex-1">
+                            {item.title}
+                          </p>
+                          {isDesktop && (
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation();
+                                startRename(item);
+                              }}
+                              onPointerDown={e => e.stopPropagation()}
+                              className="pointer-events-auto p-1 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-hover)] opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="重命名"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* 悬浮移除按钮 - 非菜单打开时显示 */}
