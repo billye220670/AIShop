@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Globe, SquareCode, Sparkles, Plus, UserRound, Trash2, Check, Pencil, Wand2, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Globe, SquareCode, Sparkles, Brain, Plus, UserRound, Trash2, Check, Pencil, Wand2, Image as ImageIcon } from 'lucide-react';
 import BottomSheet from './BottomSheet';
 import Toast from './Toast';
 import { haptic } from '../../utils/haptics';
@@ -477,7 +477,7 @@ export default function ModelBottomSheet({
               }`}
             >
               <div className="w-12 h-12 rounded-full bg-[var(--color-accent)]/20 flex items-center justify-center">
-                <Sparkles className="w-6 h-6 text-[var(--color-accent)]" />
+                <Brain className="w-6 h-6 text-[var(--color-accent)]" />
               </div>
               <span className="text-white text-sm text-center leading-tight">智能路由</span>
             </button>
@@ -625,7 +625,7 @@ export default function ModelBottomSheet({
           }`}
         >
           <div className="w-10 h-10 shrink-0 rounded-full bg-[var(--color-accent)]/20 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-[var(--color-accent)]" />
+            <Brain className="w-5 h-5 text-[var(--color-accent)]" />
           </div>
           <div className="flex-1 text-left">
             <div className="text-white text-sm font-medium">智能路由</div>

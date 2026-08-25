@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Settings2, ChevronDown, Sparkles } from 'lucide-react';
+import { Settings2, ChevronDown, Brain } from 'lucide-react';
 import { haptic } from '../../utils/haptics';
 import ModelBottomSheet from './ModelBottomSheet';
 import { AUTO_MODEL_ID } from '../../services/routeJudge';
@@ -260,7 +260,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
     if (current.id === AUTO_MODEL_ID) {
       return (
         <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-[var(--color-accent)]/20">
-          <Sparkles className="w-3.5 h-3.5 text-[var(--color-accent)]" />
+          <Brain className="w-3.5 h-3.5 text-[var(--color-accent)]" />
         </span>
       );
     }
@@ -347,7 +347,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
                   }`}
                 >
                   <span className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-[var(--color-accent)]/20">
-                    <Sparkles className="w-3.5 h-3.5 text-[var(--color-accent)]" />
+                    <Brain className="w-3.5 h-3.5 text-[var(--color-accent)]" />
                   </span>
                   <span className="whitespace-nowrap">智能路由</span>
                   <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">自动选择最佳模型</span>
