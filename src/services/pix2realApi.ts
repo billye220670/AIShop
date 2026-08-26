@@ -14,6 +14,8 @@
 import { settingsService } from './settingsService';
 import { PIX2REAL_DEFAULT_BASE_URL } from '../config/providers';
 import { isNativeAndroid, isNativePlatform, isElectron } from '../platform/capabilities';
+import { putBlob } from '../db/blobRepo';
+import { blobRefUrl } from '../db/messageCodec';
 
 /** 提供商 id，与设置面板 / 模型归属映射共用 */
 export const PIX2REAL_PROVIDER = 'pix2real';
@@ -328,7 +330,16 @@ async function resolveDisplayUrls(
       }
     }
     if (!needsKey) {
-      out.push(absolute);
+      // COS 预签名直链自带签名、能直接渲染，但每次轮询现签、不可长期缓存——
+      // 直接存外链会在签名过期后加载失败（服务端对象还在，只是链接失效）。
+      // 这里下载落盘为本地 blob 引用（aishop-blob:<id>），与 COS 签名过期解耦。
+      try {
+        const blob = await fetchRemoteAsBlob(absolute, signal);
+        out.push(blobRefUrl(await putBlob(blob)));
+      } catch {
+        // 下载失败退回原地址，至少不丢结果
+        out.push(absolute);
+      }
       continue;
     }
     try {
