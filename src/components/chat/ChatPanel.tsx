@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, Search, ChevronRight, X } from 'lucide-react';
 
@@ -241,11 +241,25 @@ export default function ChatPanel({
     });
   };
 
-  const closeSearch = () => {
+  const closeSearch = useCallback(() => {
     setSearchOpen(false);
     setSearchQuery('');
     setCurrentMatchIndex(0);
-  };
+  }, []);
+
+  // ChatInput 是重组件（已 memo），onSend 必须引用稳定才能命中；
+  // 搜索开关用 ref 读取，避免把它进依赖导致每次开关搜索都换引用
+  const searchOpenRef = useRef(searchOpen);
+  useEffect(() => {
+    searchOpenRef.current = searchOpen;
+  }, [searchOpen]);
+  const handleInputSend = useCallback(
+    (...args: Parameters<typeof sendMessage>) => {
+      if (searchOpenRef.current) closeSearch();
+      return sendMessage(...args);
+    },
+    [sendMessage, closeSearch]
+  );
 
   // Esc 关闭搜索
   useEffect(() => {
@@ -289,7 +303,8 @@ export default function ChatPanel({
     count: messages.length,
     getScrollElement: () => messagesContainerRef.current,
     estimateSize: (i) => (messages[i].role === 'user' ? 100 : 320),
-    overscan: 6,
+    // 快甩落点前多挂几条，减少落地瞬间现挂 markdown 重组件的卡顿
+    overscan: 8,
     // 按消息 id 缓存测量高度，切换会话自动换键重测
     getItemKey: (i) => messages[i].id,
     measureElement: (el) => el.getBoundingClientRect().height,
@@ -313,7 +328,7 @@ export default function ChatPanel({
    * 甩动手势必然带惯性，惯性帧由合成器线程驱动，会持续覆盖我们写进去的
    * scrollTop（单次赋值根本压不住）——所以要逐帧压回来。
    */
-  const pinScroll = (getTop: () => number, durationMs: number) => {
+  const pinScroll = useCallback((getTop: () => number, durationMs: number) => {
     const el = messagesContainerRef.current;
     if (!el) return;
     if (scrollPinRef.current != null) cancelAnimationFrame(scrollPinRef.current);
@@ -324,7 +339,7 @@ export default function ChatPanel({
       scrollPinRef.current = --framesLeft > 0 ? requestAnimationFrame(step) : null;
     };
     scrollPinRef.current = requestAnimationFrame(step);
-  };
+  }, []);
 
   const stopPinScroll = () => {
     if (scrollPinRef.current != null) cancelAnimationFrame(scrollPinRef.current);
@@ -364,8 +379,9 @@ export default function ChatPanel({
       : firstVisible;
   }
 
-  /** 触发折叠：先冻住滚动播 200ms 塌陷动画，再换成折叠态 DOM */
-  const startCollapse = () => {
+  /** 触发折叠：先冻住滚动播 200ms 塌陷动画，再换成折叠态 DOM。
+   *  useCallback 稳定引用——它作为 onFold 传给 memo 过的 MessageBubble */
+  const startCollapse = useCallback(() => {
     if (isCollapsed || foldPhase === 'collapsing') return;
     const el = messagesContainerRef.current;
     if (!el) return;
@@ -381,7 +397,8 @@ export default function ChatPanel({
       setFoldPhase('idle');
       setIsCollapsed(true);
     }, FOLD_ANIM_MS);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCollapsed, foldPhase, messages, pinScroll]);
 
   /** 退出折叠：先在原地展开（点中那条不动），再平滑滚到它居中的位置 */
   const exitCollapsed = (targetId: string) => {
@@ -544,6 +561,13 @@ export default function ChatPanel({
   };
   const [autoPreviewSignal, setAutoPreviewSignal] = useState(0);
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
+
+  // 传给 memo 过的 MessageBubble / ChatInput 的回调：引用必须稳定，
+  // 否则滚动引起的重渲染会击穿 memo，重组件照样全量重跑
+  const handleSuggestionClick = useCallback((text: string) => sendMessage(text), [sendMessage]);
+  const handleQuote = useCallback((m: Message) => setQuotedMessage(m), []);
+  const handleOpenSearch = useCallback(() => setSearchOpen(true), []);
+  const handleRemoveQuote = useCallback(() => setQuotedMessage(null), []);
   // 会话切换时关闭 Artifact 面板
   useEffect(() => {
     closeArtifact();
@@ -772,18 +796,18 @@ export default function ChatPanel({
               <MessageBubble
                 message={msg}
                 showSuggestions={isLastAssistant}
-                onSuggestionClick={isLastAssistant ? (text) => sendMessage(text) : undefined}
+                onSuggestionClick={isLastAssistant ? handleSuggestionClick : undefined}
                 modelName={currentModel?.name}
                 modelProvider={currentModel?.provider}
                 onOpenArtifact={openArtifact}
                 onRegenerate={msg.role === 'assistant' ? regenerateMessage : undefined}
-                onQuote={msg.role === 'assistant' ? (m) => setQuotedMessage(m) : undefined}
+                onQuote={msg.role === 'assistant' ? handleQuote : undefined}
                 onSaveMarkdown={msg.role === 'assistant' ? onSaveMarkdown : undefined}
                 isStreaming={isLoading}
                 onCompareWithModel={msg.role === 'assistant' ? compareWithModel : undefined}
                 onSwitchVersion={msg.role === 'assistant' ? switchVersion : undefined}
                 collapsed={isCollapsed}
-                onOpenSearch={() => setSearchOpen(true)}
+                onOpenSearch={handleOpenSearch}
                 onFold={!isCollapsed && foldPhase === 'idle' ? startCollapse : undefined}
                 searchQuery={searchOpen ? searchQuery : undefined}
                 activeMatchOccurrence={isActiveMatchHere ? activeMatch.occurrence : undefined}
@@ -824,13 +848,13 @@ export default function ChatPanel({
         {/* Input */}
         <ChatInput
           onActiveChange={setIsInputActive}
-          onSend={(...args) => { if (searchOpen) closeSearch(); return sendMessage(...args); }}
+          onSend={handleInputSend}
           isLoading={isLoading}
           onStop={stopGeneration}
           onToggleHistory={onToggleHistory}
           onNewConversation={onNewConversation}
           quotedMessage={quotedMessage}
-          onRemoveQuote={() => setQuotedMessage(null)}
+          onRemoveQuote={handleRemoveQuote}
           featureSettings={featureSettings}
           onFeatureSettingsChange={onFeatureSettingsChange}
           webSearchEnabled={webSearchEnabled}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo, Children } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo, Children, memo } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -293,7 +293,7 @@ interface MessageBubbleProps {
   activeMatchOccurrence?: number;
 }
 
-export default function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName, modelProvider, onOpenArtifact, onRegenerate, onQuote, onSaveMarkdown, isStreaming, onCompareWithModel, onSwitchVersion, collapsed, onOpenSearch, onFold, searchQuery, activeMatchOccurrence }: MessageBubbleProps) {
+function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName, modelProvider, onOpenArtifact, onRegenerate, onQuote, onSaveMarkdown, isStreaming, onCompareWithModel, onSwitchVersion, collapsed, onOpenSearch, onFold, searchQuery, activeMatchOccurrence }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   // PC 端（精确指针鼠标/触控板）允许自由选择对话文本、放行右键菜单；
   // 触摸设备保持禁止选择 + 长按菜单，避免原生文本选择与长按手势冲突
@@ -1347,3 +1347,7 @@ export default function MessageBubble({ message, onSuggestionClick, showSuggesti
     </>
   );
 }
+
+// 虚拟化滚动时视口窗口频繁变化会带动整列表重渲染，
+// memo 让 props 未变的消息（markdown / KaTeX / 代码高亮的重组件）跳过重渲染
+export default memo(MessageBubble);

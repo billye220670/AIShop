@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
+import { useState, useRef, useEffect, useMemo, memo, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type SyntheticEvent } from 'react';
 import { Plus, Square, X, FileText, MessageSquareQuote, ArrowUp, Globe, Paperclip, SlidersHorizontal, SendHorizontal, Clock } from 'lucide-react';
 import { Camera, MediaTypeSelection } from '@capacitor/camera';
 import { FilePicker } from '@capawesome/capacitor-file-picker';
@@ -63,7 +63,7 @@ interface ChatInputProps {
   hiddenConvIds?: Set<string>;
 }
 
-export default function ChatInput({
+function ChatInput({
   onSend,
   isLoading,
   onStop,
@@ -1368,3 +1368,7 @@ export default function ChatInput({
     </div>
   );
 }
+
+// 聊天面板因虚拟化滚动高频重渲染，输入框组件体量大（工具栏/附件面板等），
+// memo + 上游稳定回调让它只在自身相关 props 变化时重渲染
+export default memo(ChatInput);
