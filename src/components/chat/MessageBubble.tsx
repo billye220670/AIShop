@@ -12,6 +12,7 @@ import 'highlight.js/styles/atom-one-dark.css';
 import type { Message, MessageContent } from '../../types';
 import LoadingDots from './LoadingDots';
 import MessageImage from './MessageImage';
+import MermaidBlock from './MermaidBlock';
 import { imageDisplaySizeFromRatio, USER_IMAGE_MAX_WIDTH, USER_IMAGE_MAX_HEIGHT } from '../../utils/imageDisplaySize';
 import VersionNavigator from './VersionNavigator';
 import CompareButton from './CompareButton';
@@ -636,7 +637,12 @@ function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName,
                   ?.props;
                 const match = /language-(\w+)/.exec(props?.className || '');
                 const codeStr = String(props?.children ?? '').replace(/\n$/, '');
-                return <CodeBlock code={codeStr} language={match?.[1]} />;
+                const language = match?.[1];
+                // mermaid 走专用图表组件：流式中只显示源码，完成后渲染为图表（点开看大图/下载）
+                if (language?.toLowerCase() === 'mermaid') {
+                  return <MermaidBlock code={codeStr} streaming={displayIsStreaming} />;
+                }
+                return <CodeBlock code={codeStr} language={language} />;
               },
               a({ href, children }) {
                 // 引用标识：cite:N 格式 → 渲染为圆形数字按钮

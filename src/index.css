@@ -625,3 +625,23 @@ mark.search-highlight.search-highlight-active {
     transform: translateY(0);
   }
 }
+
+/* ================================================================
+ * Mermaid 图表（MermaidBlock）
+ * ================================================================ */
+/* 内联卡片预览：svg 宽度跟随容器、高度按纵横比，超高图限高后内容居中 letterbox 不裁切。
+   mermaid 会在 svg 上内联 max-width: Npx，必须 !important 覆盖 */
+.mermaid-inline svg {
+  display: block;
+  max-width: 100% !important;
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+  margin: 0 auto;
+}
+
+/* 全屏查看器：svg 铺满可用区域，viewBox 等比缩放居中显示 */
+.mermaid-fit svg {
+  width: 100%;
+  height: 100%;
+}

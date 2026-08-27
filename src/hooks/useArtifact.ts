@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ArtifactBlock } from '../types';
 
 export const ARTIFACT_START = '<<<ARTIFACT_START>>>';
@@ -96,28 +96,30 @@ export function useArtifact() {
   const [activeArtifact, setActiveArtifact] = useState<ArtifactBlock | null>(null);
   const [isArtifactGenerating, setIsArtifactGenerating] = useState(false);
 
-  const openArtifact = (artifact: ArtifactBlock) => setActiveArtifact(artifact);
-  const closeArtifact = () => {
+  // 全部 useCallback 稳定引用：openArtifact 会作为 prop 传给每条
+  // memo 过的 MessageBubble，引用一变所有气泡的 memo 全部击穿
+  const openArtifact = useCallback((artifact: ArtifactBlock) => setActiveArtifact(artifact), []);
+  const closeArtifact = useCallback(() => {
     setActiveArtifact(null);
     setIsArtifactGenerating(false);
-  };
+  }, []);
 
   // 开始流式 artifact（代码还在写入中）
-  const startStreamingArtifact = (artifact: ArtifactBlock) => {
+  const startStreamingArtifact = useCallback((artifact: ArtifactBlock) => {
     setActiveArtifact(artifact);
     setIsArtifactGenerating(true);
-  };
+  }, []);
 
   // 更新流式中的代码
-  const updateStreamingCode = (code: string) => {
+  const updateStreamingCode = useCallback((code: string) => {
     setActiveArtifact(prev => prev ? { ...prev, code } : null);
-  };
+  }, []);
 
   // 完成流式
-  const finishStreamingArtifact = (artifact: ArtifactBlock) => {
+  const finishStreamingArtifact = useCallback((artifact: ArtifactBlock) => {
     setActiveArtifact(artifact);
     setIsArtifactGenerating(false);
-  };
+  }, []);
 
   return {
     activeArtifact,
