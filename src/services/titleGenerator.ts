@@ -1,8 +1,6 @@
 import { settingsService } from './settingsService';
 import { getProviderConfig } from '../config/providers';
 
-const TITLE_MODEL = 'doubao-1-5-pro-32k-250115';
-
 function fallback(messages: Array<{role: string; content: string | unknown}>): string {
   const first = messages.find(m => m.role === 'user');
   const text = first && typeof first.content === 'string' ? first.content : '新对话';
@@ -39,6 +37,8 @@ export async function generateTitle(
       return fallback(messages);
     }
 
+    const titleModel = await settingsService.getAssistModel('titleGen');
+
     const response = await fetch(`${config.chatBaseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -46,7 +46,7 @@ export async function generateTitle(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: TITLE_MODEL,
+        model: titleModel,
         messages: [
           {
             role: 'system',
@@ -98,6 +98,8 @@ export async function generateDocumentTitle(content: string): Promise<string> {
       return fallbackDocTitle(content);
     }
 
+    const titleModel = await settingsService.getAssistModel('titleGen');
+
     const response = await fetch(`${config.chatBaseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -105,7 +107,7 @@ export async function generateDocumentTitle(content: string): Promise<string> {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: TITLE_MODEL,
+        model: titleModel,
         messages: [
           {
             role: 'system',

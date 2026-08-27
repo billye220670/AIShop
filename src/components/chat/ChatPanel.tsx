@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, Search, ChevronRight, X } from 'lucide-react';
 
 import type { Conversation, Message, FileAttachment, ChatFeatureSettings, Model } from '../../types';
@@ -164,7 +165,14 @@ export default function ChatPanel({
   };
 
   const locateMessage = (messageId: string) => {
-    messageRefs.current.get(messageId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // 虚拟化下目标消息可能不在渲染窗口，对占位高度 scrollIntoView 不可靠，
+    // 统一走 scrollToIndex；查不到下标（极端竞态）才回退 DOM 路径
+    const index = messageIndexById.get(messageId);
+    if (index != null) {
+      virtualizer.scrollToIndex(index, { align: 'center', behavior: 'smooth' });
+    } else {
+      messageRefs.current.get(messageId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     flashMessage(messageId);
   };
 
@@ -217,7 +225,10 @@ export default function ChatPanel({
     if (matches.length === 0) return;
     const next = ((index % matches.length) + matches.length) % matches.length;
     setCurrentMatchIndex(next);
-    // 等高亮 DOM 更新后，直接滚到高亮片段本身（而不是整条消息），并贴到顶部
+    // 虚拟化下命中消息可能不在渲染窗口：先用 scrollToIndex 把窗口挪过去，
+    // 等高亮 DOM 更新后，再直接滚到高亮片段本身（而不是整条消息），并贴到顶部
+    const msgIndex = messageIndexById.get(matches[next].messageId);
+    if (msgIndex != null) virtualizer.scrollToIndex(msgIndex, { align: 'start' });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const activeMark = messagesContainerRef.current?.querySelector('.search-highlight-active');
@@ -269,6 +280,26 @@ export default function ChatPanel({
     scrollToBottom,
     isFarFromBottom,
   } = useStickToBottom<HTMLDivElement>({ enabled: !isCollapsed && foldPhase === 'idle' });
+
+  // 虚拟化渲染：只挂载视口附近的消息，长对话不再全量铺 DOM。
+  // 无头库，不接管 scrollTop——吸底缓动 / 折叠钉滚 / 锚点落位等手写滚动
+  // 控制照旧工作。高度按实际渲染动态测量（图片加载、代码高亮引起的高度
+  // 变化由库内部 ResizeObserver 自动重测），estimateSize 只是首帧占位
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => messagesContainerRef.current,
+    estimateSize: (i) => (messages[i].role === 'user' ? 100 : 320),
+    overscan: 6,
+    // 按消息 id 缓存测量高度，切换会话自动换键重测
+    getItemKey: (i) => messages[i].id,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  });
+
+  /** 消息 id → 列表下标：虚拟化下滚动定位（搜索跳转 / 折叠退出）要用 */
+  const messageIndexById = useMemo(
+    () => new Map(messages.map((m, i) => [m.id, i] as const)),
+    [messages]
+  );
 
   // 连续快速甩动 → 播塌陷动画 → 进入折叠浏览模式
   useFoldGesture({
@@ -671,7 +702,11 @@ export default function ChatPanel({
             if (isElectron()) e.preventDefault();
           }}
         >
-         <div ref={messagesContentRef} className={foldPhase === 'collapsing' ? 'chat-folding' : undefined}>
+         <div
+          ref={messagesContentRef}
+          className={foldPhase === 'collapsing' ? 'chat-folding' : undefined}
+          style={messages.length > 0 ? { position: 'relative', height: virtualizer.getTotalSize() } : undefined}
+         >
           {messages.length === 0 && (
             <div className="pt-3 pl-1">
               <div className="flex flex-col">
@@ -684,7 +719,9 @@ export default function ChatPanel({
               </div>
             </div>
           )}
-          {messages.map((msg, index) => {
+          {virtualizer.getVirtualItems().map(vi => {
+            const msg = messages[vi.index];
+            const index = vi.index;
             const isLastAssistant =
               msg.role === 'assistant' && index === messages.length - 1;
             // 版本感知的模型 ID 获取
@@ -702,7 +739,18 @@ export default function ChatPanel({
             const isActiveMatchHere = activeMatch?.messageId === msg.id;
             return (
               <div
-                key={msg.id}
+                key={vi.key}
+                data-index={vi.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${vi.start}px)`,
+                }}
+              >
+              <div
                 data-msg-role={msg.role}
                 ref={el => {
                   if (el) messageRefs.current.set(msg.id, el);
@@ -746,6 +794,7 @@ export default function ChatPanel({
                   onOpen={() => setOpenSegmentId(endingSegment.id)}
                 />
               )}
+              </div>
               </div>
             );
           })}

@@ -20,9 +20,6 @@ import { getProviderConfig } from '../config/providers';
 /** 智能路由的伪模型 id：selectedModel 等于它时触发路由判断 */
 export const AUTO_MODEL_ID = 'auto';
 
-/** 路由判断与直接回答都用这个便宜快模型，与 titleGenerator/searchJudge 保持一致 */
-export const ROUTER_MODEL = 'doubao-1-5-pro-32k-250115';
-
 /** 判断/回答请求本身要快，附带的历史上下文不需要很多，够理解追问就行 */
 const MAX_CONTEXT_MESSAGES = 4;
 
@@ -145,6 +142,7 @@ export async function judgeRoute(
     const config = getProviderConfig(provider);
     if (!apiKey) return null;
 
+    const routerModel = await settingsService.getAssistModel('routeJudge');
     const context = buildContext(recentMessages);
     const parts: string[] = [];
     if (context) parts.push(`【最近对话背景】\n${context}`);
@@ -161,7 +159,7 @@ export async function judgeRoute(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: ROUTER_MODEL,
+        model: routerModel,
         messages: [
           { role: 'system', content: ROUTE_PROMPT },
           { role: 'user', content: parts.join('\n\n') },
@@ -202,6 +200,7 @@ export async function quickAnswer(
     const config = getProviderConfig(provider);
     if (!apiKey) return null;
 
+    const routerModel = await settingsService.getAssistModel('routeJudge');
     const context = buildContext(recentMessages);
     const parts: string[] = [];
     if (context) parts.push(`【最近对话背景】\n${context}`);
@@ -220,7 +219,7 @@ export async function quickAnswer(
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: ROUTER_MODEL,
+          model: routerModel,
           messages: [
             { role: 'system', content: QUICK_ANSWER_PROMPT },
             { role: 'user', content: parts.join('\n\n') },

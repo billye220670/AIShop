@@ -373,7 +373,7 @@ export default function SettingsPanel() {
             <div className="space-y-6">
               <p className="text-xs text-gray-400 leading-relaxed">
                 聊天中部分辅助任务由独立的小模型完成，不影响正文对话使用的模型。
-                这两项配置会随 BYOC 同步到其他设备。
+                这些配置会随 BYOC 同步到其他设备。
               </p>
 
               {/* 意图识别 */}
@@ -405,6 +405,54 @@ export default function SettingsPanel() {
                 />
                 <p className="text-xs text-gray-500">
                   生图前把您的需求扩写润色成高质量提示词。
+                </p>
+              </div>
+
+              {/* 标题生成 */}
+              <div className="space-y-2">
+                <label htmlFor="assist-title-model" className="block text-sm font-medium text-white">
+                  标题生成
+                </label>
+                <CustomSelect
+                  id="assist-title-model"
+                  value={assistModels.titleGen || DEFAULT_ASSIST_MODEL}
+                  onChange={value => handleAssistModelChange('titleGen', value)}
+                  options={CHAT_MODELS.map(m => ({ value: m.id, label: m.name }))}
+                />
+                <p className="text-xs text-gray-500">
+                  为对话和「我的库」文档自动起名。
+                </p>
+              </div>
+
+              {/* 智能路由 */}
+              <div className="space-y-2">
+                <label htmlFor="assist-route-model" className="block text-sm font-medium text-white">
+                  智能路由
+                </label>
+                <CustomSelect
+                  id="assist-route-model"
+                  value={assistModels.routeJudge || DEFAULT_ASSIST_MODEL}
+                  onChange={value => handleAssistModelChange('routeJudge', value)}
+                  options={CHAT_MODELS.map(m => ({ value: m.id, label: m.name }))}
+                />
+                <p className="text-xs text-gray-500">
+                  智能路由下判断回答方式，简单任务由它直接回答。
+                </p>
+              </div>
+
+              {/* 联网搜索判断 */}
+              <div className="space-y-2">
+                <label htmlFor="assist-search-model" className="block text-sm font-medium text-white">
+                  联网搜索判断
+                </label>
+                <CustomSelect
+                  id="assist-search-model"
+                  value={assistModels.searchJudge || DEFAULT_ASSIST_MODEL}
+                  onChange={value => handleAssistModelChange('searchJudge', value)}
+                  options={CHAT_MODELS.map(m => ({ value: m.id, label: m.name }))}
+                />
+                <p className="text-xs text-gray-500">
+                  判断这条消息是否需要联网搜索。
                 </p>
               </div>
             </div>

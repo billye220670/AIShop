@@ -20,8 +20,13 @@ export interface CompactSettings {
   hotWindowSize: number;
 }
 
-/** 辅助模型分类：意图识别（生图前置判断）与生图优化（提示词扩写润色） */
-export type AssistModelCategory = 'intentJudge' | 'promptOptimize';
+/** 辅助模型分类：各项轻量辅助任务由独立小模型完成，用户可在设置面板配置 */
+export type AssistModelCategory =
+  | 'intentJudge' // 意图识别：发送前判断是聊天还是生图
+  | 'promptOptimize' // 生图优化：提示词扩写润色
+  | 'titleGen' // 标题生成：为对话/文档起名
+  | 'routeJudge' // 智能路由：判断回答方式 + 小模型直接回答
+  | 'searchJudge'; // 联网搜索判断：判断是否需要联网
 
 /** 辅助模型设置；缺项回落 DEFAULT_ASSIST_MODEL */
 export type AssistModels = Partial<Record<AssistModelCategory, string>>;

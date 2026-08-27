@@ -13,9 +13,6 @@ import { settingsService } from './settingsService';
 import { getProviderConfig } from '../config/providers';
 import { getCachedCity } from './locationService';
 
-/** 判断本身只是个分类任务，用便宜快模型即可，和 titleGenerator 使用同一个模型 */
-const JUDGE_MODEL = 'doubao-1-5-pro-32k-250115';
-
 /** 判断请求本身要快，附带的历史上下文不需要很多，够理解追问就行 */
 const MAX_CONTEXT_MESSAGES = 4;
 
@@ -90,6 +87,7 @@ export async function judgeSearchNeed(
     const config = getProviderConfig(provider);
     if (!apiKey) return FAIL_OPEN;
 
+    const judgeModel = await settingsService.getAssistModel('searchJudge');
     const context = buildContext(recentMessages);
     // 附上用户所在城市：让判断模型输出的搜索词自动带上城市，
     // 天气、本地服务这类问题才能搜到用户所在地的结果
@@ -108,7 +106,7 @@ export async function judgeSearchNeed(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: JUDGE_MODEL,
+        model: judgeModel,
         messages: [
           { role: 'system', content: JUDGE_PROMPT },
           { role: 'user', content: userContent },

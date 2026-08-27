@@ -46,7 +46,7 @@ import {
   PIX2REAL_MAX_IMAGES,
   Pix2RealClarificationError,
 } from '../services/pix2realApi';
-import { AUTO_MODEL_ID, ROUTER_MODEL, judgeRoute, quickAnswer } from '../services/routeJudge';
+import { AUTO_MODEL_ID, judgeRoute, quickAnswer } from '../services/routeJudge';
 import { optimizeImagePrompt } from '../services/promptOptimizer';
 import { generateImage as apiGenerateImage, processImage as apiProcessImage, type ImageProcessKind } from '../services/imageApi';
 import { ensureCity, prefetchCity } from '../services/locationService';
@@ -1372,7 +1372,7 @@ export function useChat() {
             directAnswer = (await quickAnswer(userText, messages, searchContext || undefined)) ?? undefined;
             if (directAnswer) {
               // 消息 model 字段如实记录实际回答者（小模型），版本导航可正常显示
-              actualModel = ROUTER_MODEL;
+              actualModel = await settingsService.getAssistModel('routeJudge');
             } else {
               actualModel = lastConcreteModelRef.current || CHAT_MODELS[0].id;
             }
