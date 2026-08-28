@@ -719,7 +719,7 @@ export default function ChatPanel({
         <div
           ref={messagesContainerRef}
           data-messages-container
-          className="flex-1 overflow-y-auto px-4 py-4"
+          className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4"
           /* Electron：对话区域右键不弹任何菜单（含空白处/折叠气泡），
              查找统一走 Ctrl+F；Web 端维持原有行为 */
           onContextMenu={e => {

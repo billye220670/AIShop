@@ -587,6 +587,14 @@ function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName,
       th({ children }) {
         return <th>{highlightMarkdownChildren(children)}</th>;
       },
+      table({ children }) {
+        // 宽表格在包裹层内横向滚动，避免把整个会话区顶出横向滚动
+        return (
+          <div className="overflow-x-auto max-w-full">
+            <table>{children}</table>
+          </div>
+        );
+      },
       h1({ children }) { return <h1>{highlightMarkdownChildren(children)}</h1>; },
       h2({ children }) { return <h2>{highlightMarkdownChildren(children)}</h2>; },
       h3({ children }) { return <h3>{highlightMarkdownChildren(children)}</h3>; },
@@ -667,15 +675,15 @@ function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName,
       if (isUser) {
         if (searchQuery && searchQuery.trim()) {
           const { nodes } = renderTextWithHighlight(displayContent, searchQuery.trim(), 0, activeMatchOccurrence);
-          return <p className="whitespace-pre-wrap">{nodes}</p>;
+          return <p className="whitespace-pre-wrap break-words">{nodes}</p>;
         }
-        return <p className="whitespace-pre-wrap">{displayContent}</p>;
+        return <p className="whitespace-pre-wrap break-words">{displayContent}</p>;
       }
       const processedContent = preprocessCitations(displayContent);
       // markdown 渲染前重置高亮游标（各覆盖组件渲染时按文档顺序累加）
       searchCursorRef.current = 0;
       return (
-        <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
+        <div className="prose prose-invert max-w-none break-words prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeKatex]}
@@ -707,9 +715,9 @@ function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName,
             if (searchQuery && searchQuery.trim()) {
               const { nodes, occurrenceCount } = renderTextWithHighlight(part.text, searchQuery.trim(), occurrenceCursor, activeMatchOccurrence);
               occurrenceCursor += occurrenceCount;
-              return <p key={idx} className="whitespace-pre-wrap">{nodes}</p>;
+              return <p key={idx} className="whitespace-pre-wrap break-words">{nodes}</p>;
             }
-            return <p key={idx} className="whitespace-pre-wrap">{part.text}</p>;
+            return <p key={idx} className="whitespace-pre-wrap break-words">{part.text}</p>;
           }
           if (part.type === 'image_url' && part.image_url) {
             // 走 MessageImage 而不是直接 <img>：图片存在 IndexedDB 里，
@@ -746,9 +754,9 @@ function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName,
     if (typeof displayContent === 'string') {
       if (searchQuery && searchQuery.trim()) {
         const { nodes } = renderTextWithHighlight(displayContent, searchQuery.trim(), 0, activeMatchOccurrence);
-        return <p className="whitespace-pre-wrap">{nodes}</p>;
+        return <p className="whitespace-pre-wrap break-words">{nodes}</p>;
       }
-      return <p className="whitespace-pre-wrap">{displayContent}</p>;
+      return <p className="whitespace-pre-wrap break-words">{displayContent}</p>;
     }
     const textParts = displayContent.filter(
       (p): p is MessageContent & { text: string } => p.type === 'text' && !!p.text
@@ -760,9 +768,9 @@ function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName,
           if (searchQuery && searchQuery.trim()) {
             const { nodes, occurrenceCount } = renderTextWithHighlight(part.text, searchQuery.trim(), occurrenceCursor, activeMatchOccurrence);
             occurrenceCursor += occurrenceCount;
-            return <p key={idx} className="whitespace-pre-wrap">{nodes}</p>;
+            return <p key={idx} className="whitespace-pre-wrap break-words">{nodes}</p>;
           }
-          return <p key={idx} className="whitespace-pre-wrap">{part.text}</p>;
+          return <p key={idx} className="whitespace-pre-wrap break-words">{part.text}</p>;
         })}
       </div>
     );

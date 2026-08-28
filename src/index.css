@@ -142,6 +142,10 @@
     color: var(--color-text-tertiary);
   }
 
+  /* hover:text-white / hover:text-gray-200 → 亮色下悬停同样用主文字色（否则白底上不可见） */
+  & .hover\:text-white:hover { color: var(--color-text-primary); }
+  & .hover\:text-gray-200:hover { color: var(--color-text-primary); }
+
   /* placeholder */
   & .placeholder-gray-500::placeholder {
     color: var(--color-text-muted);
@@ -236,6 +240,11 @@
 
   /* 对话内 artifact 卡片地球图标：浅色模式下保持白色（深色模式回退原始 text-white） */
   & .artifact-globe-icon { color: #ffffff; }
+
+  /* artifact 代码视图：组件内联的暗色高亮色在浅色代码底上不可读，覆盖为深色系 */
+  & .art-code-highlight { color: var(--color-text-primary); }
+  & .art-attr { color: #1d4ed8; }
+  & .art-val { color: #15803d; }
 }
 
 /* 全局：禁止页面级滚动与下拉刷新/橡皮筋效果，禁止缩放 */
@@ -517,6 +526,12 @@ mark.search-highlight.search-highlight-active {
 /* highlight.js 主题覆盖 - 确保代码块背景一致 */
 .hljs {
   background: transparent !important;
+}
+
+/* KaTeX 块级公式过宽时在自身内部横向滚动，避免把会话区顶出横向滚动 */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* BottomSheet 动画 */
