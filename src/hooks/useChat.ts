@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Message, MessageVersion, Conversation, FileAttachment, MessageContent, ChatFeatureSettings, ContextSegment, ContextSummary, TokenUsage } from '../types';
+import type { Message, MessageVersion, Conversation, FileAttachment, MessageContent, ChatFeatureSettings, ContextSegment, ContextSummary, TokenUsage, ArtifactBlock } from '../types';
 import { streamChat } from '../services/api';
 import { haptic } from '../utils/haptics';
 import { CHAT_MODELS } from '../config/models';
@@ -9,6 +9,7 @@ import {
   getDisplayContentWithoutArtifact,
   isArtifactStreaming,
   extractStreamingArtifact,
+  extractArtifactFromCodeFence,
 } from './useArtifact';
 import {
   saveLastModel,
@@ -212,6 +213,30 @@ function parseSuggestions(content: string): { text: string; suggestions: string[
   }
 
   return { text: content, suggestions: [] };
+}
+
+/**
+ * 流式结束后的统一解析：先按 <<<ARTIFACT_START>>> 标记识别 artifact；
+ * 没有标记且 artifact 开关开启时，兜底识别 ``` 代码块里的完整 HTML 文档
+ * （DeepSeek 等指令遵循较弱的模型常不遵守标记格式，直接返回代码块）；
+ * 随后清理过度反引号并解析 suggestions。
+ */
+function parseStreamFinishContent(
+  fullContent: string,
+  artifactEnabled: boolean
+): { text: string; suggestions: string[]; artifact: ArtifactBlock | null } {
+  let displaySource = getDisplayContentWithoutArtifact(fullContent);
+  let artifact = parseArtifactFromContent(fullContent);
+  if (!artifact && artifactEnabled) {
+    const fenced = extractArtifactFromCodeFence(fullContent);
+    if (fenced) {
+      artifact = fenced.artifact;
+      displaySource = fenced.rest;
+    }
+  }
+  const cleanedContent = cleanExcessiveBackticks(displaySource);
+  const { text, suggestions } = parseSuggestions(cleanedContent);
+  return { text, suggestions, artifact };
 }
 
 // 用于流式显示时隐藏建议标记，避免 <<<SUGGESTIONS>>> 等中间状态闪现给用户
@@ -1437,11 +1462,8 @@ export function useChat() {
         // 移动端的触觉反馈 - AI 回答结束：与汉堡菜单一致的短促轻触感
         setTimeout(() => haptic(), 100);
 
-        // 先去除 artifact 标记，再清理过度反引号，最后解析 suggestions
-        const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
-        const cleanedContent = cleanExcessiveBackticks(contentWithoutArtifact);
-        const { text, suggestions } = parseSuggestions(cleanedContent);
-        const artifact = parseArtifactFromContent(fullContent);
+        // 去除 artifact 标记 → 兜底识别 ``` 完整 HTML → 清理过度反引号 → 解析 suggestions
+        const { text, suggestions, artifact } = parseStreamFinishContent(fullContent, featureSettings.artifactEnabled);
 
         updateActiveConversation(conv => {
           const updated = [...conv.messages];
@@ -1924,10 +1946,7 @@ export function useChat() {
         }
 
         // 流式完成：解析 suggestions/artifact
-        const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
-        const cleanedContent = cleanExcessiveBackticks(contentWithoutArtifact);
-        const { text, suggestions } = parseSuggestions(cleanedContent);
-        const artifact = parseArtifactFromContent(fullContent);
+        const { text, suggestions, artifact } = parseStreamFinishContent(fullContent, featureSettings.artifactEnabled);
 
         updateActiveConversation(conv => {
           const updated = [...conv.messages];
@@ -2122,10 +2141,7 @@ export function useChat() {
         }
 
         // 8. 流式完成：解析 suggestions/artifact
-        const contentWithoutArtifact = getDisplayContentWithoutArtifact(fullContent);
-        const cleanedContent = cleanExcessiveBackticks(contentWithoutArtifact);
-        const { text, suggestions } = parseSuggestions(cleanedContent);
-        const artifact = parseArtifactFromContent(fullContent);
+        const { text, suggestions, artifact } = parseStreamFinishContent(fullContent, featureSettings.artifactEnabled);
 
         updateActiveConversation(conv => {
           const updated = [...conv.messages];

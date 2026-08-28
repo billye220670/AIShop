@@ -11,7 +11,8 @@
  *
  * mermaid 通过动态 import 按需加载（独立 chunk），不含图表的会话不会付出体积代价。
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Copy, Download, FileCode2, Loader2, Maximize2, TriangleAlert, X } from 'lucide-react';
 import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch';
@@ -44,6 +45,23 @@ function applyMermaidTheme(mm: MermaidLib, mode: 'light' | 'dark'): void {
 
 /** render 用的全局递增 id：mermaid.render 要求 id 唯一，重复会渲染失败 */
 let mermaidIdSeq = 0;
+
+/* ─── 渲染结果缓存 ───
+ * key = 亮暗模式 + 源码。父组件重渲染导致本组件重挂载时，首帧同步命中缓存
+ * 直接出图，避免闪回源码/加载态；同一张图也不重复跑 mermaid.render。
+ * 超出上限按插入顺序淘汰最旧条目。 */
+const MERMAID_CACHE_MAX = 100;
+const mermaidRenderCache = new Map<string, { svg?: string; failed?: boolean }>();
+function mermaidCacheKey(mode: 'light' | 'dark', code: string): string {
+  return `${mode}::${code}`;
+}
+function mermaidCacheSet(key: string, value: { svg?: string; failed?: boolean }): void {
+  if (!mermaidRenderCache.has(key) && mermaidRenderCache.size >= MERMAID_CACHE_MAX) {
+    const oldest = mermaidRenderCache.keys().next().value;
+    if (oldest !== undefined) mermaidRenderCache.delete(oldest);
+  }
+  mermaidRenderCache.set(key, value);
+}
 
 /* ─── 亮/暗模式订阅：设置面板直接改 documentElement.dataset.mode，这里监听属性变化 ─── */
 function useColorMode(): 'light' | 'dark' {
@@ -100,27 +118,36 @@ async function svgToPngDataUrl(svgMarkup: string, bgColor: string): Promise<stri
   svgEl.setAttribute('height', String(height));
   svgEl.removeAttribute('style');
   const xml = new XMLSerializer().serializeToString(svgEl);
-  const svgUrl = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
-  try {
-    const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error('SVG 光栅化失败'));
-      img.src = svgUrl;
-    });
-    const scale = 2;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(width * scale);
-    canvas.height = Math.ceil(height * scale);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas 不可用');
-    ctx.fillStyle = bgColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/png');
-  } finally {
-    URL.revokeObjectURL(svgUrl);
-  }
+  // 用 data: URL 而非 blob: URL 光栅化：Chromium 下含 foreignObject（mermaid 流程图
+  // HTML 标签）的 blob SVG 画进 canvas 会被污染，toDataURL 抛 SecurityError；
+  // data: URL 可正常导出（复现环境实测验证）
+  const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('SVG 光栅化失败'));
+    img.src = svgUrl;
+  });
+  const scale = 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(width * scale);
+  canvas.height = Math.ceil(height * scale);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 不可用');
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/png');
+}
+
+/** 提取 svg 标记的 viewBox 宽高：查看器大图按此等比缩放居中，留出真实背景 */
+function svgViewBox(svgMarkup: string): { w: number; h: number } | null {
+  const m = /viewBox="([^"]+)"/.exec(svgMarkup);
+  if (!m) return null;
+  const parts = m[1].trim().split(/[\s,]+/).map(Number);
+  const w = parts[2];
+  const h = parts[3];
+  return w && h && w > 0 && h > 0 ? { w, h } : null;
 }
 
 interface MermaidBlockProps {
@@ -131,39 +158,64 @@ interface MermaidBlockProps {
 
 export default function MermaidBlock({ code, streaming = false }: MermaidBlockProps) {
   const mode = useColorMode();
-  /** 渲染结果快照：带对应的源码，代码变化后旧结果自动作废（回到加载中），
-   *  避免在 effect 里同步 setState 重置状态 */
+  /** 首次渲染在途快照（尚未入缓存）：带对应的源码，代码变化后旧结果自动作废，
+   *  避免在 effect 里同步 setState 重置状态；完成后的结果同时写入模块缓存 */
   const [result, setResult] = useState<{ code: string; svg?: string; failed?: boolean } | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
+  /** 查看器打开时间戳：遮罩忽略打开后短窗口内的“点背景关闭” */
+  const viewerOpenedAtRef = useRef(0);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 渲染图表：代码 / 亮暗模式变化时重新执行；流式中跳过。
-  // setState 只发生在异步回调里（旧结果靠 code 比对作废），不在 effect 体同步调
+  // 渲染图表：代码 / 亮暗模式变化时重新执行；流式中跳过；缓存命中跳过（渲染层直接读缓存）。
+  // setState 只发生在异步回调里，不在 effect 体同步调。
+  // 加载失败（网络等瞬时原因）不缓存、可重试；语法/渲染失败是确定性结果，缓存避免重挂载重试闪烁。
   useEffect(() => {
     if (streaming) return;
+    const key = mermaidCacheKey(mode, code);
+    if (mermaidRenderCache.has(key)) return;
     let cancelled = false;
     (async () => {
+      let mm: MermaidLib;
       try {
-        const mm = await loadMermaid();
+        mm = await loadMermaid();
+      } catch {
+        if (!cancelled) setResult({ code, failed: true });
+        return;
+      }
+      try {
         applyMermaidTheme(mm, mode);
         await mm.parse(code);
         const { svg: rendered } = await mm.render(`mermaid-block-${++mermaidIdSeq}`, code);
-        if (!cancelled) setResult({ code, svg: rendered });
+        if (!cancelled) {
+          mermaidCacheSet(key, { svg: rendered });
+          setResult({ code, svg: rendered });
+        }
       } catch {
         // 语法错误 / 渲染失败：退回源码展示，内容不丢
-        if (!cancelled) setResult({ code, failed: true });
+        if (!cancelled) {
+          mermaidCacheSet(key, { failed: true });
+          setResult({ code, failed: true });
+        }
       }
     })();
     return () => { cancelled = true; };
   }, [code, mode, streaming]);
 
-  // 快照只对应当前代码且不在流式中才有效，否则视为加载中 / 待渲染
-  const fresh = !streaming && result?.code === code ? result : null;
+  // 优先读模块缓存（key = 当前模式 + 源码，命中即最新结果）：父组件重渲染导致本组件
+  // 重挂载时首帧直接出图，不会闪回源码/加载态；未命中再看在途快照（code 比对作废旧结果）
+  const cached = streaming ? undefined : mermaidRenderCache.get(mermaidCacheKey(mode, code));
+  const fresh = cached
+    ? { code, ...cached }
+    : !streaming && result?.code === code
+      ? result
+      : null;
   const svg = fresh?.svg ?? null;
   const renderFailed = !!fresh?.failed;
+  // 查看器大图按 viewBox 比例等比居中（留出可点击关闭的背景）；提取失败回退铺满
+  const viewBox = useMemo(() => svgViewBox(svg ?? ''), [svg]);
 
   useEffect(
     () => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); },
@@ -174,7 +226,11 @@ export default function MermaidBlock({ code, streaming = false }: MermaidBlockPr
   useEffect(() => {
     if (!viewerOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setViewerOpen(false);
+      if (e.key !== 'Escape') return;
+      setViewerOpen(false);
+      // Esc 关闭后焦点还留在触发控件上，键盘模态会触发 focus-visible，
+      // 图表卡片上会残留一圈焦点环；主动 blur 去掉
+      (document.activeElement as HTMLElement | null)?.blur();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -239,6 +295,17 @@ export default function MermaidBlock({ code, streaming = false }: MermaidBlockPr
   /** 顶栏操作按钮（卡片与全屏查看器共用样式） */
   const actionBtnCls = 'flex items-center justify-center w-7 h-7 rounded-md text-gray-400 hover:text-gray-200 hover:bg-white/5 active:bg-white/10 transition-colors disabled:opacity-40';
 
+  // 连点的第二下可能落在刚弹出的遮罩上（第一下打开了查看器），被当成
+  // “点击背景关闭”而自动退出；打开后 300ms 内忽略背景点击
+  const openViewer = () => {
+    viewerOpenedAtRef.current = Date.now();
+    setViewerOpen(true);
+  };
+  const closeViewerByBackdrop = () => {
+    if (Date.now() - viewerOpenedAtRef.current < 300) return;
+    setViewerOpen(false);
+  };
+
   return (
     <>
       {toast && (
@@ -263,7 +330,7 @@ export default function MermaidBlock({ code, streaming = false }: MermaidBlockPr
               {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
             </button>
             {svg && !streaming && (
-              <button onClick={() => setViewerOpen(true)} className={actionBtnCls} title="查看大图" aria-label="查看大图">
+              <button onClick={openViewer} className={actionBtnCls} title="查看大图" aria-label="查看大图">
                 <Maximize2 className="w-3.5 h-3.5" />
               </button>
             )}
@@ -277,10 +344,17 @@ export default function MermaidBlock({ code, streaming = false }: MermaidBlockPr
             tabIndex={0}
             aria-label="查看大图"
             className="mermaid-inline cursor-zoom-in bg-[var(--color-bg-primary)] px-4 py-3 transition-colors hover:bg-[var(--color-bg-secondary)]"
-            onClick={() => setViewerOpen(true)}
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setViewerOpen(true); }}
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
+            onClick={openViewer}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') openViewer(); }}
+          >
+            {/* 等比 contain 适配：宽度取卡片内容宽与（高度上限×宽高比）的较小值，
+                在可见区内最大化显示而不是横向撑满；内层无 padding 保证比例精确 */}
+            <div
+              className={viewBox ? 'mermaid-inline-fit' : 'w-full'}
+              style={viewBox ? ({ '--mermaid-aspect': String(viewBox.w / viewBox.h) } as CSSProperties) : undefined}
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          </div>
         ) : (
           <>
             {renderFailed && (
@@ -306,7 +380,7 @@ export default function MermaidBlock({ code, streaming = false }: MermaidBlockPr
       {viewerOpen && svg && createPortal(
         <div
           className="fixed inset-0 z-[220] bg-[var(--color-bg-base)] flex flex-col touch-none overscroll-none"
-          onClick={() => setViewerOpen(false)}
+          onClick={closeViewerByBackdrop}
         >
           {/* 顶栏：标题 + 下载 + 关闭 */}
           <div
@@ -326,8 +400,9 @@ export default function MermaidBlock({ code, streaming = false }: MermaidBlockPr
               </button>
             </div>
           </div>
-          {/* 内容区：与图片查看器同一套缩放方案（捏合/滚轮/双击） */}
-          <div className="flex-1 min-h-0" onClick={e => e.stopPropagation()}>
+          {/* 内容区：缩放查看（捏合/滚轮/双击）。图表框按 viewBox 比例等比居中，
+              留出真实背景：点背景关闭，点图表框 stopPropagation 不关闭 */}
+          <div className="flex-1 min-h-0">
             <TransformWrapper
               initialScale={1}
               minScale={1}
@@ -336,13 +411,23 @@ export default function MermaidBlock({ code, streaming = false }: MermaidBlockPr
               centerZoomedOut
               centerOnInit
               doubleClick={{ mode: 'toggle', step: 1, animationTime: 180 }}
-              wheel={{ step: 0.3 }}
+              // 滚轮缩放：smooth 模式下实际步进 = step × |deltaY|，鼠标一格 deltaY≈100，
+              // step=0.3 会一格直接拉满倍率；关 smooth 用固定步进，每格 0.2 倍更跟手
+              smooth={false}
+              wheel={{ step: 0.2 }}
             >
               <TransformComponent
                 wrapperStyle={{ width: '100%', height: '100%' }}
                 contentStyle={{ width: '100%', height: '100%' }}
               >
-                <div className="mermaid-fit w-full h-full p-4" dangerouslySetInnerHTML={{ __html: svg }} />
+                <div className="w-full h-full flex items-center justify-center p-4">
+                  <div
+                    className="mermaid-fit"
+                    style={viewBox ? { aspectRatio: `${viewBox.w} / ${viewBox.h}` } : { width: '100%', height: '100%' }}
+                    onClick={e => e.stopPropagation()}
+                    dangerouslySetInnerHTML={{ __html: svg }}
+                  />
+                </div>
               </TransformComponent>
             </TransformWrapper>
           </div>

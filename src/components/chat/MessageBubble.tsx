@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo, Children, memo } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -553,18 +554,113 @@ function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName,
   // 各覆盖组件按文档顺序累加命中次数，标记当前跳转项）
   const searchCursorRef = useRef(0);
 
-  // 渲染层搜索高亮：只处理直接字符串 children（行内组件自身处理自己的文本，
-  // 不递归，避免 mark 被二次拆分）。返回的 <mark> 由 React 管理，不破坏 fiber。
-  const highlightMarkdownChildren = (children: React.ReactNode): React.ReactNode => {
-    const q = searchQuery?.trim();
-    if (!q) return children;
-    return Children.map(children, (child) => {
-      if (typeof child !== 'string') return child;
-      const { nodes, occurrenceCount } = renderTextWithHighlight(child, q, searchCursorRef.current, activeMatchOccurrence);
-      searchCursorRef.current += occurrenceCount;
-      return nodes;
-    });
-  };
+  // react-markdown 覆盖组件用 useMemo 稳定引用：内联对象会让函数引用每次渲染都变，
+  // React 会认为组件类型变了而把整棵 markdown 子树卸载重挂——MermaidBlock 的内部状态
+  // （全屏查看器开关）在重挂载时被重置，表现为查看器刚打开就“自动退出”。
+  // 仅在高亮搜索词/命中项/流式态/搜索结果变化时重建覆盖。
+  const markdownComponents = useMemo<Components>(() => {
+    // 渲染层搜索高亮：只处理直接字符串 children（行内组件自身处理自己的文本，
+    // 不递归，避免 mark 被二次拆分）。返回的 <mark> 由 React 管理，不破坏 fiber。
+    const highlightMarkdownChildren = (children: React.ReactNode): React.ReactNode => {
+      const q = searchQuery?.trim();
+      if (!q) return children;
+      return Children.map(children, (child) => {
+        if (typeof child !== 'string') return child;
+        const { nodes, occurrenceCount } = renderTextWithHighlight(child, q, searchCursorRef.current, activeMatchOccurrence);
+        searchCursorRef.current += occurrenceCount;
+        return nodes;
+      });
+    };
+    return {
+      // 搜索高亮覆盖：文本容器/行内组件用渲染层高亮处理直接文本 children，
+      // 与默认标签保持一致（prose 样式由外层容器类负责）。
+      // code/pre 不覆盖：代码块内部保持不高亮，且 CodeBlock 依赖纯字符串 props。
+      p({ children }) {
+        return <p>{highlightMarkdownChildren(children)}</p>;
+      },
+      li({ children }) {
+        return <li>{highlightMarkdownChildren(children)}</li>;
+      },
+      td({ children }) {
+        return <td>{highlightMarkdownChildren(children)}</td>;
+      },
+      th({ children }) {
+        return <th>{highlightMarkdownChildren(children)}</th>;
+      },
+      h1({ children }) { return <h1>{highlightMarkdownChildren(children)}</h1>; },
+      h2({ children }) { return <h2>{highlightMarkdownChildren(children)}</h2>; },
+      h3({ children }) { return <h3>{highlightMarkdownChildren(children)}</h3>; },
+      h4({ children }) { return <h4>{highlightMarkdownChildren(children)}</h4>; },
+      h5({ children }) { return <h5>{highlightMarkdownChildren(children)}</h5>; },
+      h6({ children }) { return <h6>{highlightMarkdownChildren(children)}</h6>; },
+      blockquote({ children }) {
+        return <blockquote>{highlightMarkdownChildren(children)}</blockquote>;
+      },
+      strong({ children }) {
+        return <strong>{highlightMarkdownChildren(children)}</strong>;
+      },
+      em({ children }) {
+        return <em>{highlightMarkdownChildren(children)}</em>;
+      },
+      del({ children }) {
+        return <del>{highlightMarkdownChildren(children)}</del>;
+      },
+      span({ children }) {
+        return <span>{highlightMarkdownChildren(children)}</span>;
+      },
+      code({ children }) {
+        // 不展开其余 props：里面带着 react-markdown 的 node 字段，
+        // 传到 DOM 上会触发 React 未知属性警告
+        return (
+          <code className="bg-gray-700/40 px-1 py-0.5 rounded text-[0.9em]">
+            {children}
+          </code>
+        );
+      },
+      pre({ children }) {
+        // pre 的子节点是 <code>，语言标识挂在它的 className 上
+        const codeEl = Array.isArray(children) ? children[0] : children;
+        const props = (codeEl as { props?: { className?: string; children?: unknown } })
+          ?.props;
+        const match = /language-(\w+)/.exec(props?.className || '');
+        const codeStr = String(props?.children ?? '').replace(/\n$/, '');
+        const language = match?.[1];
+        // mermaid 走专用图表组件：流式中只显示源码，完成后渲染为图表（点开看大图/下载）
+        if (language?.toLowerCase() === 'mermaid') {
+          return <MermaidBlock code={codeStr} streaming={displayIsStreaming} />;
+        }
+        return <CodeBlock code={codeStr} language={language} />;
+      },
+      a({ href, children }) {
+        // 引用标识：cite:N 格式 → 渲染为圆形数字按钮
+        if (href?.startsWith('cite:')) {
+          const num = href.replace('cite:', '');
+          const idx = parseInt(num, 10) - 1;
+          const url = displaySearchResults?.[idx]?.url;
+          return (
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); if (url) openUrl(url); }}
+              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[var(--color-accent)]/20 text-[var(--color-accent)] text-[10px] font-bold hover:bg-[var(--color-accent)]/40 hover:text-white transition-colors cursor-pointer align-super mx-0.5 no-underline"
+              title={displaySearchResults?.[idx]?.name || `来源 ${num}`}
+            >
+              {num}
+            </button>
+          );
+        }
+        // 普通链接：用系统浏览器打开（children 过一遍渲染层高亮）
+        return (
+          <a
+            href={href}
+            onClick={(e) => { e.preventDefault(); if (href) openUrl(href); }}
+            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+          >
+            {highlightMarkdownChildren(children)}
+          </a>
+        );
+      }
+    };
+  }, [displayIsStreaming, displaySearchResults, searchQuery, activeMatchOccurrence]);
 
   const renderContent = () => {
     if (typeof displayContent === 'string') {
@@ -584,95 +680,7 @@ function MessageBubble({ message, onSuggestionClick, showSuggestions, modelName,
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeKatex]}
             urlTransform={(url) => url}
-            components={{
-              // 搜索高亮覆盖：文本容器/行内组件用渲染层高亮处理直接文本 children，
-              // 与默认标签保持一致（prose 样式由外层容器类负责）。
-              // code/pre 不覆盖：代码块内部保持不高亮，且 CodeBlock 依赖纯字符串 props。
-              p({ children }) {
-                return <p>{highlightMarkdownChildren(children)}</p>;
-              },
-              li({ children }) {
-                return <li>{highlightMarkdownChildren(children)}</li>;
-              },
-              td({ children }) {
-                return <td>{highlightMarkdownChildren(children)}</td>;
-              },
-              th({ children }) {
-                return <th>{highlightMarkdownChildren(children)}</th>;
-              },
-              h1({ children }) { return <h1>{highlightMarkdownChildren(children)}</h1>; },
-              h2({ children }) { return <h2>{highlightMarkdownChildren(children)}</h2>; },
-              h3({ children }) { return <h3>{highlightMarkdownChildren(children)}</h3>; },
-              h4({ children }) { return <h4>{highlightMarkdownChildren(children)}</h4>; },
-              h5({ children }) { return <h5>{highlightMarkdownChildren(children)}</h5>; },
-              h6({ children }) { return <h6>{highlightMarkdownChildren(children)}</h6>; },
-              blockquote({ children }) {
-                return <blockquote>{highlightMarkdownChildren(children)}</blockquote>;
-              },
-              strong({ children }) {
-                return <strong>{highlightMarkdownChildren(children)}</strong>;
-              },
-              em({ children }) {
-                return <em>{highlightMarkdownChildren(children)}</em>;
-              },
-              del({ children }) {
-                return <del>{highlightMarkdownChildren(children)}</del>;
-              },
-              span({ children }) {
-                return <span>{highlightMarkdownChildren(children)}</span>;
-              },
-              code({ children }) {
-                // 不展开其余 props：里面带着 react-markdown 的 node 字段，
-                // 传到 DOM 上会触发 React 未知属性警告
-                return (
-                  <code className="bg-gray-700/40 px-1 py-0.5 rounded text-[0.9em]">
-                    {children}
-                  </code>
-                );
-              },
-              pre({ children }) {
-                // pre 的子节点是 <code>，语言标识挂在它的 className 上
-                const codeEl = Array.isArray(children) ? children[0] : children;
-                const props = (codeEl as { props?: { className?: string; children?: unknown } })
-                  ?.props;
-                const match = /language-(\w+)/.exec(props?.className || '');
-                const codeStr = String(props?.children ?? '').replace(/\n$/, '');
-                const language = match?.[1];
-                // mermaid 走专用图表组件：流式中只显示源码，完成后渲染为图表（点开看大图/下载）
-                if (language?.toLowerCase() === 'mermaid') {
-                  return <MermaidBlock code={codeStr} streaming={displayIsStreaming} />;
-                }
-                return <CodeBlock code={codeStr} language={language} />;
-              },
-              a({ href, children }) {
-                // 引用标识：cite:N 格式 → 渲染为圆形数字按钮
-                if (href?.startsWith('cite:')) {
-                  const num = href.replace('cite:', '');
-                  const idx = parseInt(num, 10) - 1;
-                  const url = displaySearchResults?.[idx]?.url;
-                  return (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); if (url) openUrl(url); }}
-                      className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[var(--color-accent)]/20 text-[var(--color-accent)] text-[10px] font-bold hover:bg-[var(--color-accent)]/40 hover:text-white transition-colors cursor-pointer align-super mx-0.5 no-underline"
-                      title={displaySearchResults?.[idx]?.name || `来源 ${num}`}
-                    >
-                      {num}
-                    </button>
-                  );
-                }
-                // 普通链接：用系统浏览器打开（children 过一遍渲染层高亮）
-                return (
-                  <a
-                    href={href}
-                    onClick={(e) => { e.preventDefault(); if (href) openUrl(href); }}
-                    className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
-                  >
-                    {highlightMarkdownChildren(children)}
-                  </a>
-                );
-              }
-            }}
+            components={markdownComponents}
           >
             {processedContent}
           </ReactMarkdown>

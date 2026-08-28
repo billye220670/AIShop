@@ -465,12 +465,6 @@ html[data-platform='electron'] .context-menu-overlay {
   animation: fold-line-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* 折叠态气泡：键盘焦点要看得见，它是可点击控件 */
-.fold-collapsed-bubble:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
 @keyframes fold-hint-in {
   from {
     opacity: 0;
@@ -640,8 +634,34 @@ mark.search-highlight.search-highlight-active {
   margin: 0 auto;
 }
 
-/* 全屏查看器：svg 铺满可用区域，viewBox 等比缩放居中显示 */
+/* 行内预览等比 contain 适配（代替横向撑满）：宽度取卡片内容宽与（高度上限×宽高比）的较小值，
+   高度上限 65dvh（不支持时回退 65vh），在可见区内最大化显示，窗口缩放自动重算；
+   宽高比由 MermaidBlock 从 viewBox 算出后经 --mermaid-aspect 传入 */
+.mermaid-inline-fit {
+  --mermaid-cap: 65vh;
+  --mermaid-cap: 65dvh;
+  aspect-ratio: var(--mermaid-aspect);
+  width: min(100%, calc(var(--mermaid-cap) * var(--mermaid-aspect)));
+  margin: 0 auto;
+}
+.mermaid-inline-fit svg {
+  /* 尺寸已由适配盒精确决定，解除上面 360px 限高避免留白 */
+  max-height: none;
+}
+
+/* 全屏查看器：图表框按 viewBox 比例（aspect-ratio 内联传入）等比缩放居中，
+   留出真实背景（点背景关闭）；svg 铺满图表框 */
+.mermaid-fit {
+  width: 100%;
+  max-height: 100%;
+  min-width: 0;
+}
 .mermaid-fit svg {
   width: 100%;
   height: 100%;
+}
+
+/* 键盘焦点指示：按用户要求完全不显示（Tab 键盘导航也不出现焦点环） */
+:focus-visible {
+  outline: none;
 }

@@ -239,7 +239,10 @@ export default function ImageViewer({ src, alt = '图片', onClose }: ImageViewe
           centerOnInit
           // 双击在 1x 与 2x 之间切换（系统相册行为）
           doubleClick={{ mode: 'toggle', step: 1, animationTime: 180 }}
-          wheel={{ step: 0.3 }}
+          // 滚轮缩放：smooth 模式下实际步进 = step × |deltaY|，鼠标一格 deltaY≈100，
+          // step=0.3 会一格直接拉满倍率；关 smooth 用固定步进，每格 0.2 倍更跟手
+          smooth={false}
+          wheel={{ step: 0.2 }}
           onZoomStart={() => haptic()}
           onPanningStart={handlePanningStart}
           onPanning={handlePanning}

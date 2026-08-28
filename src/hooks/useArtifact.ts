@@ -90,6 +90,36 @@ export function extractStreamingArtifact(content: string): { title: string; code
 }
 
 /**
+ * 兜底识别：模型没有输出 <<<ARTIFACT_START>>> 标记，而是把完整 HTML 文档
+ * 放在 ``` 代码块里返回时（DeepSeek 等指令遵循较弱的模型常见），把该代码块
+ * 识别为 artifact，并返回剥离代码块后的剩余文本。
+ * 仅识别同时含 <html> 与 </html> 的代码块，避免把普通 HTML 片段示例误判成应用。
+ */
+export function extractArtifactFromCodeFence(content: string): { artifact: ArtifactBlock; rest: string } | null {
+  const fenceRegex = /```[^\n]*\n([\s\S]*?)```/g;
+  let match: RegExpExecArray | null;
+  while ((match = fenceRegex.exec(content)) !== null) {
+    const code = match[1].trim();
+    if (!/<html[\s>]/i.test(code) || !/<\/html>/i.test(code)) continue;
+
+    const titleMatch = code.match(/<title[^>]*>\s*([^<]+?)\s*<\/title>/i);
+    const artifact: ArtifactBlock = {
+      id: `artifact_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      type: 'html',
+      title: titleMatch ? titleMatch[1] : '未命名网页',
+      code,
+      createdAt: Date.now(),
+    };
+
+    const before = content.substring(0, match.index).trimEnd();
+    const after = content.substring(match.index + match[0].length).trimStart();
+    const rest = before + (before && after ? '\n\n' : '') + after;
+    return { artifact, rest };
+  }
+  return null;
+}
+
+/**
  * Hook：管理当前激活的 artifact 状态
  */
 export function useArtifact() {
