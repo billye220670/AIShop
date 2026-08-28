@@ -123,6 +123,11 @@ export interface StoredConversation extends SyncMeta {
   isFavorite?: boolean;
   /** 隐藏：从会话主列表隐去，仅在「已隐藏」视图可见；随 BYOC 同步 */
   isHidden?: boolean;
+  /**
+   * 已收下的云端元数据版本（云端对象的 LastModified，与 StoredMessage.cloudVersion 同理）。
+   * 拉取跳过判定只比较服务端时钟，避免设备时钟不同步时元数据（隐藏/收藏/改名）永远拉不过来。
+   */
+  cloudVersion?: number;
   /** 会话级压缩重点提示，填一次长期生效 */
   compactFocusHint?: string;
 

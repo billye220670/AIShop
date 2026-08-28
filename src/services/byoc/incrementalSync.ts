@@ -298,22 +298,22 @@ export async function pushLocal(
   onProgress?.(0, targets.length);
   for (let i = 0; i < targets.length; i++) {
     const conv = targets[i];
-    const cloudUpdatedAt = manifest.convs[conv.id] ?? 0;
-    const localNewer = conv.updatedAt > cloudUpdatedAt;
     const msgs = await getStoredMessages(conv.id);
     const dirtyMsgs = msgs.filter(m => m.updatedAt > (m.syncedAt ?? 0));
 
-    // 元数据 LWW：本地较新才推（云端较新时保留云端版本，消息仍然照推）
-    if (localNewer) {
-      const meta: Record<string, unknown> = { ...conv };
-      delete meta.syncedAt;
-      await client.putObject(
-        syncKey(cfg.prefix, 'convs', `${conv.id}.json`),
-        jsonBlob(meta)
-      );
-      manifest.convs[conv.id] = conv.updatedAt;
-      result.pushedConvs += 1;
-    }
+    // 元数据：本地有未同步变更就推送。不再与清单里的云端版本（另一端的设备时钟）
+    // 比大小——时钟不同步时会误判「云端较新」而不推，随后 markSynced 又把它标记成
+    // 已同步，隐藏/收藏/改名等元数据变更就此永久丢失；冲突由拉取侧的
+    // 「本地脏则保留、等 push 上行」策略兼容（与消息路径一致）。
+    const meta: Record<string, unknown> = { ...conv };
+    delete meta.syncedAt;
+    delete meta.cloudVersion;
+    await client.putObject(
+      syncKey(cfg.prefix, 'convs', `${conv.id}.json`),
+      jsonBlob(meta)
+    );
+    manifest.convs[conv.id] = conv.updatedAt;
+    result.pushedConvs += 1;
 
     // 消息：原样序列化（去掉本地 syncedAt）
     await mapLimit(dirtyMsgs, 8, async m => {
@@ -766,6 +766,14 @@ export async function pullRemote(
 
   // 2. 会话
   const convIds = Object.keys(manifest.convs);
+  // 云端元数据对象的服务端版本表（LastModified，存储服务端时钟）。
+  // 拉取跳过判定绝不能拿本地 syncedAt（本机时钟）去比清单里的 updatedAt（另一端的设备时钟）：
+  // 两端时钟相差几分钟时，本机会把对端的元数据变更（隐藏/收藏/改名）永远判成「已是最新」，
+  // 表现即「手机端隐藏了会话，PC 端永远同步不过来」。与消息一致，只比服务端时钟。
+  const convKeys = await client.listObjects(syncKey(cfg.prefix, 'convs'));
+  const convVers = new Map<string, number>(
+    convKeys.map(k => [fileBase(k.key), k.lastModified])
+  );
   onProgress?.(0, convIds.length);
   for (let i = 0; i < convIds.length; i++) {
     const convId = convIds[i];
@@ -785,7 +793,13 @@ export async function pullRemote(
       });
     }
     const local = await getConversation(convId);
-    if (local && (local.syncedAt ?? 0) >= cloudUpdatedAt) continue; // 已是最新
+    const ver = convVers.get(convId);
+    if (ver === undefined) {
+      // 清单说有、目录里却没有：云端不一致或写入尚未可见。同下方读不到对象同理记不完整。
+      incomplete = true;
+      continue;
+    }
+    if (local && (local.cloudVersion ?? 0) >= ver) continue; // 已是最新（服务端时钟比较）
 
     const raw = await client.getObject(syncKey(cfg.prefix, 'convs', `${convId}.json`));
     if (!raw) {
@@ -795,10 +809,12 @@ export async function pullRemote(
       continue;
     }
     const cloudConv = JSON.parse(await raw.text()) as StoredConversation;
-    const cloudNewer = !local || cloudUpdatedAt > local.updatedAt;
+    // 元数据 LWW：本地有未推送的变更时保留本地（等下一轮 push 上行），其余情况应用云端。
+    // 不再比较两端设备时钟的 updatedAt，理由同上。
+    const applyMeta = !local || local.updatedAt <= (local.syncedAt ?? 0);
     try {
       const pulled = await pullConversation(
-        client, cfg, convId, cloudConv, cloudNewer
+        client, cfg, convId, cloudConv, ver, applyMeta
       );
       result.pulledConvs += pulled.convPulled ? 1 : 0;
       result.pulledMessages += pulled.messageCount;
@@ -944,10 +960,11 @@ async function pullConversation(
   cfg: ByocConfig,
   convId: string,
   cloudConv: StoredConversation,
-  cloudNewer: boolean
+  cloudVer: number,
+  applyMeta: boolean
 ): Promise<{ convPulled: boolean; messageCount: number; blobCount: number }> {
   const local = await getConversation(convId);
-  const stats = { convPulled: cloudNewer, messageCount: 0, blobCount: 0 };
+  const stats = { convPulled: applyMeta, messageCount: 0, blobCount: 0 };
 
   // 消息：按 msgId 去重。版本判定用「上次收下的云端版本」与云端当前
   // LastModified 比较——两者同为存储服务端时钟，可比。
@@ -970,10 +987,10 @@ async function pullConversation(
     maxSeq = Math.max(maxSeq, msg.seq);
   });
 
-  // 节点：云端较新时以云端集合覆盖本地；本地较新时只补云端缺的
+  // 节点：应用云端元数据时以云端集合覆盖本地；本地元数据较新（未推送）时只补云端缺的
   const cloudNodes = await client.listObjects(syncKey(cfg.prefix, 'nodes', convId));
   const nodeIds = new Set(cloudNodes.map(n => fileBase(n.key)));
-  if (cloudNewer) {
+  if (applyMeta) {
     const localNodes = await listNodesFor(convId);
     await mapLimit(localNodes.filter(n => !nodeIds.has(n.id)), 4, n =>
       deleteNode(n.convId, n.id)
@@ -986,22 +1003,32 @@ async function pullConversation(
     await putNode(node);
   });
 
-  // 会话元数据：云端较新才覆盖（保留云端反范式计数，但 headSeq 取三者的最大，
-  // 否则本地有本地新增消息时下一次追加会撞 seq）
-  if (cloudNewer) {
-    const count = await countMessages(convId);
-    await withDB(async db => {
-      await db.put('conversations', {
-        ...cloudConv,
-        syncedAt: Date.now(),
-        messageCount: Math.max(cloudConv.messageCount, local?.messageCount ?? 0, count),
-        headSeq: Math.max(cloudConv.headSeq, local?.headSeq ?? 0, maxSeq),
+  if (!applyMeta) {
+    // 本地有未推送的变更：元数据保留本地（LWW），不标记 syncedAt——
+    // 否则下一轮推送会把该会话过滤掉，本地新版永远传不上去。
+    // 但 cloudVersion 要对齐到已见版本：否则每轮拉取都会把同一对象重处理一遍。
+    if (local && (local.cloudVersion ?? 0) < cloudVer) {
+      await withDB(async db => {
+        const rec = await db.get('conversations', convId);
+        if (rec) await db.put('conversations', { ...rec, cloudVersion: cloudVer });
       });
-    });
-    stats.convPulled = true;
+    }
+    return stats;
   }
-  // 本地较新：元数据保留本地（LWW），也不标记 syncedAt——
-  // 否则下一轮推送会把该会话过滤掉，本地新版永远传不上去
+
+  // 会话元数据：应用云端版本（保留云端反范式计数，但 headSeq 取三者的最大，
+  // 否则本地有本地新增消息时下一次追加会撞 seq）
+  const count = await countMessages(convId);
+  await withDB(async db => {
+    await db.put('conversations', {
+      ...cloudConv,
+      syncedAt: Date.now(),
+      cloudVersion: cloudVer,
+      messageCount: Math.max(cloudConv.messageCount, local?.messageCount ?? 0, count),
+      headSeq: Math.max(cloudConv.headSeq, local?.headSeq ?? 0, maxSeq),
+    });
+  });
+  stats.convPulled = true;
   return stats;
 }
 
