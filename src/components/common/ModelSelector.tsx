@@ -344,7 +344,7 @@ export default function ModelSelector({ models, selectedModel, onModelChange, co
                 >
                   <Brain className="w-4 h-4 shrink-0 text-[var(--color-accent)]" />
                   <span className="whitespace-nowrap">Portify</span>
-                  <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">自动选择最佳模型</span>
+                  <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">自动路由</span>
                 </button>
               </li>
             {hasGroups ? (

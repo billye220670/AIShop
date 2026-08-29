@@ -190,10 +190,7 @@ function parseSuggestions(content: string): { text: string; suggestions: string[
   const fullRegex = /<<<SUGGESTIONS>>>\s*([\s\S]*?)\s*<<<END_SUGGESTIONS>>>/;
   const fullMatch = content.match(fullRegex);
   if (fullMatch) {
-    const suggestions = fullMatch[1]
-      .split('|||')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
+    const suggestions = parseSuggestionItems(fullMatch[1]);
     const text = content.replace(fullRegex, '').trimEnd();
     return { text, suggestions };
   }
@@ -202,10 +199,7 @@ function parseSuggestions(content: string): { text: string; suggestions: string[
   const startOnlyRegex = /<<<SUGGESTIONS>>>\s*([\s\S]*)$/;
   const startMatch = content.match(startOnlyRegex);
   if (startMatch) {
-    const suggestions = startMatch[1]
-      .split('|||')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
+    const suggestions = parseSuggestionItems(startMatch[1]);
     const text = content.replace(startOnlyRegex, '').trimEnd();
     if (suggestions.length > 0) {
       return { text, suggestions };
@@ -213,6 +207,19 @@ function parseSuggestions(content: string): { text: string; suggestions: string[
   }
 
   return { text: content, suggestions: [] };
+}
+
+/** 拆分建议块并清理占位标签：部分模型会把示例标签原样写进内容
+ * （如 "建议1|||xxx 建议2|||..." 或每行带编号），拆分后剥离每项首尾的“建议N”，
+ * 丢弃纯标签项；无 ||| 时退化为按换行拆分 */
+function parseSuggestionItems(raw: string): string[] {
+  const pieces = raw.includes('|||') ? raw.split('|||') : raw.split(/\n+/);
+  return pieces
+    .map(s => s
+      .replace(/^[\s:：.-]*建议\s*\d+\s*[:：.-]?\s*/, '')
+      .replace(/[\s:：]*建议\s*\d+\s*$/, '')
+      .trim())
+    .filter(s => s.length > 0);
 }
 
 /**
@@ -1852,13 +1859,10 @@ export function useChat() {
         }];
       }
 
-      // 检查当前模型是否已存在于 versions 中
+      // 检查当前模型是否已存在于 versions 中：若对应版本被用户停止过，复用该槽位重新生成；
+      // 否则一律创建新版本（旧早退检查会把未停止消息的首次重新生成直接判成“已是最新”而无响应）
       const currentModelIndex = existingVersions.findIndex(v => v.model === safeRegenModel);
-      // 如果当前版本被用户停止了，允许重新生成；否则检查是否已经是最新版本
       const currentVersionStoppedByUser = existingVersions[currentModelIndex]?.stoppedByUser || conv.messages[msgIndex].stoppedByUser;
-      if (currentModelIndex >= 0 && currentModelIndex === existingVersions.length - 1 && !currentVersionStoppedByUser) {
-        return; // 已经是最新版本，无需重新生成
-      }
 
       // 如果当前版本被停止了，重用当前版本而不是创建新版本
       let newVersionId: string;

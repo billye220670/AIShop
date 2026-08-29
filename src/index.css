@@ -163,10 +163,23 @@
   & .hover\:bg-white\/10:hover { background-color: rgba(0, 0, 0, 0.06); }
   & .hover\:bg-white\/20:hover { background-color: rgba(0, 0, 0, 0.10); }
 
+  /* hover:bg-gray-700/50 —— 消息操作按钮行（复制/保存/重新生成/引用）的悬停底，
+     暗色半透灰在浅底上过重，改用与其它悬停一致的浅黑半透 */
+  & .hover\:bg-gray-700\/50:hover { background-color: rgba(0, 0, 0, 0.06); }
+
   /* 桌面端顶栏首页 tab：浅色下背景加深，胶囊轮廓可辨认 */
   & .desktop-home-tab {
     background-color: rgba(0, 0, 0, 0.06);
   }
+
+  /* 库预览桌面悬浮返回按钮：浅色下圆形底改浅黑半透（暗色保持 bg-black/50 磨砂） */
+  & .library-back-fab { background-color: rgba(0, 0, 0, 0.08); }
+  & .library-back-fab:hover { background-color: rgba(0, 0, 0, 0.14); }
+
+  /* 库卡片悬浮移除按钮：浅色下圆形底改浅黑半透 + 深色图标；
+     未分层规则会压过 utilities 层的 hover:red，故悬停红底白图标在此重声明 */
+  & .library-card-remove { background-color: rgba(0, 0, 0, 0.08); color: var(--color-text-secondary); }
+  & .library-card-remove:hover { background-color: rgba(239, 68, 68, 0.8); color: #ffffff; }
 
   /* active:bg-white/N */
   & .active\:bg-white\/10:active { background-color: rgba(0, 0, 0, 0.06); }

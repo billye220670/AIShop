@@ -9,13 +9,13 @@ export default function LoadingDots() {
       <style>{`
         .loading-dots-container {
           position: relative;
-          width: 29px;
-          height: 7px;
+          width: 58px;
+          height: 10px;
         }
         .loading-dot {
           position: absolute;
-          width: 7px;
-          height: 7px;
+          width: 10px;
+          height: 10px;
           border-radius: 50%;
           background-color: #6b7280;
           left: 0;
@@ -31,13 +31,13 @@ export default function LoadingDots() {
             transform: translateX(0px) scale(0);
           }
           33.33% {
-            transform: translateX(11px) scale(1);
+            transform: translateX(16px) scale(1);
           }
           66.66% {
-            transform: translateX(22px) scale(1);
+            transform: translateX(32px) scale(1);
           }
           100% {
-            transform: translateX(33px) scale(0);
+            transform: translateX(48px) scale(0);
           }
         }
       `}</style>

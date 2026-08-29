@@ -74,7 +74,7 @@ function MarkdownPreviewView({ asset, onDownload }: { asset: AssetItem; onDownlo
   return (
     <div className="h-full overflow-auto">
       <div className="max-w-3xl mx-auto px-4 py-6">
-        <div className="prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
+        <div className="select-text prose prose-invert max-w-none prose-headings:text-gray-100 prose-p:text-gray-200 prose-strong:text-white prose-code:text-blue-300 prose-code:before:content-none prose-code:after:content-none prose-pre:bg-transparent prose-pre:border-none prose-pre:p-0 prose-a:text-blue-400 prose-li:text-gray-200 prose-blockquote:border-gray-600 prose-blockquote:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300 prose-hr:border-gray-700">
           <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[rehypeKatex]}
@@ -364,7 +364,7 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
           {isDesktop && (
             <button
               onClick={handleClose}
-              className="absolute top-4 left-4 z-20 p-2.5 rounded-full bg-black/50 hover:bg-black/70 text-white shadow-lg backdrop-blur-sm transition-colors"
+              className="library-back-fab absolute top-4 left-4 z-20 p-2.5 rounded-full bg-black/50 hover:bg-black/70 text-white shadow-lg backdrop-blur-sm transition-colors"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               title="返回（Esc）"
             >
@@ -476,7 +476,7 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
             </div>
           ) : (
             /* 网格布局：照片墙模式为紧凑无间距 3 列，普通模式为浮岛卡片 */
-            <div className={`grid ${isImageWall ? 'grid-cols-3 gap-px' : 'grid-cols-2 lg:grid-cols-3 gap-4'}`}>
+            <div className={`grid ${isImageWall ? 'grid-cols-3 gap-px' : 'grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4'}`}>
               {visibleAssets.map(item => {
                 const isMenuOpen = menuOpenId === item.id;
                 return (
@@ -587,11 +587,11 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
                           onBlur={() => finishRename(true)}
                           onClick={e => e.stopPropagation()}
                           onPointerDown={e => e.stopPropagation()}
-                          className="w-full bg-[var(--color-bg-base)] border border-[var(--color-accent)] rounded px-1.5 py-0.5 text-sm text-[var(--color-text-primary)] outline-none"
+                          className="pointer-events-auto w-full bg-[var(--color-bg-base)] border border-[var(--color-accent)] rounded px-1.5 py-0.5 text-sm text-[var(--color-text-primary)] outline-none"
                         />
                       ) : (
                         <div className="flex items-center gap-1.5">
-                          <p className="text-sm text-[var(--color-text-primary)] truncate font-medium flex-1">
+                          <p className="text-sm text-[var(--color-text-primary)] truncate font-medium">
                             {item.title}
                           </p>
                           {isDesktop && (
@@ -620,7 +620,7 @@ export default function LibraryPanel({ assets, hiddenConvIds, onRemoveAsset, onR
                           e.stopPropagation();
                           onRemoveAsset(item.id);
                         }}
-                        className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white/80 hover:text-white hover:bg-red-500/80 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                        className="library-card-remove absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white/80 hover:text-white hover:bg-red-500/80 opacity-0 group-hover:opacity-100 transition-all duration-200"
                         title="移除"
                       >
                         <X className="w-3.5 h-3.5" />
